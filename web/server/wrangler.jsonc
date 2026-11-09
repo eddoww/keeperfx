@@ -6,9 +6,9 @@
   "name": "keeperfx",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
-  // keeper.edwindejong.net (zone edwindejong.net) runs this Worker.
+  // keeper.edwindejong.net is this Worker's custom domain (Cloudflare makes its DNS record).
   "routes": [
-    { "pattern": "keeper.edwindejong.net/*", "zone_id": "b4d85350a8f7c886bc4be590da52dea1" }
+    { "pattern": "keeper.edwindejong.net", "custom_domain": true }
   ],
   "assets": {
     "directory": "../../build-web/site",
