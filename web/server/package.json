@@ -1,0 +1,13 @@
+{
+  "name": "keeperfx-web-server",
+  "private": true,
+  "description": "Cloudflare Worker for the KeeperFX browser build (docs/web.md)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler d1 migrations apply keeperfx --local && wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.159.0"
+  }
+}

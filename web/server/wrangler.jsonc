@@ -1,0 +1,32 @@
+// Cloudflare Worker for the browser build: serves the static site
+// (build-web/site) and the /api for accounts, lobbies and the multiplayer
+// relay. See docs/web.md, "Online play".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "keeperfx",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "../../build-web/site",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "keeperfx", "database_id": "local-dev", "migrations_dir": "migrations" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "Room" },
+      { "name": "DIRECTORY", "class_name": "Directory" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room", "Directory"] }
+  ],
+  "vars": {
+    // Set DISCORD_CLIENT_ID here and DISCORD_CLIENT_SECRET with
+    // `wrangler secret put` to enable "Sign in with Discord".
+    "DISCORD_CLIENT_ID": ""
+  }
+}
