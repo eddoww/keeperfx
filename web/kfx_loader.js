@@ -481,6 +481,10 @@ async function boot() {
   fixPointerEnter($('canvas'));
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
+  // Online play: ?join=CODE joins a lobby (invite link), ?host opens one.
+  const join = (params.get('join') || '').trim().toUpperCase();
+  if (/^[A-Z0-9]{4,8}$/.test(join)) args.push('-connect', join);
+  else if (params.has('host')) args.push('-server');
   Module.callMain(args);
 }
 
@@ -490,10 +494,26 @@ function showExit(text) {
   showPanel('exited');
 }
 
+// Called by the game when it starts or stops hosting an online lobby.
+function onHosting(code) {
+  Module.kfxLobbyCode = code;
+  const badge = $('invite');
+  if (!badge) return;
+  badge.hidden = !code;
+  if (code) {
+    const link = new URL(location.pathname, location.href);
+    link.searchParams.set('join', code);
+    badge.querySelector('.code').textContent = code;
+    badge.querySelector('a').href = link.href;
+    badge.dataset.link = link.href;
+  }
+}
+
 var Module = {
   canvas: document.getElementById('canvas'),
   thisProgram: `${GAME_DIR}/keeperfx`,
   kfxFetchData: fetchData,
+  kfxOnHosting: onHosting,
   print: (text) => console.log(text),
   printErr: (text) => console.warn(text),
   onRuntimeInitialized: () => boot().catch((e) => {

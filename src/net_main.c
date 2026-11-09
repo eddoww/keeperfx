@@ -20,6 +20,9 @@
 
 #include "bflib_enet.h"
 #include "keeperfx.hpp"
+#ifdef __EMSCRIPTEN__
+#include "kfx/platform/web/NetWebSP.h"
+#endif
 #include "post_inc.h"
 
 static struct TbNetworkUserInfo *local_user_info;
@@ -140,8 +143,14 @@ TbError LbNetwork_Init(uint32_t srvcindex, uint32_t maxplayrs, struct TbNetworkU
         netstate.users[user_id].id = user_id;
     }
     if (srvcindex == NS_ENET_UDP) {
+#ifdef __EMSCRIPTEN__
+        // Browsers have no UDP: everything goes through the lobby relay.
+        netstate.sp = InitWebSP();
+        NETMSG("Selecting the web relay");
+#else
         netstate.sp = InitEnetSP();
         NETMSG("Selecting UDP");
+#endif
     } else {
         WARNLOG("The serviceIndex value of %u is out of range", srvcindex);
     }

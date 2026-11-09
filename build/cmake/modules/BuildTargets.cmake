@@ -9,7 +9,7 @@ list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/src/ftests/")
 
 # Desktop platform filtering (matches the hand Makefiles).
 if(EMSCRIPTEN)
-    # No curl/UPnP in a browser: platform/web/NetStubsWeb.c stands in for these.
+    # No curl/UPnP in a browser: platform/web/NetMatchmakingWeb.c stands in for these.
     list(FILTER KEEPERFX_SOURCES_C   EXCLUDE REGEX "/src/net_matchmaking\\.c$")
     list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/src/net_portforward\\.cpp$")
 else()

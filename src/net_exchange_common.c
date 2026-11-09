@@ -40,7 +40,13 @@
 /******************************************************************************/
 
 // When set too high the downside is these increase bandwidth usage and possibly congestion. When set too low you get stutters (pay attention to "Stutter Avg").
+#ifdef __EMSCRIPTEN__
+// The browser build's transport (a WebSocket relay) never loses or reorders
+// messages, so the copies sent against UDP packet loss would only add traffic.
+#define SEND_DUPLICATE_PACKETS 1
+#else
 #define SEND_DUPLICATE_PACKETS 3
+#endif
 #define REDUNDANT_PACKET_BUNDLE 3
 
 // Tested at 10% packet loss:

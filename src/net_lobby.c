@@ -204,6 +204,7 @@ enum NetJoinRejection net_lobby_spectator_rejection(NetUserId reservation)
     return NetJoin_Accepted;
 }
 
+#ifndef __EMSCRIPTEN__
 static int advertise_host(void *unused)
 {
     while (SDL_GetAtomicInt(&advertisement_running)) {
@@ -213,6 +214,7 @@ static int advertise_host(void *unused)
     }
     return 0;
 }
+#endif
 
 static void AddSessionSegment(const char *start, const char *end)
 {
@@ -535,12 +537,16 @@ TbError LbNetwork_Create(char *plyr_name, uint32_t *plyr_num, void *optns)
     *plyr_num = netstate.my_id;
     UpdateLocalPlayerInfo(netstate.my_id);
     LbNetwork_EnableNewPlayers(1);
+#ifndef __EMSCRIPTEN__
     SDL_SetAtomicInt(&advertisement_running, 1);
     advertisement_thread = SDL_CreateThread(advertise_host, "lobby_advertising", NULL);
     if (!advertisement_thread) {
         LbNetwork_Stop();
         return Lb_FAIL;
     }
+#endif
+    // Browser build: no threads; the web transport's update publishes the
+    // lobby instead (NetWebSP.c).
     return Lb_OK;
 }
 

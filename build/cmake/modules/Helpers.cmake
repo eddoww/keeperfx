@@ -124,7 +124,7 @@ function(kfx_web_link_flags TARGET)
         # Lazy data download on first open (src/kfx/platform/web/WebFileSystem.c).
         -Wl,--wrap=__syscall_openat -Wl,--wrap=__syscall_stat64
         -Wl,--wrap=__syscall_lstat64 -Wl,--wrap=__syscall_newfstatat
-        # No sockets in a browser (src/kfx/platform/web/NetStubsWeb.c).
+        # No sockets in a browser (src/kfx/platform/web/NetMatchmakingWeb.c).
         -Wl,--wrap=__syscall_socket
         "--js-library=${CMAKE_SOURCE_DIR}/web/kfx_web.js")
     set_property(TARGET ${TARGET} APPEND PROPERTY LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/kfx_web.js")
