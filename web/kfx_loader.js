@@ -433,12 +433,15 @@ async function persistNow() {
 //   for ?dk=) instead of asking the player. Only for deployments allowed to
 //   serve those files, such as a private one; web/package-data.py never
 //   includes them.
+// `server` is true when the site runs on its Worker (web/server), which
+// answers site.json; plain static hosting has no online play.
 async function loadSiteConfig() {
   try {
     const resp = await fetch('site.json', { cache: 'no-cache' });
-    return resp.ok ? await resp.json() : {};
+    const conf = resp.ok ? await resp.json() : {};
+    return { ...conf, server: resp.ok && resp.headers.get('Content-Type')?.includes('json') };
   } catch (e) {
-    return {};
+    return { server: false };
   }
 }
 
@@ -465,7 +468,7 @@ async function boot() {
   await writeConfig();
 
   await Account.refresh();
-  const choice = params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice();
+  const choice = params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice(site.server);
   showPanel(null);
   await applyPlayerName();
 
@@ -503,13 +506,17 @@ function startChoiceFromUrl() {
   return { mode: 'play' };
 }
 
-function waitForStartChoice() {
+function waitForStartChoice(server) {
   showPanel('start');
   setStatus('');
-  const online = Account.available; // online play needs the page's server
+  const online = server || Account.available; // online play needs the page's server
   $('online-choices').hidden = !online;
   const box = $('account');
   renderAccountBox(box);
+  if (online && !Account.available) {
+    box.hidden = false;
+    box.innerHTML = '<p class="account-line">Sign-in is unavailable right now; you can still play online as a guest.</p>';
+  }
   Account.onChange(() => renderAccountBox(box));
   if (params.get('login_error')) {
     box.insertAdjacentHTML('beforeend', '<p class="error"></p>');

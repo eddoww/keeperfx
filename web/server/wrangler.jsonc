@@ -39,6 +39,6 @@
     "DATA_URL": "",
     // Set DISCORD_CLIENT_ID here and DISCORD_CLIENT_SECRET with
     // `wrangler secret put` to enable "Sign in with Discord".
-    "DISCORD_CLIENT_ID": ""
+    "DISCORD_CLIENT_ID": "1569473036711628843"
   }
 }
