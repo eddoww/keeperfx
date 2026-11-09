@@ -121,6 +121,22 @@ Pages answers every missing path with `index.html` and status 200. To use your o
 domain, add it under the project's *Custom domains*; for a domain on the same
 Cloudflare account that also creates its DNS record.
 
+### Game data on R2
+
+The Worker can send players to an R2 bucket for the game data instead of
+serving `gamedata/` itself. The bucket `keeperfx-data` is public on
+`keeper-data.edwindejong.net`, with CORS for the site. To switch over:
+
+```sh
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... web/upload-r2.sh   # objects go to gamedata/<path>
+# then in web/server/wrangler.jsonc: "DATA_URL": "https://keeper-data.edwindejong.net/gamedata/"
+cd web/server && npx wrangler deploy
+```
+
+The page reads `dataUrl` from `/site.json` (answered by the Worker from
+`DATA_URL`). The manifest always comes with the page, so upload changed data
+before deploying a page whose manifest names it.
+
 Do not publish Dungeon Keeper's own files: each player supplies their own.
 
 ## Online play

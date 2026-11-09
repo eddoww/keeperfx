@@ -14,7 +14,7 @@
     "directory": "../../build-web/site",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/site.json"]
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "keeperfx", "database_id": "a48ddbde-2ea5-4a8d-b166-4788fcd7484c", "migrations_dir": "migrations" }
@@ -28,7 +28,15 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Room", "Directory"] }
   ],
+  "r2_buckets": [
+    // Game data (gamedata/), uploaded with web/upload-r2.sh, served to players
+    // from the bucket's public domain (DATA_URL below), not through the Worker.
+    { "binding": "DATA", "bucket_name": "keeperfx-data" }
+  ],
   "vars": {
+    // Where the page downloads game data from. Empty: gamedata/ next to the page.
+    // After `web/upload-r2.sh`, set it to "https://keeper-data.edwindejong.net/gamedata/".
+    "DATA_URL": "",
     // Set DISCORD_CLIENT_ID here and DISCORD_CLIENT_SECRET with
     // `wrangler secret put` to enable "Sign in with Discord".
     "DISCORD_CLIENT_ID": ""

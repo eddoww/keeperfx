@@ -145,8 +145,10 @@ function exists(path) {
   try { FS.lookupPath(path, { follow: true }); return true; } catch (e) { return false; }
 }
 
-function createPlaceholders(manifest) {
-  const base = new URL('gamedata/', location.href);
+// dataBase: where the data files are, e.g. gamedata/ next to the page or an
+// R2 bucket's public URL (site.json dataUrl). The manifest stays with the page.
+function createPlaceholders(manifest, dataBase) {
+  const base = new URL(dataBase || 'gamedata/', location.href);
   const valid = new Set();
   let count = 0;
   for (const [rel, size, hash, parts] of manifest.files) {
@@ -424,7 +426,9 @@ async function persistNow() {
   syncing = false;
 }
 
-// Optional site settings, site.json next to the page (absent by default):
+// Optional site settings, site.json next to the page (absent by default; the
+// Worker in web/server answers it):
+//   { "dataUrl": "<url>/" }  download game data from there instead of gamedata/
 //   { "dkUrl": "<folder>" }  import the DK files from that folder (laid out as
 //   for ?dk=) instead of asking the player. Only for deployments allowed to
 //   serve those files, such as a private one; web/package-data.py never
@@ -445,12 +449,12 @@ async function boot() {
   await syncfs(true);
 
   setStatus('Reading the game data list…');
+  const site = await loadSiteConfig();
   const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
   FS.mkdirTree(GAME_DIR);
-  createPlaceholders(manifest);
+  createPlaceholders(manifest, site.dataUrl);
   prefetch(manifest.prefetch || []); // in the background
 
-  const site = await loadSiteConfig();
   const dkUrl = params.get('dk') || site.dkUrl;
   if (!haveDkFiles() && dkUrl) {
     setStatus('Importing Dungeon Keeper files…');

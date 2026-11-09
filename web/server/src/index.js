@@ -7,6 +7,7 @@
 //   GET  /api/lobbies                 open lobbies, for the in-game lobby browser
 //   GET  /api/rooms/host              WebSocket: host a new lobby (relay creates the code)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
+//   GET  /site.json                   page settings (dataUrl: where game data lives)
 //
 // Everything else is the static site (assets binding).
 
@@ -78,6 +79,12 @@ async function handleApi(request, env, path) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/site.json') {
+      // Page settings (web/kfx_loader.js loadSiteConfig).
+      const site = {};
+      if (env.DATA_URL) site.dataUrl = env.DATA_URL;
+      return json(site);
+    }
     if (url.pathname.startsWith('/api/')) {
       try {
         return await handleApi(request, env, url.pathname.slice(5));
