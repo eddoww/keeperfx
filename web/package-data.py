@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Lay out KeeperFX game data for the browser build.
 
-Usage: web/package-data.py <keeperfx-install-dir> <out-dir>
+Usage: web/package-data.py <out-dir> <keeperfx-install-dir> [<overlay-dir>...]
 
-<keeperfx-install-dir> is an assembled KeeperFX install (`make pkg-assemble`
-output, or an unpacked release). Its data files are copied to
+<keeperfx-install-dir> is a KeeperFX install, for example an unpacked
+keeperfx_*_complete.7z release. Each <overlay-dir> is laid over it in order,
+later ones winning; typically the pkg/ directory `make pkg-assemble` makes, so
+the data matches this source tree. The result is copied to
 <out-dir>/gamedata/ and listed in <out-dir>/gamedata/manifest.json, which the
 page uses to create lazy placeholders (see web/kfx_loader.js).
 
@@ -32,13 +34,9 @@ def original_dk_files():
         return {line.strip()[2:].lower() for line in f if line.startswith("./")}
 
 
-def main():
-    if len(sys.argv) != 3:
-        sys.exit(__doc__)
-    src, out = sys.argv[1], sys.argv[2]
-    dest = os.path.join(out, "gamedata")
-    dk_files = original_dk_files()
-    files = []
+def collect(src, dk_files):
+    """Data files of one install dir, as {relative path: absolute path}."""
+    found = {}
     for dirpath, dirnames, filenames in os.walk(src):
         rel_dir = os.path.relpath(dirpath, src)
         if rel_dir == ".":
@@ -54,7 +52,29 @@ def main():
                 continue
             if os.path.splitext(low)[1] in {".exe", ".dll"}:
                 continue
-            files.append(rel)
+            found[rel] = os.path.join(src, rel)
+    return found
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
+    out, layers = sys.argv[1], sys.argv[2:]
+    dest = os.path.join(out, "gamedata")
+    dk_files = original_dk_files()
+    sources = {}
+    by_lower = {}  # lower-case path -> key in sources
+    for layer in layers:
+        if not os.path.isdir(layer):
+            sys.exit(f"Not a directory: {layer}")
+        # Match case-insensitively, as the game does: an overlay's file
+        # replaces the base file whatever its case.
+        for rel, path in collect(layer, dk_files).items():
+            old = by_lower.get(rel.lower())
+            if old is not None:
+                del sources[old]
+            sources[rel] = path
+            by_lower[rel.lower()] = rel
 
     if os.path.isdir(dest):
         shutil.rmtree(dest)
@@ -62,7 +82,6 @@ def main():
     total = 0
     # The default config comes from this source tree, not from the install
     # (which may hold a player's edits); the page adjusts its display lines.
-    sources = {rel: os.path.join(src, rel) for rel in files}
     sources["keeperfx.cfg"] = os.path.join(ROOT, "config", "keeperfx.cfg")
     for rel in sorted(sources):
         s = sources[rel]

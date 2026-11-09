@@ -1,0 +1,73 @@
+name: Web Build
+
+# Builds the browser version (docs/web.md): keeperfx.wasm and its page, plus the
+# game data from the latest complete release with this tree's data laid over
+# it. Uploads the static site as an artifact. Dungeon Keeper's own files are
+# never part of it; players add theirs in the page.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  EMSDK_VERSION: "7.0.0"
+  COMPLETE_RELEASE: "v1.4.0"
+  COMPLETE_ARCHIVE: "keeperfx_1_4_0_complete.7z"
+
+jobs:
+  build-web:
+    name: "Build Web"
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install tools
+      run: |
+        set -eux
+        sudo apt update
+        sudo apt install -y build-essential cmake ninja-build python3 p7zip-full
+
+    - uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: ${{ env.EMSDK_VERSION }}
+
+    - name: Cache wasm dependencies
+      uses: actions/cache@v4
+      with:
+        path: build-web/deps/prefix
+        key: web-deps-${{ env.EMSDK_VERSION }}-${{ hashFiles('web/build-deps.sh', 'web/lua51-luajit-compat.patch') }}
+
+    - name: Build wasm dependencies
+      run: |
+        set -eux
+        if [ ! -f build-web/deps/prefix/lib/libSDL3.a ]; then
+          JOBS=$(nproc) web/build-deps.sh build-web/deps/prefix
+        fi
+
+    - name: Build game
+      run: |
+        set -eux
+        BUILD_NUMBER=$(git rev-list --count HEAD)
+        emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_NUMBER=$BUILD_NUMBER
+        cmake --build build-web --target keeperfx
+
+    - name: Build game data
+      run: |
+        set -eux
+        BUILD_NUMBER=$(git rev-list --count HEAD)
+        make BUILD_NUMBER=$BUILD_NUMBER pkg-enginegfx pkg-assemble
+        curl -fsSL -o /tmp/complete.7z \
+          "https://github.com/dkfans/keeperfx/releases/download/$COMPLETE_RELEASE/$COMPLETE_ARCHIVE"
+        mkdir /tmp/complete
+        7z x -o/tmp/complete /tmp/complete.7z > /dev/null
+        python3 web/package-data.py build-web/site /tmp/complete pkg
+
+    - name: Upload site
+      uses: actions/upload-artifact@v4
+      with:
+        name: keeperfx-web
+        path: build-web/site

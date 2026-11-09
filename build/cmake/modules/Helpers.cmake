@@ -104,7 +104,7 @@ function(apply_windows_system_libs TARGET)
     endif()
 endfunction()
 
-# Link flags for the browser build (web/README.md explains the choices).
+# Link flags for the browser build (docs/web.md explains the choices).
 function(kfx_web_link_flags TARGET)
     set_target_properties(${TARGET} PROPERTIES SUFFIX ".js")
     target_link_options(${TARGET} PRIVATE
@@ -119,6 +119,8 @@ function(kfx_web_link_flags TARGET)
         -sEXPORTED_RUNTIME_METHODS=FS,IDBFS,callMain,ENV
         -sEXPORTED_FUNCTIONS=_main
         -sENVIRONMENT=web
+        # Keep function names: crash reports from players stay readable.
+        --profiling-funcs
         # Lazy data download on first open (src/kfx/platform/web/WebFileSystem.c).
         -Wl,--wrap=__syscall_openat -Wl,--wrap=__syscall_stat64
         -Wl,--wrap=__syscall_lstat64 -Wl,--wrap=__syscall_newfstatat
