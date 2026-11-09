@@ -5,6 +5,10 @@
  *     Browsers have no raw TCP/UDP sockets, curl or UPnP, so net_matchmaking.c
  *     and net_portforward.cpp are not built for the web. These stand-ins keep
  *     the online lobby switched off; the rest of the game is unaffected.
+ *     Socket creation is refused outright (the link step wraps the socket
+ *     syscall): Emscripten would otherwise emulate UDP over WebSockets and
+ *     have the page try to connect to the STUN and game hosts the network
+ *     code names, which cannot work and should not be attempted.
  * @par Copying and copyrights:
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include <errno.h>
 #include "net_matchmaking.h"
 #include "net_portforward.h"
 #include "post_inc.h"
@@ -44,3 +49,9 @@ int matchmaking_punch(const char *lobby_id, const char *udp_ipv4, int udp_ipv4_p
 int matchmaking_poll_punch(PunchAddresses *output) { (void)output; return 0; }
 
 void port_forward_set_mapping(uint16_t port) { (void)port; }
+
+int __wrap___syscall_socket(int domain, int type, int protocol, int unused1, int unused2, int unused3)
+{
+    (void)domain; (void)type; (void)protocol; (void)unused1; (void)unused2; (void)unused3;
+    return -EAFNOSUPPORT;
+}

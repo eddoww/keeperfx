@@ -25,7 +25,8 @@ and Safari have both; it has been tested in Chromium).
 ### Differences from the desktop build
 
 - **No online or LAN multiplayer.** Browsers cannot open the UDP/TCP sockets
-  it uses.
+  it uses, so the page refuses to create any (hosting or joining reports
+  "Unable to create game"). Skirmish against the computer works.
 - **Lua 5.1 instead of LuaJIT**, which has no WebAssembly backend. It is patched
   with the LuaJIT/Lua 5.2 functions KeeperFX and its scripts use
   (`web/lua51-luajit-compat.patch`) and has LuaJIT's `bit` module, so level and
@@ -113,4 +114,6 @@ Do not publish Dungeon Keeper's own files: each player supplies their own.
 - **Audio**: Emscripten's OpenAL (effects) and SDL audio (music, speech,
   movies) on Web Audio. The page resumes them on the first click or key.
 - **Network**: `net_matchmaking.c` and `net_portforward.cpp` (curl, UPnP) are
-  replaced by `src/kfx/platform/web/NetStubsWeb.c`.
+  replaced by `src/kfx/platform/web/NetStubsWeb.c`, which also refuses socket
+  creation, so Emscripten never tries to reach game or STUN hosts over
+  WebSockets.
