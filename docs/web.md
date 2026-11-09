@@ -89,11 +89,29 @@ web/serve.py build-web/site --dk "/path/to/Dungeon Keeper Gold"
 
 ## Hosting
 
-`build-web/site` is a static site (about 550 MB, mostly game data in
-`gamedata/`). Any static host works, including GitHub Pages; no special headers
-are needed (the build uses no threads, so no cross-origin isolation). Serve
-`.wasm` as `application/wasm`. Files under `gamedata/` are requested as
-`<path>?v=<content hash>`, so they can be cached for a long time.
+`build-web/site` is a static site (about 530 MB in 5,500 files, mostly game
+data in `gamedata/`). Any static host with HTTPS works; no special headers are
+needed (the build uses no threads, so no cross-origin isolation). Serve `.wasm`
+as `application/wasm`. Files under `gamedata/` are requested as
+`<path>?v=<content hash>`, so they can be cached for good; `web/_headers` says
+so for hosts that read it (Cloudflare Pages, Netlify).
+
+Files over 24 MiB are stored as `<name>.part0`, `.part1`, ... and joined by the
+page, so hosts with a per-file limit (Cloudflare Pages: 25 MiB) take the site
+as it is.
+
+### Cloudflare Pages
+
+Free, with no bandwidth limit for static files.
+
+```sh
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... web/deploy-cloudflare.sh
+```
+
+The token needs the *Cloudflare Pages: Edit* account permission. The first run
+creates the `keeperfx` project (`https://keeperfx.pages.dev`). To use your own
+domain, add it under the project's *Custom domains*; for a domain on the same
+Cloudflare account that also creates its DNS record.
 
 Do not publish Dungeon Keeper's own files: each player supplies their own.
 

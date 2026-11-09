@@ -87,7 +87,23 @@ function fetchData(url) {
   return p;
 }
 
+// Files too big for one static file are stored as <name>.part0, .part1, ...
+// (web/package-data.py); url (with its ?v=hash) -> number of parts.
+const splitFiles = new Map();
+
 async function fetchDataOnce(url) {
+  const parts = splitFiles.get(url);
+  if (!parts) return fetchOne(url);
+  const u = new URL(url);
+  const chunks = await Promise.all(Array.from({ length: parts }, (_, i) =>
+    fetchOne(`${u.origin}${u.pathname}.part${i}${u.search}`)));
+  const data = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) { data.set(c, at); at += c.length; }
+  return data;
+}
+
+async function fetchOne(url) {
   if (params.has('debug')) console.log(`fetch ${url}`);
   downloadsActive++;
   updateDownloadBadge();
@@ -133,12 +149,17 @@ function createPlaceholders(manifest) {
   const base = new URL('gamedata/', location.href);
   const valid = new Set();
   let count = 0;
-  for (const [rel, size, hash] of manifest.files) {
+  for (const [rel, size, hash, parts] of manifest.files) {
     const path = `${GAME_DIR}/${rel}`;
     FS.mkdirTree(path.substring(0, path.lastIndexOf('/')));
     FS.writeFile(path, new Uint8Array(0));
     const url = new URL(`${encodeURI(rel)}?v=${hash}`, base);
-    valid.add(url.pathname + url.search);
+    if (parts > 1) {
+      splitFiles.set(url.href, parts);
+      for (let i = 0; i < parts; i++) valid.add(`${url.pathname}.part${i}${url.search}`);
+    } else {
+      valid.add(url.pathname + url.search);
+    }
     FS.lookupPath(path).node.kfxLazy = { url: url.href, size };
     count++;
   }

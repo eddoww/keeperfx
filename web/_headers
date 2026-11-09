@@ -1,0 +1,14 @@
+# Cloudflare Pages response headers (also understood by Netlify).
+# Game data is requested as <path>?v=<content hash>, so a changed file always
+# gets a new URL and can be cached for good; the manifest names those hashes
+# and must stay fresh.
+/gamedata/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/gamedata/manifest.json
+  ! Cache-Control
+  Cache-Control: no-cache
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

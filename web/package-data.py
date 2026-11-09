@@ -23,6 +23,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Largest file written as is; bigger ones are split (see main()).
+PART_SIZE = 24 * 1024 * 1024
+
 SKIP_DIRS = {"lib", "save", "replays", "scrshots", "music", "mods"}
 SKIP_EXTS = {".exe", ".dll", ".map", ".log", ".so", ".sh", ".7z", ".zip.part"}
 SKIP_NAMES = {"keeperfx", "keeperfx_hvlog", "launch.sh", "keeperfx.cfg"}
@@ -87,12 +90,24 @@ def main():
         s = sources[rel]
         d = os.path.join(dest, rel)
         os.makedirs(os.path.dirname(d), exist_ok=True)
-        shutil.copyfile(s, d)
         with open(s, "rb") as f:
-            digest = hashlib.sha1(f.read()).hexdigest()[:12]
-        size = os.path.getsize(s)
+            data = f.read()
+        digest = hashlib.sha1(data).hexdigest()[:12]
+        size = len(data)
         total += size
-        entries.append([rel, size, digest])
+        if size <= PART_SIZE:
+            with open(d, "wb") as f:
+                f.write(data)
+            entries.append([rel, size, digest])
+        else:
+            # Static hosts cap the size of one file (Cloudflare Pages: 25 MiB),
+            # so big files go up as <name>.part0, .part1, ... which the page
+            # joins again (web/kfx_loader.js).
+            parts = (size + PART_SIZE - 1) // PART_SIZE
+            for i in range(parts):
+                with open(f"{d}.part{i}", "wb") as f:
+                    f.write(data[i * PART_SIZE:(i + 1) * PART_SIZE])
+            entries.append([rel, size, digest, parts])
 
     # Files the page downloads in the background right away (web/prefetch.txt).
     listed = {e[0].lower(): e[0] for e in entries}
