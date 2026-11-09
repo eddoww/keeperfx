@@ -15,6 +15,8 @@ Saves, settings, replays and screenshots are kept there too.
 - Click the game to capture the mouse (the browser's pointer lock, like
   `CAPTURE_CURSOR` on the desktop); press Esc to release it.
 - Fullscreen: F11, or the button that appears in the top right corner on hover.
+- Screenshots (Shift+C) are saved in the browser and also handed to the
+  browser as downloads.
 - The game data downloads as the game needs it; the files a normal start uses
   are fetched in the background as soon as the page opens. Later visits load
   them from the browser cache.

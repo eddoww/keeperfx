@@ -372,6 +372,29 @@ function fixPointerEnter(canvas) {
 
 // ---- Startup ----------------------------------------------------------------
 
+// Screenshots the game saves (scrshots/) go to the player's downloads, which
+// is where a desktop player would find them.
+let knownShots = null;
+function listShots() {
+  try { return FS.readdir('/persist/scrshots').filter((n) => n !== '.' && n !== '..'); } catch (e) { return []; }
+}
+function offerNewScreenshots() {
+  const now = listShots();
+  if (knownShots === null) { knownShots = new Set(now); return; }
+  for (const name of now) {
+    if (knownShots.has(name)) continue;
+    const path = `/persist/scrshots/${name}`;
+    const data = FS.readFile(path);
+    if (!data.length) continue; // still being written; next round
+    knownShots.add(name);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], { type: name.endsWith('.png') ? 'image/png' : 'image/bmp' }));
+    a.download = `keeperfx-${name}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+}
+
 let syncing = false;
 async function persistNow() {
   if (syncing || typeof FS === 'undefined') return;
@@ -409,6 +432,8 @@ async function boot() {
 
   // Keep saves, settings and screenshots in IndexedDB.
   setInterval(persistNow, 5000);
+  offerNewScreenshots();
+  setInterval(offerNewScreenshots, 1000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
   window.addEventListener('pagehide', persistNow);
 
