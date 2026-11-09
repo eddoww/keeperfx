@@ -50,11 +50,17 @@ and Safari have both; it has been tested in Chromium).
 | `?args=-nointro%20-level%201` | Command line arguments for the game |
 | `?renderer=software` | `RENDERER` setting (`opengl` or `software`) |
 | `?cfg=KEY=VALUE;KEY=VALUE` | Override any `keeperfx.cfg` line |
-| `?dk=<url>` | Import the DK files from a folder served at `<url>` instead of asking (lower-case names) |
+| `?dk=<url>` | Import the DK files from a folder served at `<url>` instead of asking (lower-case names: `data/main.pal`, `sound/atmos1.sbk`, ..., plus optional `keeper02.ogg` ... `keeper07.ogg`) |
 | `?autostart` | Skip the Play button |
 | `?debug` | Log each game data download to the console |
 
 A player can keep their own config by storing it as `/persist/keeperfx.cfg`.
+
+A deployment can set the same DK source for everyone with a `site.json` next
+to `index.html`, e.g. `{"dkUrl": "dk/"}`; the page then imports from there and
+only shows the folder picker if that fails. Only do this where you are allowed
+to serve those files, such as a private deployment: the build never includes
+them, so they would have to be added to the site by hand.
 
 ## Building
 

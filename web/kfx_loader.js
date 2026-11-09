@@ -424,6 +424,20 @@ async function persistNow() {
   syncing = false;
 }
 
+// Optional site settings, site.json next to the page (absent by default):
+//   { "dkUrl": "<folder>" }  import the DK files from that folder (laid out as
+//   for ?dk=) instead of asking the player. Only for deployments allowed to
+//   serve those files, such as a private one; web/package-data.py never
+//   includes them.
+async function loadSiteConfig() {
+  try {
+    const resp = await fetch('site.json', { cache: 'no-cache' });
+    return resp.ok ? await resp.json() : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 async function boot() {
   setStatus('Opening browser storage…');
   FS.mkdir('/persist');
@@ -436,9 +450,11 @@ async function boot() {
   createPlaceholders(manifest);
   prefetch(manifest.prefetch || []); // in the background
 
-  if (!haveDkFiles() && params.get('dk')) {
+  const site = await loadSiteConfig();
+  const dkUrl = params.get('dk') || site.dkUrl;
+  if (!haveDkFiles() && dkUrl) {
     setStatus('Importing Dungeon Keeper files…');
-    try { await importDkFromUrl(params.get('dk')); } catch (e) { console.warn(e); }
+    try { await importDkFromUrl(new URL(dkUrl, location.href).href); } catch (e) { console.warn(e); }
   }
   if (!haveDkFiles()) await waitForDkFiles();
   linkPlayerFiles();
