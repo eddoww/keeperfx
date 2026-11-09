@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""Tie the page to one build of the game.
+
+Usage: web/stamp-version.py <site-dir>
+
+keeperfx.js and keeperfx.wasm must come from the same build: a cached copy of
+one with a fresh copy of the other fails to start ("LinkError ... function
+import requires a callable"). This hashes both and makes index.html request
+keeperfx.js?v=<hash>; the loader asks for keeperfx.wasm?v=<hash> too (the
+kfx-build meta tag), so browser and CDN caches can never mix two builds.
+"""
+import hashlib
+import os
+import re
+import sys
+
+
+def main():
+    site = sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__)
+    h = hashlib.sha1()
+    for name in ("keeperfx.js", "keeperfx.wasm"):
+        with open(os.path.join(site, name), "rb") as f:
+            h.update(f.read())
+    build = h.hexdigest()[:12]
+    path = os.path.join(site, "index.html")
+    with open(path, encoding="utf-8") as f:
+        html = f.read()
+    html = re.sub(r'<script src="keeperfx\.js(\?v=[0-9a-f]*)?"', f'<script src="keeperfx.js?v={build}"', html)
+    html = re.sub(r'<meta name="kfx-build" content="[^"]*">', f'<meta name="kfx-build" content="{build}">', html)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"build {build}")
+
+
+if __name__ == "__main__":
+    main()

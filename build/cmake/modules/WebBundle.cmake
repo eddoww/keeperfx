@@ -7,6 +7,7 @@
 #                            later dirs laid over earlier ones
 
 set(KFX_WEB_SITE "${CMAKE_BINARY_DIR}/site")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(KFX_WEB_GAMEDATA_SRC "" CACHE STRING
     "KeeperFX install dir(s) the web-gamedata target packages, base first (a ;-list)")
 
@@ -23,9 +24,10 @@ add_custom_command(TARGET keeperfx POST_BUILD
         "${KFX_WEB_SITE}/"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/res/keeperfx_icon256-24bpp.png" "${KFX_WEB_SITE}/icon.png"
+    # Make the page request this exact keeperfx.js/.wasm pair (cache safety).
+    COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/web/stamp-version.py" "${KFX_WEB_SITE}"
     VERBATIM)
 
-find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
     add_custom_target(web-gamedata
         COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/web/package-data.py"

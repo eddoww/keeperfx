@@ -589,7 +589,11 @@ function onHosting(code) {
   }
 }
 
+// Build stamp from web/stamp-version.py: keeperfx.wasm must match keeperfx.js.
+const BUILD = (document.querySelector('meta[name="kfx-build"]') || {}).content || '';
+
 var Module = {
+  locateFile: (path, prefix) => (BUILD && path.endsWith('.wasm') ? `${prefix}${path}?v=${BUILD}` : prefix + path),
   canvas: document.getElementById('canvas'),
   thisProgram: `${GAME_DIR}/keeperfx`,
   kfxFetchData: fetchData,
