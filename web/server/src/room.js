@@ -17,7 +17,8 @@
 //
 // Text frames from the host carry lobby metadata for the lobby list, as JSON
 // {"action": "update" | "game_started", ...fields}. The relay answers a new
-// host with {"type": "created", "code": "<lobby code>"}.
+// host with {"type": "created", "code": "<lobby code>"}. A lobby hosted with
+// ?unlisted=1 stays out of the list: only its code or invite link leads to it.
 
 import { DurableObject } from 'cloudflare:workers';
 
@@ -60,9 +61,11 @@ export class Room extends DurableObject {
         return new Response('This lobby already has a host', { status: 409 });
       }
       this.ctx.acceptWebSocket(server, ['host']);
-      server.serializeAttachment({ host: true, code, user: url.searchParams.get('user') || '' });
-      await this.ctx.storage.put('code', code);
-      await this.ctx.storage.put('nextConn', 1);
+      server.serializeAttachment({
+        host: true, code, user: url.searchParams.get('user') || '',
+        unlisted: url.searchParams.get('unlisted') === '1',
+      });
+      await this.ctx.storage.put({ code, nextConn: 1, createdAt: Math.floor(Date.now() / 1000) });
       server.send(JSON.stringify({ type: 'created', code }));
     } else {
       const host = this.host();
@@ -185,12 +188,25 @@ export class Room extends DurableObject {
       const fields = { ...msg };
       delete fields.action;
       delete fields.id;
-      await this.directory().update(info.code, { ...fields, hostUser: info.user || undefined });
+      if (info.user) fields.hostAccount = info.user; // the host is signed in under this name
+      // Kept here too, for invite links to lobbies that aren't listed (info()).
+      await this.ctx.storage.put('meta', { ...((await this.ctx.storage.get('meta')) || {}), ...fields });
+      if (!info.unlisted) await this.directory().update(info.code, fields);
     } else if (msg.action === 'ping') {
-      await this.directory().update(info.code, {}); // keeps the listing fresh
+      if (!info.unlisted) await this.directory().update(info.code, {}); // keeps the listing fresh
     } else if (msg.action === 'cancel' || msg.action === 'delete') {
+      await this.ctx.storage.delete('meta');
       await this.directory().remove(info.code);
     }
+  }
+
+  /** What the lobby list would say about this lobby, or null if it isn't open. */
+  async info() {
+    const host = this.host();
+    const meta = await this.ctx.storage.get('meta');
+    if (!host || !meta) return null;
+    const { code, unlisted } = host.deserializeAttachment();
+    return { ...meta, id: code, unlisted: !!unlisted, createdAt: await this.ctx.storage.get('createdAt') };
   }
 
   directory() {

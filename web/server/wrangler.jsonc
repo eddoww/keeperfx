@@ -22,11 +22,13 @@
   "durable_objects": {
     "bindings": [
       { "name": "ROOMS", "class_name": "Room" },
-      { "name": "DIRECTORY", "class_name": "Directory" }
+      { "name": "DIRECTORY", "class_name": "Directory" },
+      { "name": "TAVERN", "class_name": "Tavern" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["Room", "Directory"] }
+    { "tag": "v1", "new_sqlite_classes": ["Room", "Directory"] },
+    { "tag": "v2", "new_sqlite_classes": ["Tavern"] }
   ],
   "r2_buckets": [
     // Game data (gamedata/), uploaded with web/upload-r2.sh, served to players
@@ -37,6 +39,10 @@
     // Where the page downloads game data from. Empty: gamedata/ next to the page.
     // After `web/upload-r2.sh`, set it to "https://keeper-data.edwindejong.net/gamedata/".
     "DATA_URL": "",
+    // The tavern chat on the site: "off" closes it (news lines stay).
+    "CHAT": "on",
+    // Account names, comma separated, that may remove tavern lines and mute players.
+    "ADMIN_USERS": "",
     // Set DISCORD_CLIENT_ID here and DISCORD_CLIENT_SECRET with
     // `wrangler secret put` to enable "Sign in with Discord".
     "DISCORD_CLIENT_ID": "1569473036711628843"

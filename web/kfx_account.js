@@ -1,5 +1,5 @@
-// Sign-in on the KeeperFX page (accounts are optional; guests can play).
-// Server side: web/server/src/auth.js.
+// Accounts on the KeeperFX page (optional; guests can play). The sign-in
+// dialog is in web/kfx_site.js; server side: web/server/src/auth.js.
 //
 // The password never leaves the browser: it is stretched here with
 // PBKDF2-SHA256 (600,000 rounds, salted with the lower-cased name) and only
@@ -10,6 +10,7 @@ const Account = (() => {
   const PBKDF2_ROUNDS = 600000;
   let state = { user: null, discord: false };
   const listeners = [];
+  let firstRefresh = null;
 
   async function stretch(username, password) {
     const enc = new TextEncoder();
@@ -44,7 +45,15 @@ const Account = (() => {
     onChange(fn) { listeners.push(fn); },
 
     /** Loads the current session. Without a server (plain static hosting) this just stays signed out. */
-    async refresh() {
+    refresh() {
+      const p = this.load();
+      if (!firstRefresh) firstRefresh = p;
+      return p;
+    },
+    /** Resolves once the session has been looked up for the first time. */
+    get ready() { return firstRefresh || this.refresh(); },
+
+    async load() {
       try {
         const data = await call('me');
         state.discord = !!data.discord;
@@ -76,70 +85,3 @@ const Account = (() => {
     discordUrl: '/api/auth/discord',
   };
 })();
-
-/** Fills `box` with the sign-in form or the signed-in state. */
-function renderAccountBox(box) {
-  box.replaceChildren();
-  if (!Account.available) { box.hidden = true; return; }
-  box.hidden = false;
-  const user = Account.user;
-  if (user) {
-    const p = document.createElement('p');
-    p.className = 'account-line';
-    p.append('Signed in as ');
-    const b = document.createElement('strong');
-    b.textContent = user.username;
-    p.append(b, '. Your keeper plays online under this name.');
-    const out = document.createElement('button');
-    out.className = 'secondary';
-    out.type = 'button';
-    out.textContent = 'Sign out';
-    out.addEventListener('click', async () => {
-      out.disabled = true;
-      try { await Account.logout(); } catch (e) { out.disabled = false; }
-    });
-    box.append(p, out);
-    return;
-  }
-
-  const form = document.createElement('form');
-  form.className = 'account-form';
-  form.innerHTML = `
-    <p class="account-line">Sign in to keep your keeper name for online play (optional, guests can play too).</p>
-    <div class="fields">
-      <input name="username" autocomplete="username" placeholder="Name" maxlength="16" required
-             pattern="[A-Za-z0-9_\\-]{3,16}" title="3 to 16 letters, digits, _ or -">
-      <input name="password" type="password" autocomplete="current-password" placeholder="Password" minlength="8" required>
-    </div>
-    <div class="row">
-      <button type="submit" name="action" value="login">Sign in</button>
-      <button type="submit" name="action" value="register" class="secondary">Create account</button>
-    </div>
-    <p class="error" hidden></p>`;
-  const error = form.querySelector('.error');
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const action = ev.submitter ? ev.submitter.value : 'login';
-    const name = form.username.value;
-    const password = form.password.value;
-    if (action === 'register') form.password.setAttribute('autocomplete', 'new-password');
-    for (const b of form.querySelectorAll('button')) b.disabled = true;
-    error.hidden = true;
-    try {
-      if (action === 'register') await Account.register(name, password);
-      else await Account.login(name, password);
-    } catch (e) {
-      error.textContent = e.message;
-      error.hidden = false;
-      for (const b of form.querySelectorAll('button')) b.disabled = false;
-    }
-  });
-  box.append(form);
-  if (Account.discordAvailable) {
-    const a = document.createElement('a');
-    a.className = 'button discord';
-    a.href = Account.discordUrl;
-    a.textContent = 'Sign in with Discord';
-    box.append(a);
-  }
-}

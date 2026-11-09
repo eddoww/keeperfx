@@ -72,7 +72,10 @@ addToLibrary({
   kfx_net_open__deps: ['$kfxNet', '$UTF8ToString'],
   kfx_net_open: (pathPtr) => {
     if (kfxNet.ws) { try { kfxNet.ws.close(); } catch (e) {} }
-    const url = new URL(`/api/${UTF8ToString(pathPtr)}`, location.href);
+    const path = UTF8ToString(pathPtr);
+    const url = new URL(`/api/${path}`, location.href);
+    // The page's host options (unlisted lobby), see web/kfx_loader.js.
+    if (path === 'rooms/host' && Module.kfxHostQuery) url.search = Module.kfxHostQuery;
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     kfxNet.frames = [];
     kfxNet.texts = [];
@@ -163,6 +166,12 @@ addToLibrary({
     if (lengthBytesUTF8(t) + 1 > cap) return -1;
     stringToUTF8(t, buf, cap);
     return lengthBytesUTF8(t);
+  },
+
+  // The local player won or lost a level (src/kfx/platform/web/WebReport.c).
+  kfx_web_level_result__deps: ['$UTF8ToString'],
+  kfx_web_level_result: (jsonPtr) => {
+    try { Module.kfxOnLevelResult?.(JSON.parse(UTF8ToString(jsonPtr))); } catch (e) { err(`KeeperFX: level result: ${e}`); }
   },
 
   // Lets the page show the code of a hosted lobby (invite link).

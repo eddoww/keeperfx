@@ -50,6 +50,8 @@ for (const ev of ['pointerdown', 'keydown', 'touchend']) {
 
 function setStatus(text) { $('status').textContent = text; }
 
+// The panels over the stage before (and after) the game: loading, setup,
+// start, exited. null shows the game itself.
 function showPanel(id) {
   for (const p of document.querySelectorAll('.panel')) p.hidden = (p.id !== id);
   $('overlay').hidden = (id === null);
@@ -61,6 +63,7 @@ function updateDownloadBadge() {
   const badge = $('downloads');
   badge.hidden = downloadsActive === 0;
   badge.textContent = `Loading game data… ${(downloadedBytes / 1048576).toFixed(1)} MB`;
+  if (!badge.hidden) badge.title = 'The game downloads its data as it needs it';
 }
 
 // ---- Game data download (with Cache API, so later visits are offline-fast) --
@@ -212,7 +215,7 @@ function linkPlayerFiles() {
   }
 }
 
-// Make the config suit a browser tab: windowed modes sized to the page (the
+// Make the config suit a browser tab: windowed modes sized to the screen (the
 // browser's own fullscreen is used instead of SDL's), unless the player keeps
 // their own /persist/keeperfx.cfg.
 async function writeConfig() {
@@ -221,12 +224,15 @@ async function writeConfig() {
     FS.writeFile(`${GAME_DIR}/keeperfx.cfg`, FS.readFile('/persist/keeperfx.cfg'));
     return;
   }
-  // Device pixels, like the desktop build's DESKTOP mode, so high-DPI screens
-  // get a sharp picture; the CSS size is set separately (fitCanvas).
+  // The screen's own size in device pixels, like the desktop build's DESKTOP
+  // mode: exact in fullscreen, sharp on high-DPI screens, and scaled down by
+  // the browser while the game sits in its frame on the page (fitCanvas).
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(dpr, 3840 / window.innerWidth, 2160 / window.innerHeight);
-  const w = Math.max(640, Math.round(window.innerWidth * scale / 2) * 2);
-  const h = Math.max(480, Math.round(window.innerHeight * scale / 2) * 2);
+  const sw = Math.max(window.screen.width || 0, window.innerWidth);
+  const sh = Math.max(window.screen.height || 0, window.innerHeight);
+  const scale = Math.min(dpr, 3840 / sw, 2160 / sh);
+  const w = Math.max(640, Math.round(sw * scale / 2) * 2);
+  const h = Math.max(480, Math.round(sh * scale / 2) * 2);
   const page = `${w}x${h}w32`;
   const set = {
     FRONTEND_RES: `640x480w32 ${page} ${page}`,
@@ -313,12 +319,15 @@ async function importDkFromUrl(base) {
 function waitForDkFiles() {
   return new Promise((resolve) => {
     showPanel('setup');
+    setState('setup');
     const fail = (e) => { $('setup-error').textContent = e.message; $('setup-error').hidden = false; };
     const accept = async (files) => {
       $('setup-error').hidden = true;
       try {
         const tracks = await importDkFiles(files);
         setStatus(tracks ? `Imported game files and ${tracks} music tracks.` : 'Imported game files.');
+        showPanel('loading');
+        setState('loading');
         resolve();
       } catch (e) { fail(e); }
     };
@@ -341,17 +350,67 @@ function waitForDkFiles() {
   });
 }
 
-// ---- Canvas sizing ----------------------------------------------------------
+// ---- The stage: canvas sizing, fullscreen, fill-the-tab ----------------------
 
-// Scale the canvas to fit the page, keeping the game's aspect ratio. Setting
-// the CSS size (not the canvas resolution) keeps SDL's mouse mapping exact.
+// The game draws at one resolution (writeConfig); the canvas is scaled with CSS
+// to fit the stage, keeping the game's aspect ratio. Setting the CSS size (not
+// the canvas resolution) keeps SDL's mouse mapping exact.
 function fitCanvas() {
   const canvas = $('canvas');
+  const stage = $('stage');
   if (!canvas.width || !canvas.height) return;
-  const scale = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+  // The framed stage takes the game's shape (site.css sizes it from --ar).
+  $('shell').style.setProperty('--ar', (canvas.width / canvas.height).toFixed(4));
+  const scale = Math.min(stage.clientWidth / canvas.width, stage.clientHeight / canvas.height);
+  if (!(scale > 0)) return; // the play page is hidden
   canvas.style.setProperty('width', `${Math.floor(canvas.width * scale)}px`, 'important');
   canvas.style.setProperty('height', `${Math.floor(canvas.height * scale)}px`, 'important');
+  canvas.classList.toggle('smooth', scale < 1); // shrinking: let the browser filter
 }
+
+const isFullscreen = () => document.fullscreenElement === $('stage');
+
+// Fullscreen shows the stage alone. Ways out: F11, the button that slides in
+// at the top edge, or Esc. Where the browser can (Chromium), Esc is left to the
+// game while in fullscreen, and holding it leaves; the browser says so itself.
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+    return;
+  }
+  $('stage').requestFullscreen({ navigationUI: 'hide' }).then(() => {
+    if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {});
+    // Show where the exit is, once, then tuck it away.
+    $('hud').classList.add('peek');
+    setTimeout(() => $('hud').classList.remove('peek'), 2600);
+  }).catch(() => {});
+}
+
+function toggleTheater() {
+  const on = document.body.classList.toggle('theater');
+  $('btn-theater').classList.toggle('on', on);
+  fitCanvas();
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const on = isFullscreen();
+  if (!on && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+  $('btn-fullscreen').classList.toggle('on', on);
+  fitCanvas();
+});
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'F11' && !$('view-play').hidden) {
+    ev.preventDefault();
+    toggleFullscreen();
+    return;
+  }
+  // The page can scroll now that the game sits in a frame: keep the keys the
+  // game uses for its own camera from scrolling it.
+  if (KFX.state === 'running' && !ev.target.closest('input, textarea, select, dialog')
+      && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Tab'].includes(ev.key)) {
+    ev.preventDefault();
+  }
+}, { capture: true });
 
 // ---- Mouse focus ------------------------------------------------------------
 
@@ -426,22 +485,55 @@ async function persistNow() {
   syncing = false;
 }
 
-// Optional site settings, site.json next to the page (absent by default; the
-// Worker in web/server answers it):
-//   { "dataUrl": "<url>/" }  download game data from there instead of gamedata/
-//   { "dkUrl": "<folder>" }  import the DK files from that folder (laid out as
-//   for ?dk=) instead of asking the player. Only for deployments allowed to
-//   serve those files, such as a private one; web/package-data.py never
-//   includes them.
-// `server` is true when the site runs on its Worker (web/server), which
-// answers site.json; plain static hosting has no online play.
-async function loadSiteConfig() {
+// What the rest of the page (web/kfx_site.js) sees of the game.
+//   state: loading | setup (waiting for DK files) | ready (start screen) |
+//          starting | running | exited | failed
+//   start(choice): start the game as {mode: 'play' | 'host' | 'join', code,
+//          spectate, lobbyName, unlisted}. Before the start screen it is kept
+//          for then; once a game runs it restarts the page into the new one.
+// Changes are announced as a `kfx:state` event on document; `kfx:hosting`
+// (lobby code or null) and `kfx:result` (a level's end) come from the game.
+const START_KEY = 'kfx.start';
+var KFX = { // var: the site script reaches it as window.KFX
+  state: 'loading',
+  pending: null,
+  resolveChoice: null,
+  start(choice) {
+    if (this.state === 'ready' && this.resolveChoice) {
+      this.resolveChoice(choice);
+    } else if (this.state === 'loading' || this.state === 'setup') {
+      this.pending = choice;
+    } else {
+      if (this.state === 'running' && !confirm('Leave the current game and start this one?')) return;
+      try { sessionStorage.setItem(START_KEY, JSON.stringify(choice)); } catch (e) { /* starts on the start screen */ }
+      leaving = true;
+      location.href = `${location.pathname}#/play`;
+      location.reload();
+    }
+  },
+};
+const STATE_TITLES = {
+  loading: ['Loading', 'amber'], setup: ['Game files needed', 'amber'], ready: ['Ready', ''],
+  starting: ['Starting', 'amber'], running: ['Playing', ''], exited: ['Stopped', 'idle'], failed: ['Could not start', 'red'],
+};
+function setState(state) {
+  KFX.state = state;
+  const [title, dot] = STATE_TITLES[state];
+  $('stage-title').textContent = title;
+  $('stage-dot').className = `dot ${dot}`;
+  $('btn-leave').hidden = state !== 'running';
+  document.dispatchEvent(new CustomEvent('kfx:state', { detail: state }));
+}
+
+// A start asked for just before a reload (KFX.start during a game).
+function takeStoredChoice() {
   try {
-    const resp = await fetch('site.json', { cache: 'no-cache' });
-    const conf = resp.ok ? await resp.json() : {};
-    return { ...conf, server: resp.ok && resp.headers.get('Content-Type')?.includes('json') };
+    const text = sessionStorage.getItem(START_KEY);
+    sessionStorage.removeItem(START_KEY);
+    const choice = text ? JSON.parse(text) : null;
+    return choice && typeof choice === 'object' && ['play', 'host', 'join'].includes(choice.mode) ? choice : null;
   } catch (e) {
-    return { server: false };
+    return null;
   }
 }
 
@@ -452,7 +544,7 @@ async function boot() {
   await syncfs(true);
 
   setStatus('Reading the game data list…');
-  const site = await loadSiteConfig();
+  const site = await Site.config;
   const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
   FS.mkdirTree(GAME_DIR);
   createPlaceholders(manifest, site.dataUrl);
@@ -467,10 +559,12 @@ async function boot() {
   linkPlayerFiles();
   await writeConfig();
 
-  await Account.refresh();
-  const choice = params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice(site.server);
+  await Account.ready;
+  const choice = takeStoredChoice() || KFX.pending
+    || (params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice());
+  setState('starting');
   showPanel(null);
-  await applyPlayerName();
+  applyNetworkSettings(choice);
 
   // Keep saves, settings and screenshots in IndexedDB.
   setInterval(persistNow, 5000);
@@ -479,125 +573,152 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
   window.addEventListener('pagehide', persistNow);
 
-  new ResizeObserver(fitCanvas).observe(document.body);
+  new ResizeObserver(fitCanvas).observe($('stage'));
   new MutationObserver(fitCanvas).observe($('canvas'), { attributes: true, attributeFilter: ['width', 'height'] });
   window.addEventListener('resize', fitCanvas);
 
   fixPointerEnter($('canvas'));
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
-  if (choice.mode === 'join') args.push('-connect', choice.code);
-  else if (choice.mode === 'host') args.push('-server');
+  if (choice.mode === 'join') {
+    if (choice.spectate) args.push('-spectate');
+    args.push('-connect', choice.code);
+    showLobbyCode(choice.code);
+  } else if (choice.mode === 'host') {
+    Module.kfxHostQuery = choice.unlisted ? 'unlisted=1' : '';
+    args.push('-server');
+  }
+  setState('running');
   Module.callMain(args);
 }
 
 // ---- Start choices: play, host online, join online ---------------------------
 
-function lobbyCode(text) {
-  const code = (text || '').trim().toUpperCase();
-  return /^[A-Z0-9]{4,8}$/.test(code) ? code : null;
-}
-
 // ?join=CODE (invite link) joins a lobby, ?host opens one.
 function startChoiceFromUrl() {
-  const code = lobbyCode(params.get('join'));
-  if (code) return { mode: 'join', code };
-  if (params.has('host')) return { mode: 'host' };
+  const code = Site.codeOf(params.get('join'));
+  if (code) return { mode: 'join', code, spectate: params.has('spectate') };
+  if (params.has('host')) return { mode: 'host', unlisted: params.has('unlisted') };
   return { mode: 'play' };
 }
 
-function waitForStartChoice(server) {
+// An invite link: say what the lobby is, if the server still knows it.
+async function showInvitation(code) {
+  const box = $('invited');
+  box.hidden = false;
+  box.querySelector('.code').textContent = code;
+  $('join-code').value = code;
+  const info = box.querySelector('.invited-info');
+  try {
+    const resp = await fetch(`/api/lobbies/${code}`, { cache: 'no-store' });
+    if (resp.status === 404) {
+      info.textContent = 'This lobby has closed, or the code is wrong.';
+      $('invited-join').disabled = true;
+      return;
+    }
+    const { lobby } = await resp.json();
+    const players = Array.isArray(lobby.players) ? lobby.players : [];
+    info.textContent = `${lobby.name || 'Lobby'} · ${players.length}/${lobby.maxPlayers || 4} keepers`
+      + `${players.length ? ` (${players.join(', ')})` : ''}${lobby.phase && lobby.phase !== 'Lobby' ? ' · game in progress' : ''}`;
+  } catch (e) { /* the code alone will do */ }
+}
+
+function waitForStartChoice() {
   showPanel('start');
   setStatus('');
-  const online = server || Account.available; // online play needs the page's server
-  $('online-choices').hidden = !online;
-  const box = $('account');
-  renderAccountBox(box);
-  if (online && !Account.available) {
-    box.hidden = false;
-    box.innerHTML = '<p class="account-line">Sign-in is unavailable right now; you can still play online as a guest.</p>';
-  }
-  Account.onChange(() => renderAccountBox(box));
-  if (params.get('login_error')) {
-    box.insertAdjacentHTML('beforeend', '<p class="error"></p>');
-    box.lastElementChild.textContent = params.get('login_error');
-  }
-  const invited = online && lobbyCode(params.get('join'));
-  if (invited) {
-    $('invited').hidden = false;
-    $('invited').querySelector('.code').textContent = invited;
-    $('join-code').value = invited;
-  }
+  const invited = Site.online && Site.codeOf(params.get('join'));
+  if (invited) showInvitation(invited);
   return new Promise((resolve) => {
-    $('start-button').addEventListener('click', () => resolve({ mode: 'play' }), { once: true });
-    $('host-button').addEventListener('click', () => resolve({ mode: 'host' }), { once: true });
+    KFX.resolveChoice = resolve;
+    setState('ready');
+    $('start-button').addEventListener('click', () => Site.start({ mode: 'play' }));
+    $('host-button').addEventListener('click', () => Site.openHost());
+    $('invited-join').addEventListener('click', () => Site.join(invited, params.has('spectate')));
     $('join-form').addEventListener('submit', (ev) => {
       ev.preventDefault();
-      const code = lobbyCode($('join-code').value);
-      if (code) resolve({ mode: 'join', code });
+      const code = Site.codeOf($('join-code').value);
+      if (code) Site.join(code);
       else $('join-code').focus();
     });
   });
 }
 
-// A signed-in player's account name is their keeper name in online games
-// ([network] player_name in save/settings.toml, read by the game at start).
-async function applyPlayerName() {
-  const user = Account.user;
-  if (!user) return;
+// The player's name and (when hosting) the lobby name go into the [network]
+// section of save/settings.toml, which the game reads at start. A signed-in
+// player's keeper name is their account name.
+function applyNetworkSettings(choice) {
+  const set = {};
+  const name = Site.keeperName();
+  if (name) set.player_name = name;
+  if (choice.mode === 'host' && choice.lobbyName) set.lobby_name = choice.lobbyName.replace(/["\\]/g, '');
+  if (!Object.keys(set).length) return;
   const path = `${GAME_DIR}/save/settings.toml`;
-  const line = `player_name = "${user.username}"`;
-  let text = exists(path) ? FS.readFile(path, { encoding: 'utf8' }) : '';
+  const text = exists(path) ? FS.readFile(path, { encoding: 'utf8' }) : '';
   const lines = text.split('\n');
-  let section = '';
-  let done = false;
-  for (let i = 0; i < lines.length; i++) {
-    const header = lines[i].match(/^\s*\[([^\]]+)\]/);
-    if (header) {
-      if (section === 'network' && !done) { lines.splice(i, 0, line); done = true; break; }
-      section = header[1].trim();
-      continue;
-    }
-    if (section === 'network' && /^\s*player_name\s*=/.test(lines[i])) {
-      lines[i] = line;
-      done = true;
-      break;
-    }
+  let start = lines.findIndex((l) => /^\s*\[network\]/.test(l));
+  if (start < 0) {
+    if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+    lines.push('[network]');
+    start = lines.length - 1;
   }
-  if (!done && section === 'network') { lines.push(line); done = true; }
-  if (!done) lines.push('', '[network]', line);
-  FS.writeFile(path, lines.join('\n').replace(/^\n+/, '') + (lines[lines.length - 1] === '' ? '' : '\n'));
+  let end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l));
+  if (end < 0) end = lines.length;
+  for (const [key, value] of Object.entries(set)) {
+    const line = `${key} = "${value}"`;
+    const at = lines.findIndex((l, i) => i > start && i < end && new RegExp(`^\\s*${key}\\s*=`).test(l));
+    if (at >= 0) lines[at] = line;
+    else { lines.splice(start + 1, 0, line); end++; }
+  }
+  FS.writeFile(path, lines.join('\n').replace(/^\n+/, '').replace(/\n*$/, '\n'));
 }
 
-function copyInvite(button) {
-  const link = $('invite').dataset.link;
-  if (!link) return;
-  navigator.clipboard.writeText(link).then(() => {
-    const old = button.textContent;
-    button.textContent = 'Copied';
-    setTimeout(() => { button.textContent = old; }, 1500);
-  }).catch(() => { window.prompt('Invite link', link); });
+// ---- Lobby badge, exit, tools ------------------------------------------------
+
+let inviteLink = '';
+function showLobbyCode(code) {
+  const badge = $('invite');
+  badge.hidden = !code;
+  $('hud-lobby').hidden = !code;
+  if (!code) return;
+  const link = new URL(location.pathname, location.href);
+  link.searchParams.set('join', code);
+  inviteLink = link.href;
+  badge.querySelector('.code').textContent = code;
+  $('hud-lobby').textContent = `Lobby ${code}`;
 }
 
-function showExit(text) {
-  persistNow();
-  $('exit-text').textContent = text;
-  showPanel('exited');
+function copyInvite() {
+  if (!inviteLink) return;
+  navigator.clipboard.writeText(inviteLink)
+    .then(() => Site.toast('Invite link copied. Send it to your friends.', { stage: true, ms: 3000 }))
+    .catch(() => { window.prompt('Invite link', inviteLink); });
 }
 
 // Called by the game when it starts or stops hosting an online lobby.
 function onHosting(code) {
   Module.kfxLobbyCode = code;
-  const badge = $('invite');
-  if (!badge) return;
-  badge.hidden = !code;
-  if (code) {
-    const link = new URL(location.pathname, location.href);
-    link.searchParams.set('join', code);
-    badge.querySelector('.code').textContent = code;
-    badge.querySelector('a').href = link.href;
-    badge.dataset.link = link.href;
-  }
+  showLobbyCode(code);
+  document.dispatchEvent(new CustomEvent('kfx:hosting', { detail: code }));
+}
+
+let leaving = false;
+function showExit(text) {
+  if (leaving) return;
+  persistNow();
+  if (document.fullscreenElement) document.exitFullscreen();
+  document.body.classList.remove('theater');
+  showLobbyCode(null);
+  $('exit-text').textContent = text;
+  showPanel('exited');
+  setState('exited');
+}
+
+async function leaveGame() {
+  if (!confirm('Leave the game? Anything not saved in the game is lost.')) return;
+  leaving = true;
+  await persistNow();
+  location.href = `${location.pathname}#/play`;
+  location.reload();
 }
 
 // Build stamp from web/stamp-version.py: keeperfx.wasm must match keeperfx.js.
@@ -609,11 +730,14 @@ var Module = {
   thisProgram: `${GAME_DIR}/keeperfx`,
   kfxFetchData: fetchData,
   kfxOnHosting: onHosting,
+  kfxOnLevelResult: (result) => document.dispatchEvent(new CustomEvent('kfx:result', { detail: result })),
   print: (text) => console.log(text),
   printErr: (text) => console.warn(text),
   onRuntimeInitialized: () => boot().catch((e) => {
     console.error(e);
     setStatus(`Could not start: ${e.message}`);
+    showPanel('loading');
+    setState('failed');
   }),
   onExit: (code) => showExit(code === 0 ? 'KeeperFX has closed.' : `KeeperFX stopped (exit code ${code}).`),
   onAbort: (what) => showExit(`KeeperFX crashed: ${what}`),
@@ -628,12 +752,7 @@ function downloadLog() {
     a.href = URL.createObjectURL(new Blob([data], { type: 'text/plain' }));
     a.download = 'keeperfx.log';
     a.click();
-  } catch (e) { alert('No log file yet.'); }
-}
-
-function toggleFullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else document.documentElement.requestFullscreen().catch(() => {});
+  } catch (e) { Site.toast('No log file yet.', { stage: true, ms: 3000 }); }
 }
 
 async function forgetDkFiles() {
@@ -644,4 +763,13 @@ async function forgetDkFiles() {
   }
   await syncfs(false);
   location.reload();
+}
+
+// The buttons around the game. Each gives the keyboard back afterwards, so a
+// later Space or Enter in the game doesn't press it again.
+for (const [id, action] of Object.entries({
+  'btn-fullscreen': toggleFullscreen, 'hud-exit': toggleFullscreen, 'btn-theater': toggleTheater,
+  'btn-log': downloadLog, 'btn-leave': leaveGame, 'invite-copy': copyInvite, 'forget-button': forgetDkFiles,
+})) {
+  $(id).addEventListener('click', (ev) => { action(); ev.currentTarget.blur(); });
 }

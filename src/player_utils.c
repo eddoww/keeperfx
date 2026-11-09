@@ -61,6 +61,7 @@
 #include "timer.h"
 #include "packets.h"
 #include "net_game.h"
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 /******************************************************************************/
@@ -189,6 +190,8 @@ void set_player_as_won_level(struct PlayerInfo *player)
   // Computing player score
   dungeon->lvstats.player_score = compute_player_final_score(player, dungeon->max_gameplay_score);
   dungeon->lvstats.allow_save_score = 1;
+  if (my_player)
+      KFX_WEB_LEVEL_RESULT(player, true);
   if (game.game_kind != GKind_MultiGame)
     player->display_objective_turn = get_gameturn() + 300;
   if (my_player)
@@ -222,6 +225,8 @@ void set_player_as_lost_level(struct PlayerInfo *player)
     struct Dungeon* dungeon = get_dungeon(player->id_number);
     // Computing player score
     dungeon->lvstats.player_score = compute_player_final_score(player, dungeon->max_gameplay_score);
+    if (is_my_player(player))
+        KFX_WEB_LEVEL_RESULT(player, false);
     output_player_message(player->id_number, SMsg_LevelFailed, 0);
     if (is_my_player(player)) {
         turn_off_all_menus();

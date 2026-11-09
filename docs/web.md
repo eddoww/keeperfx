@@ -12,14 +12,25 @@ plus the soundtrack (`keeper02.ogg` ... `keeper07.ogg`) when the folder has it.
 They are kept in the browser's IndexedDB storage and never leave the computer.
 Saves, settings, replays and screenshots are kept there too.
 
+- The game sits in a frame on the Play page, with its buttons in the bar above
+  it: **Fill tab** hides the site around it, **Fullscreen** (or F11) shows the
+  game alone. To leave fullscreen press F11 again, rest the pointer at the top
+  edge for the exit button, or use Esc; Chrome and Edge leave Esc to the game
+  there and exit when it is held.
 - Click the game to capture the mouse (the browser's pointer lock, like
   `CAPTURE_CURSOR` on the desktop); press Esc to release it.
-- Fullscreen: F11, or the button that appears in the top right corner on hover.
 - Screenshots (Shift+C) are saved in the browser and also handed to the
   browser as downloads.
 - The game data downloads as the game needs it; the files a normal start uses
   are fetched in the background as soon as the page opens. Later visits load
   them from the browser cache.
+
+The site around the game is one document with a page per URL fragment:
+`#/` (home), `#/play`, `#/lobbies`, `#/fame` (Hall of Fame, with
+`#/fame/levels/<campaign>/<level>` and `#/keeper/<name>`) and `#/guide`. The
+lobbies and the Hall of Fame need the site's server (see "Online play"); on
+plain static hosting they are left out. While a game runs, links to the other
+pages open in a new tab.
 
 It needs a browser with WebAssembly and WebGL 2 (current Chrome, Edge, Firefox
 and Safari have both; it has been tested in Chromium).
@@ -37,7 +48,7 @@ and Safari have both; it has been tested in Chromium).
   from a desktop build whose scripts stored compiled functions may not load in
   the browser, or the other way round.
 - The display modes in `keeperfx.cfg` are replaced with windowed modes sized to
-  the page; the page scales the picture to the window.
+  the screen (exact in fullscreen); the page scales the picture to its frame.
 - Keep `RELATIVE_MOUSE_MODE=ON` (the default). With it off, the game moves its
   cursor to the screen centre at some points (starting a level, the land
   view) and expects the system pointer to follow, which a web page cannot do,
@@ -51,7 +62,8 @@ and Safari have both; it has been tested in Chromium).
 | `?renderer=software` | `RENDERER` setting (`opengl` or `software`) |
 | `?cfg=KEY=VALUE;KEY=VALUE` | Override any `keeperfx.cfg` line |
 | `?dk=<url>` | Import the DK files from a folder served at `<url>` instead of asking (lower-case names: `data/main.pal`, `sound/atmos1.sbk`, ..., plus optional `keeper02.ogg` ... `keeper07.ogg`) |
-| `?autostart` | Skip the Play button |
+| `?join=CODE` | An invite: the start screen offers to join that lobby (`&spectate` to watch) |
+| `?autostart` | Skip the start screen; with `?join=CODE` or `?host` (`&unlisted`) go straight online |
 | `?debug` | Log each game data download to the console |
 
 A player can keep their own config by storing it as `/persist/keeperfx.cfg`.
@@ -73,7 +85,9 @@ source /path/to/emsdk/emsdk_env.sh
 # 1. Third-party libraries, compiled to wasm from pinned sources (once).
 web/build-deps.sh build-web/deps/prefix
 
-# 2. The game. Output: build-web/site/{index.html,kfx_loader.js,keeperfx.js,keeperfx.wasm}
+# 2. The game and the page around it (web/). Output: build-web/site/
+#    {index.html,site.css,kfx_*.js,fonts/,keeperfx.js,keeperfx.wasm}. After a
+#    change to the page alone, `ninja -C build-web web-site` copies it again.
 emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build-web --target keeperfx
 
@@ -141,21 +155,45 @@ Do not publish Dungeon Keeper's own files: each player supplies their own.
 
 ## Online play
 
-When the site runs on its Worker (`web/server`, below), the start screen
-offers **Host online game** and **Join** with a lobby code, and the game's own
-Multiplayer → Online screen lists the open lobbies. A host gets a five-letter
-code and an invite link (`?join=CODE`) at the top of the screen. Browser
-players play each other; desktop KeeperFX uses UDP, which browsers cannot.
+When the site runs on its Worker (`web/server`, below), it has:
 
-Accounts are optional: a signed-in player's account name is their keeper name.
-Players sign in with a name and password, or with Discord when it is set up.
+- **Lobbies** (`#/lobbies`): the open games, live, each with its players, map
+  and state, and **Join** or **Watch** (spectate) buttons. **Host a game** asks
+  for a lobby name and whether the lobby is public or invite only (not listed).
+  A host gets a five-letter code and an invite link (`?join=CODE`) in the bar
+  above the game. The start screen offers the same choices, and the game's own
+  Multiplayer → Online screen lists the public lobbies too.
+- **The tavern**, on the lobbies page: who has the site open, a chat for
+  signed-in players, and news lines (a lobby opened, someone won a level). Set
+  `CHAT` to `off` in `wrangler.jsonc` to close the chat; names in
+  `ADMIN_USERS` can remove lines and mute players.
+- **Hall of Fame** (`#/fame`): when a level ends, the game tells the page
+  (`src/kfx/platform/web/WebReport.c`: level, score, turns, statistics), and
+  the page sends it in for a signed-in player. Each level keeps a keeper's
+  best score and fastest win; a keeper's renown is the sum of their best
+  scores. A guest's wins wait in the browser and are sent after signing in.
+  Games with cheats allowed are recorded but not ranked. The numbers come from
+  the player's own browser, so this is an honour system: the server only
+  checks that they are plausible and limits how many a player can send.
+
+Browser players play each other; desktop KeeperFX uses UDP, which browsers
+cannot.
+
+Accounts are optional: a signed-in player's account name is their keeper name
+(a guest can type one on the start screen). Players sign in with a name and
+password, or with Discord when it is set up.
 
 How it fits together:
 
 - `web/server` is a Cloudflare Worker: it serves the static site and `/api`.
-  Accounts live in D1 (SQLite). Each lobby is a Durable Object (`Room`) that
-  relays the game's traffic over WebSockets between the host and the players;
-  another (`Directory`) keeps the lobby list.
+  Accounts and the Hall of Fame live in D1 (SQLite). Each lobby is a Durable
+  Object (`Room`) that relays the game's traffic over WebSockets between the
+  host and the players; another (`Directory`) keeps the lobby list, and a
+  third (`Tavern`) holds the pages' WebSockets for presence, chat and news,
+  and tells them when the lobby list changes.
+- On the page, `web/kfx_loader.js` starts the game (`window.KFX`) and
+  `web/kfx_site.js` is everything around it: the pages, sign-in, lobbies,
+  tavern and records.
 - In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
   (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
   `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's
@@ -185,6 +223,9 @@ npx wrangler d1 create keeperfx
 npx wrangler d1 migrations apply keeperfx --remote
 npx wrangler deploy
 ```
+
+Run the `migrations apply` step again whenever `web/server/migrations` gains a
+file (the Hall of Fame tables are `0002_scores.sql`), before `deploy`.
 
 For Discord sign-in, create an application at discord.com/developers with
 the redirect `https://<your site>/api/auth/discord/callback`, set
