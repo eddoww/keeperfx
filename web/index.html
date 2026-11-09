@@ -29,15 +29,52 @@
     image-rendering: pixelated; outline: none;
   }
   #overlay {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    padding: 16px; background: var(--bg); overflow-y: auto;
+    position: fixed; inset: 0; overflow-y: auto; background: var(--bg);
+    background-image: radial-gradient(ellipse at 50% -10%, rgba(217,164,65,.14), transparent 60%);
   }
+  .landing { max-width: 920px; margin: 0 auto; padding: 40px 16px 24px; }
+  .hero { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; }
+  .hero .logo { flex: none; border-radius: 16px; }
+  .lead { font-size: 18px; margin: 0; max-width: 46em; }
+  .panels { display: flex; justify-content: center; }
   .panel {
-    width: 100%; max-width: 560px; padding: 28px; border-radius: 12px;
+    width: 100%; max-width: 640px; padding: 28px; border-radius: 12px;
     background: var(--panel); border: 1px solid var(--border);
   }
-  h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: .02em; }
+  h1 { margin: 0 0 6px; font-size: 40px; letter-spacing: .02em; line-height: 1.1; }
   h2 { margin: 0 0 12px; font-size: 20px; }
+  h3 { margin: 0 0 6px; font-size: 16px; }
+  .jump { display: flex; gap: 6px 18px; flex-wrap: wrap; justify-content: center; margin: 36px 0 8px; font-size: 14px; }
+  .jump a { color: var(--muted); text-decoration: none; }
+  .jump a:hover { color: var(--accent); }
+  .info { margin-top: 40px; scroll-margin-top: 16px; }
+  .info > h2 { font-size: 24px; margin-bottom: 16px; }
+  .steps { margin: 0; padding-left: 1.4em; color: var(--muted); }
+  .steps li { margin-bottom: 10px; }
+  .steps strong, .card strong { color: var(--text); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  @media (min-width: 640px) { .cards.two { grid-template-columns: 1fr 1fr; } }
+  .card { padding: 18px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+  .card p { margin: 0; font-size: 15px; }
+  .notes { margin: 16px 0 0; padding-left: 1.2em; color: var(--muted); font-size: 15px; }
+  .notes li { margin-bottom: 6px; }
+  kbd {
+    font: 13px/1 ui-monospace, monospace; padding: 2px 6px; border-radius: 4px;
+    border: 1px solid var(--border); background: #120d0a; color: var(--text);
+  }
+  details { border-bottom: 1px solid var(--border); padding: 12px 0; }
+  details:first-of-type { border-top: 1px solid var(--border); }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin: 8px 0 0; }
+  .credits { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; }
+  .credits p { font-size: 13px; margin-bottom: 6px; }
+  @media (max-width: 600px) {
+    .landing { padding-top: 24px; }
+    .hero { flex-direction: column; text-align: center; }
+    h1 { font-size: 32px; }
+    .lead { font-size: 16px; }
+    .panel { padding: 20px; }
+  }
   p { margin: 0 0 12px; color: var(--muted); }
   p strong { color: var(--text); }
   .tagline { margin-bottom: 20px; }
@@ -104,56 +141,188 @@
 <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
 
 <div id="overlay">
-  <section class="panel" id="loading">
-    <h1>KeeperFX</h1>
-    <p class="tagline">The open-source remake of the Dungeon Keeper engine, running in your browser.</p>
-    <div id="status">Loading…</div>
+<div class="landing">
+  <header class="hero">
+    <img class="logo" src="icon.png" alt="" width="72" height="72">
+    <div>
+      <h1>KeeperFX</h1>
+      <p class="lead">Dungeon Keeper, in your browser. Build your dungeon, attract creatures and crush the
+        heroes, alone or online with friends. No install: bring your own copy of the original game.</p>
+    </div>
+  </header>
+
+  <div class="panels">
+      <section class="panel" id="loading">
+        <div id="status">Loading…</div>
+      </section>
+
+      <section class="panel" id="setup" hidden>
+        <h2>Add your Dungeon Keeper files</h2>
+        <p>KeeperFX needs a few files from an original <strong>Dungeon Keeper</strong> or
+          <strong>Dungeon Keeper Gold</strong>, for example the
+          <a href="https://www.gog.com/game/dungeon_keeper" target="_blank" rel="noopener">GOG release</a>.
+          Choose the folder you installed it to. Only 16 small files (and the music, if present) are read.</p>
+        <div id="dropzone">
+          <label class="button" for="dk-folder">Choose Dungeon Keeper folder</label>
+          <input type="file" id="dk-folder" webkitdirectory multiple>
+          <p>or drop the folder here</p>
+        </div>
+        <p id="setup-error" class="error" hidden></p>
+        <p class="fine">The files stay in this browser's storage and are never uploaded.</p>
+      </section>
+
+      <section class="panel" id="start" hidden>
+        <h2>Ready to play</h2>
+        <p class="tagline">The game loads its data as it needs it; the first start takes a little longer.</p>
+        <p id="invited" class="invited" hidden>You're invited to online lobby <strong class="code"></strong>.</p>
+        <div class="row">
+          <button id="start-button">Play</button>
+          <span id="online-choices" class="online" hidden>
+            <button id="host-button" class="alt">Host online game</button>
+            <form id="join-form" class="join">
+              <input id="join-code" placeholder="Lobby code" maxlength="8" autocomplete="off" spellcheck="false"
+                     aria-label="Lobby code">
+              <button class="alt">Join</button>
+            </form>
+          </span>
+        </div>
+        <div id="account" class="account" hidden></div>
+        <div class="row">
+          <button class="secondary" onclick="toggleFullscreen()">Fullscreen</button>
+          <button class="secondary" onclick="forgetDkFiles()">Forget my DK files</button>
+        </div>
+      </section>
+
+      <section class="panel" id="exited" hidden>
+        <h2 id="exit-text">KeeperFX has closed.</h2>
+        <div class="row">
+          <button onclick="location.reload()">Start again</button>
+          <button class="secondary" onclick="downloadLog()">Download log</button>
+        </div>
+      </section>
+  </div>
+
+  <nav class="jump" aria-label="On this page">
+    <a href="#how">How to play</a><a href="#online">Online play</a><a href="#controls">Controls</a>
+    <a href="#faq">FAQ</a><a href="#credits">Credits</a>
+  </nav>
+
+  <section class="info" id="how">
+    <h2>How to play</h2>
+    <ol class="steps">
+      <li><strong>Get Dungeon Keeper.</strong> You need an original <em>Dungeon Keeper</em> or
+        <em>Dungeon Keeper Gold</em>; the
+        <a href="https://www.gog.com/game/dungeon_keeper" target="_blank" rel="noopener">GOG release</a> works.</li>
+      <li><strong>Choose its folder.</strong> The page reads the 16 files KeeperFX needs from it (and the soundtrack,
+        if it's there) and keeps them in this browser. You only do this once per browser.</li>
+      <li><strong>Play.</strong> The campaign, free play levels, skirmish against the computer, saves and
+        settings all work as in the desktop KeeperFX.</li>
+    </ol>
   </section>
 
-  <section class="panel" id="setup" hidden>
-    <h2>Add your Dungeon Keeper files</h2>
-    <p>KeeperFX needs a few files from an original <strong>Dungeon Keeper</strong> or
-      <strong>Dungeon Keeper Gold</strong>, for example the
-      <a href="https://www.gog.com/game/dungeon_keeper" target="_blank" rel="noopener">GOG release</a>.
-      Choose the folder you installed it to. Only 16 small files (and the music, if present) are read.</p>
-    <div id="dropzone">
-      <label class="button" for="dk-folder">Choose Dungeon Keeper folder</label>
-      <input type="file" id="dk-folder" webkitdirectory multiple>
-      <p>or drop the folder here</p>
+  <section class="info" id="online">
+    <h2>Online play</h2>
+    <div class="cards two">
+      <div class="card">
+        <h3>Host a game</h3>
+        <p>Press <strong>Host online game</strong>. You get a five-letter lobby code and an invite link at the
+          top of the screen. Send the link to your friends; up to four keepers can play, and others can watch
+          as spectators.</p>
+      </div>
+      <div class="card">
+        <h3>Join a game</h3>
+        <p>Open an invite link, type a code next to <strong>Join</strong>, or pick an open lobby in the
+          game under <em>Multiplayer → Online</em>. The host chooses the map and the lobby settings
+          (computer players, cheats, spectators) and starts the game.</p>
+      </div>
+      <div class="card">
+        <h3>Accounts</h3>
+        <p>Optional. Guests can host and join. Sign in to play under your own name every time.
+          Your password never leaves your browser: it is turned into a key here, and only a hash of that
+          key is stored.</p>
+      </div>
+      <div class="card">
+        <h3>How it works</h3>
+        <p>This is KeeperFX's own multiplayer: every player runs the full game, and the keepers' orders are
+          exchanged each turn, so all games stay identical. A lobby server on Cloudflare's network relays
+          that traffic, starting close to whoever opens the lobby.</p>
+      </div>
     </div>
-    <p id="setup-error" class="error" hidden></p>
-    <p class="fine">The files stay in this browser's storage and are never uploaded.</p>
+    <ul class="notes">
+      <li>Everyone needs their own copy of Dungeon Keeper, picked in their own browser.</li>
+      <li>Online games are between browsers on this site; desktop KeeperFX uses a different connection,
+        so the two can't meet.</li>
+      <li>The game runs at the pace of the slowest player, so a weak computer or connection slows everyone a
+        little. If the host leaves, the others carry on on their own.</li>
+      <li>Keep the tab in front during a game: browsers slow down background tabs.</li>
+    </ul>
   </section>
 
-  <section class="panel" id="start" hidden>
-    <h1>KeeperFX</h1>
-    <p class="tagline">Ready. The game loads its data as it needs it.</p>
-    <p id="invited" class="invited" hidden>You're invited to online lobby <strong class="code"></strong>.</p>
-    <div class="row">
-      <button id="start-button">Play</button>
-      <span id="online-choices" class="online" hidden>
-        <button id="host-button" class="alt">Host online game</button>
-        <form id="join-form" class="join">
-          <input id="join-code" placeholder="Lobby code" maxlength="8" autocomplete="off" spellcheck="false"
-                 aria-label="Lobby code">
-          <button class="alt">Join</button>
-        </form>
-      </span>
-    </div>
-    <div id="account" class="account" hidden></div>
-    <div class="row">
-      <button class="secondary" onclick="toggleFullscreen()">Fullscreen</button>
-      <button class="secondary" onclick="forgetDkFiles()">Forget my DK files</button>
+  <section class="info" id="controls">
+    <h2>Controls and tips</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>Mouse</h3>
+        <p>Click the game to capture the mouse, as the desktop game does; press <kbd>Esc</kbd> to release it.
+          Left click to dig, build and pick up creatures; right click to drop them or slap.</p>
+      </div>
+      <div class="card">
+        <h3>Screen</h3>
+        <p><kbd>F11</kbd> or the Fullscreen button for the whole screen. The game uses your screen's full
+          resolution, sharp on high-DPI displays.</p>
+      </div>
+      <div class="card">
+        <h3>Saves</h3>
+        <p>Saves, settings and replays stay in this browser. Screenshots (<kbd>Shift</kbd>+<kbd>C</kbd>) are
+          also saved to your downloads.</p>
+      </div>
     </div>
   </section>
 
-  <section class="panel" id="exited" hidden>
-    <h2 id="exit-text">KeeperFX has closed.</h2>
-    <div class="row">
-      <button onclick="location.reload()">Start again</button>
-      <button class="secondary" onclick="downloadLog()">Download log</button>
-    </div>
+  <section class="info" id="faq">
+    <h2>Questions</h2>
+    <details>
+      <summary>Is this an emulator?</summary>
+      <p>No. It is <a href="https://keeperfx.net" target="_blank" rel="noopener">KeeperFX</a>, the open-source
+        remake of the Dungeon Keeper engine, compiled to WebAssembly. Nothing from DOS or Windows runs here.</p>
+    </details>
+    <details>
+      <summary>Why do I need the original game?</summary>
+      <p>KeeperFX is a new engine, but a few of the original's files (palettes and sound banks) are not
+        its own to give away. They stay on your computer: the page reads them from the folder you choose and
+        never uploads them.</p>
+    </details>
+    <details>
+      <summary>How much does it download?</summary>
+      <p>The game and the data for the menus and the first levels come to about 110 MB; more loads as you
+        reach new campaigns and levels. Your browser keeps it, so later visits start quickly.</p>
+    </details>
+    <details>
+      <summary>Which browsers work?</summary>
+      <p>A current browser on a computer, with WebGL 2: Chrome and Edge are tested; Firefox and Safari should
+        work. A mouse and keyboard are needed, so phones and tablets aren't supported.</p>
+    </details>
+    <details>
+      <summary>Something went wrong. How do I report it?</summary>
+      <p>When the game stops, use <strong>Download log</strong>, or hover the top right corner while playing
+        for the log button, and include it with your report.</p>
+    </details>
+    <details>
+      <summary>How do I start over?</summary>
+      <p><strong>Forget my DK files</strong> removes the Dungeon Keeper files and music from this browser;
+        clearing the site's data in your browser also removes saves and settings.</p>
+    </details>
   </section>
+
+  <footer class="credits" id="credits">
+    <p><strong>KeeperFX</strong> is made by the <a href="https://keeperfx.net" target="_blank" rel="noopener">KeeperFX
+      team</a> and contributors, free software under the GNU GPL
+      (<a href="https://github.com/dkfans/keeperfx" target="_blank" rel="noopener">source code</a>).</p>
+    <p>Dungeon Keeper was made by Bullfrog Productions and is a trademark of Electronic Arts. This site is
+      not affiliated with or endorsed by Electronic Arts.</p>
+    <p>Browser port and site by <a href="https://edwindejong.net" target="_blank" rel="noopener">Edwin de Jong</a>.</p>
+  </footer>
+</div>
 </div>
 
 <div id="downloads" hidden></div>

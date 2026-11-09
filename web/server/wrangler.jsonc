@@ -6,6 +6,10 @@
   "name": "keeperfx",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
+  // keeper.edwindejong.net (zone edwindejong.net) runs this Worker.
+  "routes": [
+    { "pattern": "keeper.edwindejong.net/*", "zone_id": "b4d85350a8f7c886bc4be590da52dea1" }
+  ],
   "assets": {
     "directory": "../../build-web/site",
     "binding": "ASSETS",
@@ -13,7 +17,7 @@
     "run_worker_first": ["/api/*"]
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "keeperfx", "database_id": "local-dev", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "keeperfx", "database_id": "a48ddbde-2ea5-4a8d-b166-4788fcd7484c", "migrations_dir": "migrations" }
   ],
   "durable_objects": {
     "bindings": [
