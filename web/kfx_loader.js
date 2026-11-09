@@ -460,12 +460,10 @@ async function boot() {
   linkPlayerFiles();
   await writeConfig();
 
-  showPanel('start');
-  setStatus('');
-  if (!params.has('autostart')) {
-    await new Promise((resolve) => $('start-button').addEventListener('click', resolve, { once: true }));
-  }
+  await Account.refresh();
+  const choice = params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice();
   showPanel(null);
+  await applyPlayerName();
 
   // Keep saves, settings and screenshots in IndexedDB.
   setInterval(persistNow, 5000);
@@ -481,11 +479,93 @@ async function boot() {
   fixPointerEnter($('canvas'));
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
-  // Online play: ?join=CODE joins a lobby (invite link), ?host opens one.
-  const join = (params.get('join') || '').trim().toUpperCase();
-  if (/^[A-Z0-9]{4,8}$/.test(join)) args.push('-connect', join);
-  else if (params.has('host')) args.push('-server');
+  if (choice.mode === 'join') args.push('-connect', choice.code);
+  else if (choice.mode === 'host') args.push('-server');
   Module.callMain(args);
+}
+
+// ---- Start choices: play, host online, join online ---------------------------
+
+function lobbyCode(text) {
+  const code = (text || '').trim().toUpperCase();
+  return /^[A-Z0-9]{4,8}$/.test(code) ? code : null;
+}
+
+// ?join=CODE (invite link) joins a lobby, ?host opens one.
+function startChoiceFromUrl() {
+  const code = lobbyCode(params.get('join'));
+  if (code) return { mode: 'join', code };
+  if (params.has('host')) return { mode: 'host' };
+  return { mode: 'play' };
+}
+
+function waitForStartChoice() {
+  showPanel('start');
+  setStatus('');
+  const online = Account.available; // online play needs the page's server
+  $('online-choices').hidden = !online;
+  const box = $('account');
+  renderAccountBox(box);
+  Account.onChange(() => renderAccountBox(box));
+  if (params.get('login_error')) {
+    box.insertAdjacentHTML('beforeend', '<p class="error"></p>');
+    box.lastElementChild.textContent = params.get('login_error');
+  }
+  const invited = online && lobbyCode(params.get('join'));
+  if (invited) {
+    $('invited').hidden = false;
+    $('invited').querySelector('.code').textContent = invited;
+    $('join-code').value = invited;
+  }
+  return new Promise((resolve) => {
+    $('start-button').addEventListener('click', () => resolve({ mode: 'play' }), { once: true });
+    $('host-button').addEventListener('click', () => resolve({ mode: 'host' }), { once: true });
+    $('join-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const code = lobbyCode($('join-code').value);
+      if (code) resolve({ mode: 'join', code });
+      else $('join-code').focus();
+    });
+  });
+}
+
+// A signed-in player's account name is their keeper name in online games
+// ([network] player_name in save/settings.toml, read by the game at start).
+async function applyPlayerName() {
+  const user = Account.user;
+  if (!user) return;
+  const path = `${GAME_DIR}/save/settings.toml`;
+  const line = `player_name = "${user.username}"`;
+  let text = exists(path) ? FS.readFile(path, { encoding: 'utf8' }) : '';
+  const lines = text.split('\n');
+  let section = '';
+  let done = false;
+  for (let i = 0; i < lines.length; i++) {
+    const header = lines[i].match(/^\s*\[([^\]]+)\]/);
+    if (header) {
+      if (section === 'network' && !done) { lines.splice(i, 0, line); done = true; break; }
+      section = header[1].trim();
+      continue;
+    }
+    if (section === 'network' && /^\s*player_name\s*=/.test(lines[i])) {
+      lines[i] = line;
+      done = true;
+      break;
+    }
+  }
+  if (!done && section === 'network') { lines.push(line); done = true; }
+  if (!done) lines.push('', '[network]', line);
+  FS.writeFile(path, lines.join('\n').replace(/^\n+/, '') + (lines[lines.length - 1] === '' ? '' : '\n'));
+}
+
+function copyInvite(button) {
+  const link = $('invite').dataset.link;
+  if (!link) return;
+  navigator.clipboard.writeText(link).then(() => {
+    const old = button.textContent;
+    button.textContent = 'Copied';
+    setTimeout(() => { button.textContent = old; }, 1500);
+  }).catch(() => { window.prompt('Invite link', link); });
 }
 
 function showExit(text) {

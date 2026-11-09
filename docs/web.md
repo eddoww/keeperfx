@@ -26,9 +26,9 @@ and Safari have both; it has been tested in Chromium).
 
 ### Differences from the desktop build
 
-- **No online or LAN multiplayer.** Browsers cannot open the UDP/TCP sockets
-  it uses, so the page refuses to create any (hosting or joining reports
-  "Unable to create game"). Skirmish against the computer works.
+- **Online play is between browsers only**, through the site's own lobby
+  server (see "Online play"); LAN play is not available. Skirmish against the
+  computer works.
 - **Lua 5.1 instead of LuaJIT**, which has no WebAssembly backend. It is patched
   with the LuaJIT/Lua 5.2 functions KeeperFX and its scripts use
   (`web/lua51-luajit-compat.patch`) and has LuaJIT's `bit` module, so level and
@@ -123,6 +123,57 @@ Cloudflare account that also creates its DNS record.
 
 Do not publish Dungeon Keeper's own files: each player supplies their own.
 
+## Online play
+
+When the site runs on its Worker (`web/server`, below), the start screen
+offers **Host online game** and **Join** with a lobby code, and the game's own
+Multiplayer → Online screen lists the open lobbies. A host gets a five-letter
+code and an invite link (`?join=CODE`) at the top of the screen. Browser
+players play each other; desktop KeeperFX uses UDP, which browsers cannot.
+
+Accounts are optional: a signed-in player's account name is their keeper name.
+Players sign in with a name and password, or with Discord when it is set up.
+
+How it fits together:
+
+- `web/server` is a Cloudflare Worker: it serves the static site and `/api`.
+  Accounts live in D1 (SQLite). Each lobby is a Durable Object (`Room`) that
+  relays the game's traffic over WebSockets between the host and the players;
+  another (`Directory`) keeps the lobby list.
+- In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
+  (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
+  `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's
+  multiplayer code (lockstep, resync, lobbies) is unchanged, except that
+  gameplay packets are sent once instead of three times: the relay never
+  loses them.
+- Passwords are stretched in the browser (PBKDF2-SHA256, 600,000 rounds) and
+  the server keeps a salted hash of the result, so it never sees them.
+
+Traffic: a two-player game sends about 25 messages a second per player
+through the relay, which the Workers free plan (100,000 Durable Object requests
+a day, incoming WebSocket messages counted 20:1) covers for roughly ten hours of
+two-player games a day; Workers Paid lifts that.
+
+### Running the Worker
+
+```sh
+cd web/server
+npm install
+npm run dev            # local: http://127.0.0.1:8787, with local D1 and Durable Objects
+```
+
+To deploy, create the D1 database once and put its id in `wrangler.jsonc`, then:
+
+```sh
+npx wrangler d1 create keeperfx
+npx wrangler d1 migrations apply keeperfx --remote
+npx wrangler deploy
+```
+
+For Discord sign-in, create an application at discord.com/developers with
+the redirect `https://<your site>/api/auth/discord/callback`, set
+`DISCORD_CLIENT_ID` in `wrangler.jsonc` and `npx wrangler secret put DISCORD_CLIENT_SECRET`.
+
 ## How it works
 
 - **Build**: `build/cmake/modules` has an Emscripten branch next to the Windows
@@ -146,6 +197,6 @@ Do not publish Dungeon Keeper's own files: each player supplies their own.
 - **Audio**: Emscripten's OpenAL (effects) and SDL audio (music, speech,
   movies) on Web Audio. The page resumes them on the first click or key.
 - **Network**: `net_matchmaking.c` and `net_portforward.cpp` (curl, UPnP) are
-  replaced by `src/kfx/platform/web/NetStubsWeb.c`, which also refuses socket
-  creation, so Emscripten never tries to reach game or STUN hosts over
-  WebSockets.
+  replaced by `src/kfx/platform/web/NetMatchmakingWeb.c`, which also refuses
+  socket creation, so Emscripten never tries to reach game or STUN hosts over
+  WebSockets; online play uses `NetWebSP.c` (see "Online play").

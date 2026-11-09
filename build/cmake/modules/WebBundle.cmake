@@ -17,6 +17,7 @@ add_custom_command(TARGET keeperfx POST_BUILD
         "$<TARGET_FILE_DIR:keeperfx>/keeperfx.wasm"
         "${CMAKE_SOURCE_DIR}/web/index.html"
         "${CMAKE_SOURCE_DIR}/web/kfx_loader.js"
+        "${CMAKE_SOURCE_DIR}/web/kfx_account.js"
         "${CMAKE_SOURCE_DIR}/web/_headers"
         "${CMAKE_SOURCE_DIR}/web/404.html"
         "${KFX_WEB_SITE}/"
