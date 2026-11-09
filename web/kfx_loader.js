@@ -75,7 +75,19 @@ function openCache() {
   return cachePromise;
 }
 
-async function fetchData(url) {
+// One download per URL at a time: the background prefetch and the game may
+// ask for the same file.
+const inFlight = new Map();
+function fetchData(url) {
+  let p = inFlight.get(url);
+  if (!p) {
+    p = fetchDataOnce(url).finally(() => inFlight.delete(url));
+    inFlight.set(url, p);
+  }
+  return p;
+}
+
+async function fetchDataOnce(url) {
   if (params.has('debug')) console.log(`fetch ${url}`);
   downloadsActive++;
   updateDownloadBadge();
@@ -139,9 +151,25 @@ async function loadNow(path) {
   const node = FS.lookupPath(path, { follow: true }).node;
   if (!node.kfxLazy) return;
   const data = await fetchData(node.kfxLazy.url);
+  if (!node.kfxLazy) return; // the game's own open finished it first
+  node.contents = data;
+  node.usedBytes = data.length;
   delete node.kfxLazy;
   Module.kfxLazyPending--;
-  FS.writeFile(path, data);
+}
+
+// Download the files a normal start needs in the background (manifest
+// "prefetch", from web/prefetch.txt), a few at a time, so the game rarely
+// waits for one. Files the game opened meanwhile are skipped.
+async function prefetch(paths) {
+  const queue = paths.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const path = `${GAME_DIR}/${queue.shift()}`;
+      try { await loadNow(path); } catch (e) { /* the game will retry on open */ }
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
 }
 
 function haveDkFiles() {
@@ -170,8 +198,12 @@ async function writeConfig() {
     FS.writeFile(`${GAME_DIR}/keeperfx.cfg`, FS.readFile('/persist/keeperfx.cfg'));
     return;
   }
-  const w = Math.max(640, Math.round(window.innerWidth / 2) * 2);
-  const h = Math.max(480, Math.round(window.innerHeight / 2) * 2);
+  // Device pixels, like the desktop build's DESKTOP mode, so high-DPI screens
+  // get a sharp picture; the CSS size is set separately (fitCanvas).
+  const dpr = window.devicePixelRatio || 1;
+  const scale = Math.min(dpr, 3840 / window.innerWidth, 2160 / window.innerHeight);
+  const w = Math.max(640, Math.round(window.innerWidth * scale / 2) * 2);
+  const h = Math.max(480, Math.round(window.innerHeight * scale / 2) * 2);
   const page = `${w}x${h}w32`;
   const set = {
     FRONTEND_RES: `640x480w32 ${page} ${page}`,
@@ -358,6 +390,7 @@ async function boot() {
   const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
   FS.mkdirTree(GAME_DIR);
   createPlaceholders(manifest);
+  prefetch(manifest.prefetch || []); // in the background
 
   if (!haveDkFiles() && params.get('dk')) {
     setStatus('Importing Dungeon Keeper files…');

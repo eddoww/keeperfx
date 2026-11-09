@@ -75,8 +75,17 @@ def main():
         total += size
         entries.append([rel, size, digest])
 
+    # Files the page downloads in the background right away (web/prefetch.txt).
+    listed = {e[0].lower(): e[0] for e in entries}
+    prefetch = []
+    with open(os.path.join(ROOT, "web", "prefetch.txt"), encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and line.lower() in listed:
+                prefetch.append(listed[line.lower()])
+
     with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as f:
-        json.dump({"files": entries}, f, separators=(",", ":"))
+        json.dump({"files": entries, "prefetch": prefetch}, f, separators=(",", ":"))
     print(f"{len(entries)} files, {total / 1048576:.1f} MiB -> {dest}")
 
 
