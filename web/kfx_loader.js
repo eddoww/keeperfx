@@ -298,6 +298,46 @@ function fitCanvas() {
   canvas.style.setProperty('height', `${Math.floor(canvas.height * scale)}px`, 'important');
 }
 
+// ---- Mouse focus ------------------------------------------------------------
+
+// SDL takes mouse focus from the canvas's pointerenter event only. If the
+// pointer is already over the canvas when the game attaches its listeners
+// (say the player moves the mouse while the game starts), that event never
+// comes, and the game ignores the mouse until the pointer leaves the page and
+// returns. Track what SDL's own enter/leave listeners have seen and, on a move
+// over the canvas that SDL doesn't know about, hand it to SDL as an enter.
+function fixPointerEnter(canvas) {
+  let sdlEnter = null;
+  let sdlInside = false;
+  const add = canvas.addEventListener;
+  const remove = canvas.removeEventListener;
+  const wrappers = new Map(); // SDL's listener -> our wrapper, so SDL can still remove it
+  canvas.addEventListener = function (type, listener, ...rest) {
+    if (type !== 'pointerenter' && type !== 'pointerleave') return add.call(this, type, listener, ...rest);
+    const entering = (type === 'pointerenter');
+    if (entering) sdlEnter = listener;
+    const wrapped = function (ev) { sdlInside = entering; return listener.call(this, ev); };
+    wrappers.set(listener, wrapped);
+    return add.call(this, type, wrapped, ...rest);
+  };
+  canvas.removeEventListener = function (type, listener, ...rest) {
+    const wrapped = wrappers.get(listener);
+    if (wrapped) {
+      wrappers.delete(listener);
+      if (listener === sdlEnter) sdlEnter = null;
+    }
+    return remove.call(this, type, wrapped || listener, ...rest);
+  };
+  const enterIfNeeded = (ev) => {
+    if (sdlEnter && !sdlInside && ev.pointerType === 'mouse') {
+      sdlInside = true;
+      sdlEnter.call(canvas, ev);
+    }
+  };
+  add.call(canvas, 'pointermove', enterIfNeeded, { capture: true });
+  add.call(canvas, 'pointerdown', enterIfNeeded, { capture: true });
+}
+
 // ---- Startup ----------------------------------------------------------------
 
 let syncing = false;
@@ -343,6 +383,7 @@ async function boot() {
   new MutationObserver(fitCanvas).observe($('canvas'), { attributes: true, attributeFilter: ['width', 'height'] });
   window.addEventListener('resize', fitCanvas);
 
+  fixPointerEnter($('canvas'));
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
   Module.callMain(args);
