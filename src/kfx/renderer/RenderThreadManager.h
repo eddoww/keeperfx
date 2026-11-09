@@ -37,6 +37,15 @@ public:
 private:
     void ThreadProc(Fn init_fn, Fn work_fn, Fn present_fn, Fn cleanup_fn);
 
+#ifdef __EMSCRIPTEN__
+    // Browser build (no threads): the "render thread" work runs inline on the
+    // game thread. Start() runs init, Signal() renders and presents, Stop()
+    // cleans up.
+    Fn m_work_fn;
+    Fn m_present_fn;
+    Fn m_cleanup_fn;
+#endif
+
     std::thread             m_thread;
     mutable std::mutex      m_mutex;
     std::condition_variable m_cv;

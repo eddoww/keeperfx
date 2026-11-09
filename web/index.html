@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KeeperFX</title>
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  :root {
+    --bg: #0b0806;
+    --panel: #1b1410;
+    --text: #e9dcc8;
+    --muted: #a89880;
+    --accent: #d9a441;
+    --accent-text: #1b1206;
+    --border: #3a2c20;
+    --error: #ff8a7a;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+  #canvas {
+    display: block; background: #000;
+    image-rendering: pixelated; outline: none;
+  }
+  #overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: var(--bg); overflow-y: auto;
+  }
+  .panel {
+    width: 100%; max-width: 560px; padding: 28px; border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--border);
+  }
+  h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: .02em; }
+  h2 { margin: 0 0 12px; font-size: 20px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  p strong { color: var(--text); }
+  .tagline { margin-bottom: 20px; }
+  button, .button {
+    display: inline-block; cursor: pointer; font: inherit; font-weight: 600;
+    padding: 10px 20px; border-radius: 8px; border: 0;
+    background: var(--accent); color: var(--accent-text);
+  }
+  button.secondary {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    font-weight: 400; padding: 6px 12px; font-size: 14px;
+  }
+  #dropzone {
+    margin: 16px 0; padding: 24px 16px; text-align: center; border-radius: 10px;
+    border: 2px dashed var(--border);
+  }
+  #dropzone.over { border-color: var(--accent); }
+  #dropzone p { margin: 10px 0 0; font-size: 14px; }
+  #dk-folder { display: none; }
+  .error { color: var(--error); }
+  .fine { font-size: 13px; }
+  a { color: var(--accent); }
+  #status { min-height: 1.5em; margin-top: 12px; font-size: 14px; }
+  #downloads {
+    position: fixed; left: 12px; bottom: 12px; padding: 6px 12px; border-radius: 6px;
+    background: rgba(0,0,0,.75); color: var(--text); font-size: 13px; pointer-events: none;
+  }
+  #toolbar {
+    position: fixed; right: 8px; top: 8px; display: flex; gap: 6px; opacity: 0;
+    transition: opacity .2s;
+  }
+  #toolbar:hover, #toolbar:focus-within { opacity: 1; }
+  #toolbar button { padding: 4px 10px; font-size: 13px; background: rgba(0,0,0,.7); color: var(--text); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+
+<div id="overlay">
+  <section class="panel" id="loading">
+    <h1>KeeperFX</h1>
+    <p class="tagline">The open-source remake of the Dungeon Keeper engine, running in your browser.</p>
+    <div id="status">Loading…</div>
+  </section>
+
+  <section class="panel" id="setup" hidden>
+    <h2>Add your Dungeon Keeper files</h2>
+    <p>KeeperFX needs a few files from an original <strong>Dungeon Keeper</strong> or
+      <strong>Dungeon Keeper Gold</strong>, for example the
+      <a href="https://www.gog.com/game/dungeon_keeper" target="_blank" rel="noopener">GOG release</a>.
+      Choose the folder you installed it to. Only 16 small files (and the music, if present) are read.</p>
+    <div id="dropzone">
+      <label class="button" for="dk-folder">Choose Dungeon Keeper folder</label>
+      <input type="file" id="dk-folder" webkitdirectory multiple>
+      <p>or drop the folder here</p>
+    </div>
+    <p id="setup-error" class="error" hidden></p>
+    <p class="fine">The files stay in this browser's storage and are never uploaded.</p>
+  </section>
+
+  <section class="panel" id="start" hidden>
+    <h1>KeeperFX</h1>
+    <p class="tagline">Ready. Click to start; the game loads its data as it needs it.</p>
+    <button id="start-button">Play</button>
+    <div class="row">
+      <button class="secondary" onclick="toggleFullscreen()">Fullscreen</button>
+      <button class="secondary" onclick="forgetDkFiles()">Forget my DK files</button>
+    </div>
+  </section>
+
+  <section class="panel" id="exited" hidden>
+    <h2 id="exit-text">KeeperFX has closed.</h2>
+    <div class="row">
+      <button onclick="location.reload()">Start again</button>
+      <button class="secondary" onclick="downloadLog()">Download log</button>
+    </div>
+  </section>
+</div>
+
+<div id="downloads" hidden></div>
+<div id="toolbar">
+  <button onclick="toggleFullscreen()" title="Fullscreen (or F11)">Fullscreen</button>
+  <button onclick="downloadLog()">Log</button>
+</div>
+
+<script src="kfx_loader.js"></script>
+<script src="keeperfx.js" async></script>
+</body>
+</html>

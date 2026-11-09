@@ -455,6 +455,13 @@ bool WindowSystemSDL::CreateWindow(const char* title, int x, int y, int w, int h
         GLContextSDL::RequestWindowAttributes();
     }
 
+#ifdef __EMSCRIPTEN__
+    // The canvas is a page element: an alpha channel in its WebGL context
+    // would let the page show through wherever a frame leaves alpha at 0
+    // (desktop windows ignore it). Applies to the GL renderer and to the SDL
+    // renderer the software renderer presents through.
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+#endif
     m_window = SDL_CreateWindow(title, w, h, sdl3_flags);
     if (!m_window)
         return false;

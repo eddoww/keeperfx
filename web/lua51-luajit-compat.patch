@@ -1,0 +1,154 @@
+diff -ru a/src/lauxlib.c b/src/lauxlib.c
+--- a/src/lauxlib.c	2026-11-09 12:44:50.710365781 +0100
++++ b/src/lauxlib.c	2026-11-09 12:45:08.450806884 +0100
+@@ -239,6 +239,20 @@
+ }
+ 
+ 
++/* Lua 5.2 / LuaJIT 2.1 API: register functions with nup shared upvalues. */
++LUALIB_API void luaL_setfuncs (lua_State *L, const luaL_Reg *l, int nup) {
++  luaL_checkstack(L, nup, "too many upvalues");
++  for (; l->name != NULL; l++) {
++    int i;
++    for (i = 0; i < nup; i++)
++      lua_pushvalue(L, -nup);
++    lua_pushcclosure(L, l->func, nup);
++    lua_setfield(L, -(nup + 2), l->name);
++  }
++  lua_pop(L, nup);
++}
++
++
+ LUALIB_API void luaI_openlib (lua_State *L, const char *libname,
+                               const luaL_Reg *l, int nup) {
+   if (libname) {
+diff -ru a/src/lauxlib.h b/src/lauxlib.h
+--- a/src/lauxlib.h	2026-11-09 12:44:50.710687727 +0100
++++ b/src/lauxlib.h	2026-11-09 12:45:08.450727464 +0100
+@@ -43,6 +43,7 @@
+                                 const luaL_Reg *l, int nup);
+ LUALIB_API void (luaL_register) (lua_State *L, const char *libname,
+                                 const luaL_Reg *l);
++LUALIB_API void (luaL_setfuncs) (lua_State *L, const luaL_Reg *l, int nup);
+ LUALIB_API int (luaL_getmetafield) (lua_State *L, int obj, const char *e);
+ LUALIB_API int (luaL_callmeta) (lua_State *L, int obj, const char *e);
+ LUALIB_API int (luaL_typerror) (lua_State *L, int narg, const char *tname);
+@@ -114,6 +115,10 @@
+ #define luaL_dostring(L, s) \
+ 	(luaL_loadstring(L, s) || lua_pcall(L, 0, LUA_MULTRET, 0))
+ 
++#define luaL_newlibtable(L,l) \
++  lua_createtable(L, 0, sizeof(l)/sizeof((l)[0]) - 1)
++#define luaL_newlib(L,l)  (luaL_newlibtable(L,l), luaL_setfuncs(L,l,0))
++
+ #define luaL_getmetatable(L,n)	(lua_getfield(L, LUA_REGISTRYINDEX, (n)))
+ 
+ #define luaL_opt(L,f,n,d)	(lua_isnoneornil(L,(n)) ? (d) : f(L,(n)))
+diff -ru a/src/lbaselib.c b/src/lbaselib.c
+--- a/src/lbaselib.c	2026-11-09 12:44:50.710330725 +0100
++++ b/src/lbaselib.c	2026-11-09 12:45:18.846920289 +0100
+@@ -312,12 +312,38 @@
+ }
+ 
+ 
++/* LuaJIT/5.2-compatible load(chunk [, chunkname [, mode [, env]]]):
++** chunk may be a string or a reader function; mode restricts binary ("b")
++** or text ("t") chunks; env becomes the loaded function's environment. */
+ static int luaB_load (lua_State *L) {
+   int status;
+-  const char *cname = luaL_optstring(L, 2, "=(load)");
+-  luaL_checktype(L, 1, LUA_TFUNCTION);
+-  lua_settop(L, 3);  /* function, eventual name, plus one reserved slot */
+-  status = lua_load(L, generic_reader, NULL, cname);
++  size_t l;
++  const char *s = lua_tolstring(L, 1, &l);
++  const char *mode = luaL_optstring(L, 3, "bt");
++  int envidx = lua_isnone(L, 4) ? 0 : 4;
++  if (s != NULL) {
++    const char *cname = luaL_optstring(L, 2, s);
++    int binary = (l > 0 && s[0] == LUA_SIGNATURE[0]);
++    if ((binary && strchr(mode, 'b') == NULL) || (!binary && strchr(mode, 't') == NULL)) {
++      lua_pushnil(L);
++      lua_pushfstring(L, "attempt to load a %s chunk (mode is '%s')",
++                      binary ? "binary" : "text", mode);
++      return 2;
++    }
++    status = luaL_loadbuffer(L, s, l, cname);
++  }
++  else {
++    const char *cname = luaL_optstring(L, 2, "=(load)");
++    luaL_checktype(L, 1, LUA_TFUNCTION);
++    /* function, name, reserved slot 3 (holds mode, overwritten by the
++    ** reader), and env in slot 4 when given */
++    lua_settop(L, envidx ? 4 : 3);
++    status = lua_load(L, generic_reader, NULL, cname);
++  }
++  if (status == 0 && envidx) {
++    lua_pushvalue(L, envidx);
++    lua_setfenv(L, -2);
++  }
+   return load_aux(L, status);
+ }
+ 
+diff -ru a/src/loadlib.c b/src/loadlib.c
+--- a/src/loadlib.c	2026-11-09 12:44:50.710113546 +0100
++++ b/src/loadlib.c	2026-11-09 13:08:31.344799861 +0100
+@@ -606,8 +606,33 @@
+ }
+ 
+ 
++/* Lua 5.2 / LuaJIT package.searchpath(name, path [, sep [, rep]]) */
++static int ll_searchpath (lua_State *L) {
++  const char *name = luaL_checkstring(L, 1);
++  const char *path = luaL_checkstring(L, 2);
++  const char *sep = luaL_optstring(L, 3, ".");
++  const char *rep = luaL_optstring(L, 4, LUA_DIRSEP);
++  if (*sep != '\0')
++    name = luaL_gsub(L, name, sep, rep);
++  lua_pushliteral(L, "");  /* error message accumulator */
++  while ((path = pushnexttemplate(L, path)) != NULL) {
++    const char *filename = luaL_gsub(L, lua_tostring(L, -1), LUA_PATH_MARK, name);
++    lua_remove(L, -2);  /* remove path template */
++    if (readable(filename))
++      return 1;  /* return that file name */
++    lua_pushfstring(L, "\n\tno file " LUA_QS, filename);
++    lua_remove(L, -2);  /* remove file name */
++    lua_concat(L, 2);  /* add entry to the accumulated message */
++  }
++  lua_pushnil(L);
++  lua_insert(L, -2);  /* nil, error message */
++  return 2;
++}
++
++
+ static const luaL_Reg pk_funcs[] = {
+   {"loadlib", ll_loadlib},
++  {"searchpath", ll_searchpath},
+   {"seeall", ll_seeall},
+   {NULL, NULL}
+ };
+diff -ru a/src/lua.h b/src/lua.h
+--- a/src/lua.h	2026-11-09 12:44:50.710509532 +0100
++++ b/src/lua.h	2026-11-09 12:48:45.562722119 +0100
+@@ -40,6 +40,7 @@
+ 
+ 
+ /* thread status; 0 is OK */
++#define LUA_OK		0	/* Lua 5.2 / LuaJIT name for success */
+ #define LUA_YIELD	1
+ #define LUA_ERRRUN	2
+ #define LUA_ERRSYNTAX	3
+diff -ru a/src/lualib.h b/src/lualib.h
+--- a/src/lualib.h	2026-11-09 12:44:50.710869730 +0100
++++ b/src/lualib.h	2026-11-09 12:48:53.369938864 +0100
+@@ -39,6 +39,10 @@
+ #define LUA_LOADLIBNAME	"package"
+ LUALIB_API int (luaopen_package) (lua_State *L);
+ 
++/* LuaBitOp (same API as LuaJIT's built-in bit module), linked into liblua */
++#define LUA_BITLIBNAME	"bit"
++LUALIB_API int (luaopen_bit) (lua_State *L);
++
+ 
+ /* open all previous libraries */
+ LUALIB_API void (luaL_openlibs) (lua_State *L); 

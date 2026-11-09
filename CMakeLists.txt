@@ -47,7 +47,12 @@ if(WIN32)
     add_subdirectory(tools)
 endif()
 
-include(Packaging)
+if(EMSCRIPTEN)
+    # Browser build: page, loader and data packaging (web/).
+    include(WebBundle)
+else()
+    include(Packaging)
 
-# Optional self-contained Linux/Steam Deck bundle (-DKFX_DECK_BUNDLE=ON).
-include(DeckBundle)
+    # Optional self-contained Linux/Steam Deck bundle (-DKFX_DECK_BUNDLE=ON).
+    include(DeckBundle)
+endif()

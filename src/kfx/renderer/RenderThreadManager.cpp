@@ -6,6 +6,57 @@
 
 thread_local bool g_on_render_thread = false;
 
+#ifdef __EMSCRIPTEN__
+
+RenderThreadManager::~RenderThreadManager()
+{
+    if (m_active)
+        Stop();
+}
+
+void RenderThreadManager::Start(Fn init_fn, Fn work_fn, Fn present_fn, Fn cleanup_fn)
+{
+    if (m_active)
+        return;
+    m_active = true;
+    m_work_fn = std::move(work_fn);
+    m_present_fn = std::move(present_fn);
+    m_cleanup_fn = std::move(cleanup_fn);
+    RendererThread_RegisterRenderThread();
+    g_on_render_thread = true;
+    init_fn();
+    g_on_render_thread = false;
+    m_initialized = true;
+}
+
+void RenderThreadManager::WaitForCompletion() {}
+
+bool RenderThreadManager::IsWorkDone() const { return true; }
+
+void RenderThreadManager::Signal()
+{
+    g_on_render_thread = true;
+    {
+        KFX_ZONE_COLOR("RenderThreadManager::work_fn", KFX_COLOR_RENDER_CPU);
+        m_work_fn();
+    }
+    m_present_fn();
+    g_on_render_thread = false;
+}
+
+void RenderThreadManager::Stop()
+{
+    g_on_render_thread = true;
+    m_cleanup_fn();
+    g_on_render_thread = false;
+    m_work_fn = nullptr;
+    m_present_fn = nullptr;
+    m_cleanup_fn = nullptr;
+    m_active = false;
+}
+
+#else // threaded desktop builds
+
 RenderThreadManager::~RenderThreadManager()
 {
     if (m_active)
@@ -101,3 +152,5 @@ void RenderThreadManager::ThreadProc(Fn init_fn, Fn work_fn, Fn present_fn, Fn c
 
     cleanup_fn();
 }
+
+#endif // __EMSCRIPTEN__

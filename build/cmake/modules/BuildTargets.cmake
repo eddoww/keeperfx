@@ -8,9 +8,18 @@ list(FILTER KEEPERFX_SOURCES_C   EXCLUDE REGEX "/src/ftests/")
 list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/src/ftests/")
 
 # Desktop platform filtering (matches the hand Makefiles).
+if(EMSCRIPTEN)
+    # No curl/UPnP in a browser: platform/web/NetStubsWeb.c stands in for these.
+    list(FILTER KEEPERFX_SOURCES_C   EXCLUDE REGEX "/src/net_matchmaking\\.c$")
+    list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/src/net_portforward\\.cpp$")
+else()
+    list(FILTER KEEPERFX_SOURCES_C   EXCLUDE REGEX "/platform/web/")
+    list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/platform/web/")
+endif()
 if(WIN32)
     list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/PlatformLinux\\.cpp$")
 elseif(UNIX AND NOT APPLE)
+    # Emscripten counts as UNIX: the browser build reuses the Linux platform layer.
     list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/PlatformWindows\\.cpp$")
     list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/WindowCompositorWin\\.cpp$")
 endif()
@@ -30,11 +39,15 @@ if(NOT WIN32)
 endif()
 
 add_executable(keeperfx       ${KEEPERFX_SOURCES_C} ${KEEPERFX_SOURCES_CXX})
-add_executable(keeperfx_hvlog ${KEEPERFX_SOURCES_C} ${KEEPERFX_SOURCES_CXX})
 target_compile_definitions(keeperfx       PUBLIC BFDEBUG_LEVEL=0)
-target_compile_definitions(keeperfx_hvlog PUBLIC BFDEBUG_LEVEL=10)
+set(KFX_TARGETS keeperfx)
 
-set(KFX_TARGETS keeperfx keeperfx_hvlog)
+# The heavy-logging variant doubles a (long) WebAssembly build for little use.
+if(NOT EMSCRIPTEN)
+    add_executable(keeperfx_hvlog ${KEEPERFX_SOURCES_C} ${KEEPERFX_SOURCES_CXX})
+    target_compile_definitions(keeperfx_hvlog PUBLIC BFDEBUG_LEVEL=10)
+    list(APPEND KFX_TARGETS keeperfx_hvlog)
+endif()
 
 if(WIN32)
     foreach(_t IN LISTS KFX_TARGETS)
@@ -90,7 +103,7 @@ foreach(_t IN LISTS KFX_TARGETS)
     endif()
 endforeach()
 
-kfx_status("BUILD" "${CMAKE_CXX_COMPILER_ID} -> keeperfx, keeperfx_hvlog")
+kfx_status("BUILD" "${CMAKE_CXX_COMPILER_ID} -> ${KFX_TARGETS}")
 
 # Save format tests (tests/save): links only the save codec, the field tables and zlib, no game code.
 # Off by default. Build with -DKFX_SAVE_TESTS=ON, run with ctest.

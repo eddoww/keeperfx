@@ -9,6 +9,12 @@
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <AL/alext.h>
+#ifndef AL_FORMAT_MONO_MSADPCM_SOFT
+// Emscripten's OpenAL lacks AL_SOFT_MSADPCM. The tags only mark ADPCM samples,
+// which are converted to PCM before alBufferData (see sound_sample).
+#define AL_FORMAT_MONO_MSADPCM_SOFT   0x1302
+#define AL_FORMAT_STEREO_MSADPCM_SOFT 0x1303
+#endif
 #include <SDL3/SDL.h>
 #include <SDL3_mixer/SDL_mixer.h>
 #include <cstddef>
@@ -17,6 +23,11 @@
 
 // Single-header MP3 decoder (no external DLL dependency)
 #define DR_MP3_IMPLEMENTATION
+#ifdef __EMSCRIPTEN__
+// The static SDL3_mixer also contains dr_mp3 (built with other options); keep
+// this copy private to this file so the two don't collide at link time.
+#define DRMP3_API static
+#endif
 #include "../deps/dr_mp3.h"
 #include <memory>
 #include <vector>

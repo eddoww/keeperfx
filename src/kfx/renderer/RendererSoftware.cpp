@@ -12,6 +12,7 @@
 #include "kfx/renderer/RendererFrameCounter.h"
 #include "bflib_mouse.h"       // LbMouseOnBeginSwap/EndSwap (submits the cursor sprite around present)
 #include <SDL3_image/SDL_image.h> // IMG_SavePNG (screenshots)
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 bool RendererSoftware::Init()
@@ -371,4 +372,5 @@ void RendererSoftware::PresentFrame()
     SDL_RenderTexture(m_renderer, m_texture, NULL, (pw > 0 && ph > 0) ? &dst : NULL);
     SDL_RenderPresent(m_renderer);
     LbMouseOnEndSwap();
+    KFX_WEB_FRAME_YIELD();
 }

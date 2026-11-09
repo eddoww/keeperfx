@@ -17,6 +17,17 @@ function(apply_keeperfx_warnings TARGET)
         # /O* + /Zi flags. (Note: MSVC here means real cl.exe only - clang-cl
         # reports CMAKE_<LANG>_COMPILER_ID "Clang", so MSVC is false for it
         # and it still takes the WIN32 branch below, which it understands.)
+    elseif(EMSCRIPTEN)
+        # No -Werror: clang (emcc) warns about things GCC accepts, and the
+        # desktop builds already gate warnings.
+        target_compile_options(${TARGET} PRIVATE
+            -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas
+            -Wno-sign-compare -Wno-missing-field-initializers
+            -O2 $<$<COMPILE_LANGUAGE:C>:-Wno-absolute-value>
+            # Emscripten disables C++ exceptions by default; the sound code
+            # relies on them. JS-based exceptions, as Asyncify can't combine
+            # with native wasm exceptions.
+            $<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
     elseif(WIN32)
         target_compile_options(${TARGET} PRIVATE
             -Wall -W -Wshadow -Wno-sign-compare -Wno-unused-parameter
@@ -52,6 +63,8 @@ function(apply_keeperfx_link_flags TARGET)
             -mwindows -static-libgcc -static-libstdc++
             -Wl,--enable-auto-import -Wl,-Map,${TARGET}.map)
         target_link_libraries(${TARGET} PUBLIC -static stdc++ winpthread -dynamic)
+    elseif(EMSCRIPTEN)
+        kfx_web_link_flags(${TARGET})
     else()
         target_link_options(${TARGET} PRIVATE -g -rdynamic)
     endif()
@@ -89,4 +102,26 @@ function(apply_windows_system_libs TARGET)
             target_link_libraries(${TARGET} PRIVATE mingw32)
         endif()
     endif()
+endfunction()
+
+# Link flags for the browser build (web/README.md explains the choices).
+function(kfx_web_link_flags TARGET)
+    set_target_properties(${TARGET} PROPERTIES SUFFIX ".js")
+    target_link_options(${TARGET} PRIVATE
+        # The game loop blocks (frame pacing, loading screens, menus); Asyncify
+        # lets it yield to the browser from inside SDL_Delay and at present.
+        -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=262144 -fexceptions
+        -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB -sSTACK_SIZE=8MB
+        -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
+        -sGL_ENABLE_GET_PROC_ADDRESS=1
+        -sFORCE_FILESYSTEM=1 -lidbfs.js -lopenal
+        -sEXIT_RUNTIME=1 -sINVOKE_RUN=0
+        -sEXPORTED_RUNTIME_METHODS=FS,IDBFS,callMain,ENV
+        -sEXPORTED_FUNCTIONS=_main
+        -sENVIRONMENT=web
+        # Lazy data download on first open (src/kfx/platform/web/WebFileSystem.c).
+        -Wl,--wrap=__syscall_openat -Wl,--wrap=__syscall_stat64
+        -Wl,--wrap=__syscall_lstat64 -Wl,--wrap=__syscall_newfstatat
+        "--js-library=${CMAKE_SOURCE_DIR}/web/kfx_web.js")
+    set_property(TARGET ${TARGET} APPEND PROPERTY LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/kfx_web.js")
 endfunction()

@@ -11,6 +11,7 @@
 #include "bflib_basics.h"
 #include "globals.h"
 #include <SDL3/SDL.h>
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 void GLContextSDL::RequestWindowAttributes()
@@ -88,6 +89,7 @@ bool GLContextSDL::ReleaseCurrent()
 void GLContextSDL::SwapBuffers()
 {
     SDL_GL_SwapWindow(m_window);
+    KFX_WEB_FRAME_YIELD();
 }
 
 bool GLContextSDL::SetSwapInterval(int interval)

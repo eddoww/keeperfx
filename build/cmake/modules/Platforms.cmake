@@ -1,11 +1,13 @@
 # Platforms.cmake - platform detection + directory-scope compile definitions.
 
-if(WIN32)
+if(EMSCRIPTEN)
+    kfx_status("PLATFORM" "Web / Emscripten (wasm32)")
+elseif(WIN32)
     kfx_status("PLATFORM" "Windows / MinGW-w64 (i686)")
 elseif(UNIX AND NOT APPLE)
     kfx_status("PLATFORM" "Linux (x86_64)")
 else()
-    message(FATAL_ERROR "Unsupported platform (only Windows/MinGW and Linux are supported)")
+    message(FATAL_ERROR "Unsupported platform (only Windows/MinGW, Linux and Emscripten are supported)")
 endif()
 
 add_compile_definitions("DEBUG=$<IF:$<CONFIG:Debug>,1,0>")

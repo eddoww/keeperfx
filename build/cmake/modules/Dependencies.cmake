@@ -13,8 +13,10 @@ set(KFX_DEPS_BASE "https://github.com/dkfans/kfx-deps/releases/download")
 set(D "${CMAKE_BINARY_DIR}/deps")
 set(KFX_CENTITOML_SRC "${CMAKE_SOURCE_DIR}/deps/centitoml")
 
-# GL renderer backend: always built.
-find_package(OpenGL REQUIRED)
+# GL renderer backend: always built. Emscripten provides GL (WebGL2) itself.
+if(NOT EMSCRIPTEN)
+    find_package(OpenGL REQUIRED)
+endif()
 
 # Vendored glad loader -- outside src/, so BuildTargets' glob won't pick it up.
 add_library(glad STATIC "${CMAKE_SOURCE_DIR}/deps/glad/src/glad.c")
@@ -60,7 +62,36 @@ macro(kfx_imported name lib incdir)
         INTERFACE_INCLUDE_DIRECTORIES "${incdir}")
 endmacro()
 
-if(WIN32)
+if(EMSCRIPTEN)
+    # Everything comes from one prefix built by web/build-deps.sh (pinned
+    # sources compiled to wasm). No curl/miniupnpc/natpmp: no raw sockets in
+    # a browser. Lua is PUC Lua 5.1 + LuaJIT compat (LuaJIT has no wasm backend).
+    set(KFX_WEB_DEPS "${CMAKE_BINARY_DIR}/deps/prefix" CACHE PATH "Prefix built by web/build-deps.sh")
+    if(NOT EXISTS "${KFX_WEB_DEPS}/lib/libSDL3.a")
+        message(FATAL_ERROR "WebAssembly deps missing in ${KFX_WEB_DEPS}; run: web/build-deps.sh ${KFX_WEB_DEPS}")
+    endif()
+    set(_wl "${KFX_WEB_DEPS}/lib")
+    add_library(kfx_sdl3 INTERFACE)
+    target_include_directories(kfx_sdl3 INTERFACE "${KFX_WEB_DEPS}/include")
+    target_link_libraries(kfx_sdl3 INTERFACE
+        "${_wl}/libSDL3_mixer.a" "${_wl}/libSDL3_image.a" "${_wl}/libSDL3.a")
+    kfx_imported(astronomy_static "${_wl}/libastronomy.a" "${KFX_WEB_DEPS}/include")
+    kfx_imported(centijson_static "${_wl}/libjson.a"      "${KFX_WEB_DEPS}/include")
+    kfx_imported(enet6_static     "${_wl}/libenet6.a"     "${KFX_WEB_DEPS}/include")
+    kfx_imported(spng_static      "${_wl}/libspng_static.a" "${KFX_WEB_DEPS}/include")
+    kfx_imported(zlib_static      "${_wl}/libz.a"         "${KFX_WEB_DEPS}/include")
+    kfx_imported(minizip_static   "${_wl}/libminizip.a"   "${KFX_WEB_DEPS}/include")
+    kfx_imported(lua_static       "${_wl}/liblua.a"       "${KFX_WEB_DEPS}/include")
+    add_library(ffmpeg_static INTERFACE)
+    target_include_directories(ffmpeg_static INTERFACE "${KFX_WEB_DEPS}/include")
+    target_link_libraries(ffmpeg_static INTERFACE
+        "${_wl}/libavformat.a" "${_wl}/libavcodec.a" "${_wl}/libswresample.a" "${_wl}/libavutil.a")
+
+    add_library(centitoml OBJECT "${KFX_CENTITOML_SRC}/toml_api.c")
+    target_link_libraries(centitoml PUBLIC centijson_static)
+    target_include_directories(centitoml INTERFACE "${KFX_CENTITOML_SRC}")
+
+elseif(WIN32)
     # --- SDL3 (prebuilt MinGW dev tarballs; each wraps <name>-<ver>/i686-w64-mingw32/*)
     # SDL_net is intentionally absent: api.c now uses a native Winsock socket
     # layer (SDL3_net is not reliably packaged). See docs SDL3-MIGRATION notes.
@@ -237,7 +268,12 @@ endif()
 
 # Link every dependency onto TARGET.
 function(kfx_link_dependencies TARGET)
-    if(WIN32)
+    if(EMSCRIPTEN)
+        target_link_libraries(${TARGET} PRIVATE
+            kfx_sdl3 ffmpeg_static lua_static spng_static minizip_static zlib_static
+            astronomy_static centijson_static enet6_static centitoml glad)
+        return()
+    elseif(WIN32)
         # Static archives have circular refs (curl<->zlib, ffmpeg internals), so
         # link them in a group (RESCAN == --start-group/--end-group).
         set(_static
