@@ -838,10 +838,44 @@ bool GLResourceMapper::RealizeRenderTarget(const GpuRenderTargetDesc& desc, GLRe
     return true;
 }
 
+#ifdef __EMSCRIPTEN__
+// The shaders are written for desktop GLSL 3.30 core. WebGL2 takes GLSL ES
+// 3.00, which is the same language for everything they use, except that it
+// needs a different #version line and explicit precision for floats, ints and
+// the sampler types that have no default.
+static std::string ToGlslEs(const std::string& src)
+{
+    static const char desktop_version[] = "#version 330 core";
+    static const char es_header[] =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "precision highp int;\n"
+        "precision highp sampler2D;\n"
+        "precision highp sampler2DArray;\n"
+        "precision highp usampler2D;\n";
+    std::string out = src;
+    const size_t pos = out.find(desktop_version);
+    if (pos != std::string::npos) {
+        // GLSL ES requires #version on the very first line; the sources start
+        // with the newline that follows R"glsl(.
+        out.replace(pos, sizeof(desktop_version) - 1, es_header);
+        out.erase(0, pos);
+    }
+    return out;
+}
+#endif
+
 bool GLResourceMapper::RealizeProgram(const GpuProgramDesc& desc, GLProgram& out)
 {
+#ifdef __EMSCRIPTEN__
+    const std::string vs_text = ToGlslEs(desc.vertex_src);
+    const std::string fs_text = ToGlslEs(desc.fragment_src);
+#else
+    const std::string& vs_text = desc.vertex_src;
+    const std::string& fs_text = desc.fragment_src;
+#endif
     GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    const char* vs_src = desc.vertex_src.c_str();
+    const char* vs_src = vs_text.c_str();
     glShaderSource(vertex_shader, 1, &vs_src, nullptr);
     glCompileShader(vertex_shader);
 
@@ -855,7 +889,7 @@ bool GLResourceMapper::RealizeProgram(const GpuProgramDesc& desc, GLProgram& out
     }
 
     GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    const char* fs_src = desc.fragment_src.c_str();
+    const char* fs_src = fs_text.c_str();
     glShaderSource(fragment_shader, 1, &fs_src, nullptr);
     glCompileShader(fragment_shader);
 

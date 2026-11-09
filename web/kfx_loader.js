@@ -26,6 +26,26 @@ const CACHE_NAME = 'keeperfx-gamedata';
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 
+// ---- Audio -------------------------------------------------------------------
+
+// Browsers start audio suspended until the page gets a click or key press. The
+// game opens its audio (OpenAL for effects, SDL for music and movies) after the
+// Play click, so keep track of every AudioContext and resume them on input.
+const audioContexts = [];
+for (const name of ['AudioContext', 'webkitAudioContext']) {
+  const Base = window[name];
+  if (!Base) continue;
+  window[name] = class extends Base {
+    constructor(...args) { super(...args); audioContexts.push(this); }
+  };
+}
+function resumeAudio() {
+  for (const ctx of audioContexts) if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+}
+for (const ev of ['pointerdown', 'keydown', 'touchend']) {
+  window.addEventListener(ev, resumeAudio, { capture: true });
+}
+
 // ---- UI helpers -------------------------------------------------------------
 
 function setStatus(text) { $('status').textContent = text; }

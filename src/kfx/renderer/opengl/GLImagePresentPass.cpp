@@ -364,8 +364,21 @@ void GLImagePresentPass::upload_embedded_palette(const std::vector<unsigned char
         // swap, so the AVFrame's native BGRA layout needs no CPU-side
         // reordering (same trick develop's own equivalent upload uses).
         glBindTexture(GL_TEXTURE_2D, tex->id);
+#ifdef __EMSCRIPTEN__
+        // WebGL has no GL_BGRA upload format: swap the channels here.
+        uint8_t rgba[256 * 4];
+        for (size_t i = 0; i < 256u * 4u; i += 4)
+        {
+            rgba[i + 0] = embedded_palette[i + 2];
+            rgba[i + 1] = embedded_palette[i + 1];
+            rgba[i + 2] = embedded_palette[i + 0];
+            rgba[i + 3] = embedded_palette[i + 3];
+        }
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+#else
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_BGRA, GL_UNSIGNED_BYTE,
                         embedded_palette.data());
+#endif
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 }
