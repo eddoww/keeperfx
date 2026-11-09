@@ -19,7 +19,13 @@ if big=$(find "$SITE" -type f -size +25M | head -1) && [ -n "$big" ]; then
     echo "File too big for Pages: $big" >&2; exit 1
 fi
 
-WRANGLER="npx --yes wrangler@4"
-$WRANGLER pages project list 2>/dev/null | grep -qw "$PROJECT" \
-    || $WRANGLER pages project create "$PROJECT" --production-branch main
-$WRANGLER pages deploy "$SITE" --project-name "$PROJECT" --branch main --commit-dirty=true
+# Create the project through the API: recent wrangler releases hand
+# `pages project create` over to Workers, which needs other permissions.
+API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects"
+AUTH="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+if ! curl -fsS -H "$AUTH" "$API/$PROJECT" > /dev/null 2>&1; then
+    curl -fsS -X POST -H "$AUTH" -H "Content-Type: application/json" "$API" \
+        -d "{\"name\":\"$PROJECT\",\"production_branch\":\"main\"}" > /dev/null
+    echo "Created Pages project $PROJECT"
+fi
+npx --yes wrangler@4 pages deploy "$SITE" --project-name "$PROJECT" --branch main --commit-dirty=true

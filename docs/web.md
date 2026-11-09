@@ -115,7 +115,9 @@ CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... web/deploy-cloudflare.sh
 ```
 
 The token needs the *Cloudflare Pages: Edit* account permission. The first run
-creates the `keeperfx` project (`https://keeperfx.pages.dev`). To use your own
+creates the `keeperfx` project (`https://keeperfx.pages.dev`); later runs upload
+only the files that changed. `web/404.html` must stay in the site: without it
+Pages answers every missing path with `index.html` and status 200. To use your own
 domain, add it under the project's *Custom domains*; for a domain on the same
 Cloudflare account that also creates its DNS record.
 
