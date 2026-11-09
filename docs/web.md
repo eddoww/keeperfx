@@ -38,6 +38,10 @@ and Safari have both; it has been tested in Chromium).
   the browser, or the other way round.
 - The display modes in `keeperfx.cfg` are replaced with windowed modes sized to
   the page; the page scales the picture to the window.
+- Keep `RELATIVE_MOUSE_MODE=ON` (the default). With it off, the game moves its
+  cursor to the screen centre at some points (starting a level, the land
+  view) and expects the system pointer to follow, which a web page cannot do,
+  so the two drift apart until the pointer leaves the page and comes back.
 
 ## URL options
 
