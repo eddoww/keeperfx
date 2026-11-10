@@ -127,10 +127,20 @@ async function fetchOne(url) {
   }
 }
 
-// Drop cached files that are no longer in the current manifest.
+// Drop cached files that are no longer in the current manifest, nor in the
+// manifest of another game version this browser used lately (shared files
+// stay cached across a switch; see web/kfx_versions.js).
 async function pruneCache(validUrls) {
   const cache = await openCache();
   if (!cache) return;
+  try {
+    for (const url of Versions.otherManifestUrls()) {
+      const other = await (await fetch(url)).json();
+      for (const u of manifestUrls(other, new URL('.', url).href).urls) validUrls.add(u);
+    }
+  } catch (e) {
+    return; // keep everything rather than throw out what another version needs
+  }
   for (const req of await cache.keys()) {
     const path = new URL(req.url).pathname + new URL(req.url).search;
     if (!validUrls.has(path)) cache.delete(req);
@@ -148,28 +158,39 @@ function exists(path) {
   try { FS.lookupPath(path, { follow: true }); return true; } catch (e) { return false; }
 }
 
-// dataBase: where the data files are, e.g. gamedata/ next to the page or an
-// R2 bucket's public URL (site.json dataUrl). The manifest stays with the page.
-function createPlaceholders(manifest, dataBase) {
+// Where each file of a manifest downloads from. A plain manifest names files
+// by path, requested as <dataBase><path>?v=<hash> (gamedata/ next to the page,
+// or site.json dataUrl). A content-addressed one ("layout": "cas", from
+// web/publish-build.py) is shared by several game versions: <dataBase><hash>.
+// Returns {files: [[rel, size, url, parts]], urls: Set of path+query to keep}.
+function manifestUrls(manifest, dataBase) {
   const base = new URL(dataBase || 'gamedata/', location.href);
-  const valid = new Set();
-  let count = 0;
+  const cas = manifest.layout === 'cas';
+  const files = [];
+  const urls = new Set();
   for (const [rel, size, hash, parts] of manifest.files) {
+    const url = new URL(cas ? hash : `${encodeURI(rel)}?v=${hash}`, base);
+    if (parts > 1) {
+      for (let i = 0; i < parts; i++) urls.add(`${url.pathname}.part${i}${url.search}`);
+    } else {
+      urls.add(url.pathname + url.search);
+    }
+    files.push([rel, size, url.href, parts]);
+  }
+  return { files, urls };
+}
+
+function createPlaceholders(manifest, dataBase) {
+  const { files, urls } = manifestUrls(manifest, dataBase);
+  for (const [rel, size, url, parts] of files) {
     const path = `${GAME_DIR}/${rel}`;
     FS.mkdirTree(path.substring(0, path.lastIndexOf('/')));
     FS.writeFile(path, new Uint8Array(0));
-    const url = new URL(`${encodeURI(rel)}?v=${hash}`, base);
-    if (parts > 1) {
-      splitFiles.set(url.href, parts);
-      for (let i = 0; i < parts; i++) valid.add(`${url.pathname}.part${i}${url.search}`);
-    } else {
-      valid.add(url.pathname + url.search);
-    }
-    FS.lookupPath(path).node.kfxLazy = { url: url.href, size };
-    count++;
+    if (parts > 1) splitFiles.set(url, parts);
+    FS.lookupPath(path).node.kfxLazy = { url, size };
   }
-  Module.kfxLazyPending = count;
-  pruneCache(valid);
+  Module.kfxLazyPending = files.length;
+  pruneCache(urls);
 }
 
 // Download a lazy placeholder now (for files the loader itself edits).
@@ -499,6 +520,18 @@ var KFX = { // var: the site script reaches it as window.KFX
   pending: null,
   resolveChoice: null,
   start(choice) {
+    // A lobby on another game version: reload into that version, then start.
+    if (choice.build && Versions.current && !Versions.current.legacy && choice.build !== Versions.current.id) {
+      if (this.state === 'running' && !confirm('Leave the current game and start this one? It runs another game version.')) return;
+      try { sessionStorage.setItem(START_KEY, JSON.stringify(choice)); } catch (e) { /* starts on the start screen */ }
+      leaving = true;
+      const url = new URL(location.href);
+      for (const p of ['join', 'host', 'autostart', 'spectate', 'unlisted']) url.searchParams.delete(p);
+      url.searchParams.set('build', choice.build);
+      url.hash = '#/play';
+      location.href = url.href;
+      return;
+    }
     if (this.state === 'ready' && this.resolveChoice) {
       this.resolveChoice(choice);
     } else if (this.state === 'loading' || this.state === 'setup') {
@@ -507,11 +540,19 @@ var KFX = { // var: the site script reaches it as window.KFX
       if (this.state === 'running' && !confirm('Leave the current game and start this one?')) return;
       try { sessionStorage.setItem(START_KEY, JSON.stringify(choice)); } catch (e) { /* starts on the start screen */ }
       leaving = true;
-      location.href = `${location.pathname}#/play`;
+      location.href = `${location.pathname}${keptQuery()}#/play`;
       location.reload();
     }
   },
+  markLeaving() { leaving = true; },
 };
+
+// The query to keep across a restart: the version a link chose, and options.
+function keptQuery() {
+  const url = new URL(location.href);
+  for (const p of ['join', 'host', 'autostart', 'spectate', 'unlisted']) url.searchParams.delete(p);
+  return url.search;
+}
 const STATE_TITLES = {
   loading: ['Loading', 'amber'], setup: ['Game files needed', 'amber'], ready: ['Ready', ''],
   starting: ['Starting', 'amber'], running: ['Playing', ''], exited: ['Stopped', 'idle'], failed: ['Could not start', 'red'],
@@ -542,12 +583,16 @@ async function boot() {
   FS.mkdir('/persist');
   FS.mount(IDBFS, {}, '/persist');
   await syncfs(true);
+  const build = Versions.current;
+  Versions.noteRun();
 
   setStatus('Reading the game data list…');
   const site = await Site.config;
-  const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
+  const manifest = build.legacy
+    ? await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json()
+    : await (await fetch(build.manifestUrl)).json();
   FS.mkdirTree(GAME_DIR);
-  createPlaceholders(manifest, site.dataUrl);
+  createPlaceholders(manifest, build.legacy ? site.dataUrl : build.dataBase);
   prefetch(manifest.prefetch || []); // in the background
 
   const dkUrl = params.get('dk') || site.dkUrl;
@@ -585,7 +630,10 @@ async function boot() {
     args.push('-connect', choice.code);
     showLobbyCode(choice.code);
   } else if (choice.mode === 'host') {
-    Module.kfxHostQuery = choice.unlisted ? 'unlisted=1' : '';
+    const query = new URLSearchParams();
+    if (choice.unlisted) query.set('unlisted', '1');
+    if (!build.legacy) query.set('build', build.id); // the lobby list shows it; joiners switch to it
+    Module.kfxHostQuery = query.toString();
     args.push('-server');
   }
   setState('running');
@@ -682,6 +730,7 @@ function showLobbyCode(code) {
   if (!code) return;
   const link = new URL(location.pathname, location.href);
   link.searchParams.set('join', code);
+  if (Versions.current && !Versions.current.legacy) link.searchParams.set('build', Versions.current.id);
   inviteLink = link.href;
   badge.querySelector('.code').textContent = code;
   $('hud-lobby').textContent = `Lobby ${code}`;
@@ -717,7 +766,7 @@ async function leaveGame() {
   if (!confirm('Leave the game? Anything not saved in the game is lost.')) return;
   leaving = true;
   await persistNow();
-  location.href = `${location.pathname}#/play`;
+  location.href = `${location.pathname}${keptQuery()}#/play`;
   location.reload();
 }
 
@@ -725,7 +774,7 @@ async function leaveGame() {
 const BUILD = (document.querySelector('meta[name="kfx-build"]') || {}).content || '';
 
 var Module = {
-  locateFile: (path, prefix) => (BUILD && path.endsWith('.wasm') ? `${prefix}${path}?v=${BUILD}` : prefix + path),
+  locateFile: (path, prefix) => Versions.locate(path, prefix, BUILD),
   canvas: document.getElementById('canvas'),
   thisProgram: `${GAME_DIR}/keeperfx`,
   kfxFetchData: fetchData,
@@ -743,6 +792,15 @@ var Module = {
   onAbort: (what) => showExit(`KeeperFX crashed: ${what}`),
   setStatus: (text) => { if (text) setStatus(text); },
 };
+
+// Load the engine of the game version web/kfx_versions.js picks.
+function engineFailed(text) {
+  setStatus(text);
+  showPanel('loading');
+  setState('failed');
+}
+Versions.ready.then(() => Versions.loadEngine(BUILD), (e) => engineFailed(`Could not start: ${e.message}`));
+document.addEventListener('kfx:engine-error', () => engineFailed('Could not load the game. Check your connection and reload the page.'));
 
 // Debugging aid: download the game's log file.
 function downloadLog() {

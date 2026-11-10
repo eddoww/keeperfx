@@ -4,6 +4,18 @@
 // empty in-memory placeholder carrying `node.kfxLazy = {url, size}`. The
 // syscall wrappers in src/kfx/platform/web/WebFileSystem.c ask here whether a
 // path is such a placeholder, and download it on first open.
+//
+// Page/engine contract: KFX_WEB_API = 1
+// One page (web/kfx_loader.js, kfx_versions.js, kfx_site.js) can run several
+// engine builds (web/publish-build.py records this number for each one, and
+// the page only offers builds whose number it supports). The contract is what
+// the page and an engine expect of each other: the Module hooks used here and
+// in the loader (kfxFetchData, kfxLazyPending and node.kfxLazy, kfxHostQuery,
+// kfxOnHosting, kfxOnLevelResult, kfxOnFrame), the command line the loader
+// passes (-server, -connect CODE, -spectate), the /persist layout and the /api
+// routes the engine calls. Raise the number when a change here or in the
+// engine needs a page that knows about it, and add it to SUPPORTED_API in
+// web/kfx_versions.js once the page handles both.
 
 addToLibrary({
   // Yield to the browser after each presented frame, so the canvas is shown

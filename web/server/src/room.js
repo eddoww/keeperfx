@@ -64,6 +64,7 @@ export class Room extends DurableObject {
       server.serializeAttachment({
         host: true, code, user: url.searchParams.get('user') || '',
         unlisted: url.searchParams.get('unlisted') === '1',
+        build: url.searchParams.get('build') || '',
       });
       await this.ctx.storage.put({ code, nextConn: 1, createdAt: Math.floor(Date.now() / 1000) });
       server.send(JSON.stringify({ type: 'created', code }));
@@ -189,6 +190,7 @@ export class Room extends DurableObject {
       delete fields.action;
       delete fields.id;
       if (info.user) fields.hostAccount = info.user; // the host is signed in under this name
+      if (info.build) fields.build = info.build;     // the engine build it runs (web/kfx_versions.js)
       // Kept here too, for invite links to lobbies that aren't listed (info()).
       await this.ctx.storage.put('meta', { ...((await this.ctx.storage.get('meta')) || {}), ...fields });
       if (!info.unlisted) await this.directory().update(info.code, fields);
