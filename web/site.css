@@ -301,7 +301,7 @@ button.mini-row { width: 100%; border: 0; background: none; font: inherit; text-
 #dropzone > .icon { display: block; width: 34px; height: 34px; margin: 0 auto 12px; color: var(--gold); }
 #dropzone.over { border-color: var(--gold); background: rgba(227, 171, 69, .08); }
 #dropzone p { margin: 10px 0 0; font-size: 14px; }
-#dk-folder { display: none; }
+#dk-folder, #dk-files { display: none; }
 
 .invited { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: -6px 0 18px; padding: 12px 14px; border-radius: 10px; background: rgba(227, 171, 69, .1); border: 1px solid var(--gold-lo); }
 .invited-info { display: block; font-size: 13px; color: var(--muted); margin-top: 4px; }
@@ -541,4 +541,91 @@ details p { margin: 8px 0 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   #embers { display: none; }
+}
+
+/* ---- Touch and controllers (web/kfx_touch.js) ------------------------------- */
+
+/* Hints under the game follow the input in use. */
+.stage-foot .hint-touch, .stage-foot .hint-pad { display: none; }
+body.input-touch .stage-foot .hint-mouse, body.input-pad .stage-foot .hint-mouse { display: none; }
+body.input-touch .stage-foot .hint-touch, body.input-pad .stage-foot .hint-pad { display: inline; }
+
+/* No page scrolling, zooming, selection or callouts on the game. */
+body.input-touch .stage { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+
+.touch-ui { display: none; }
+body.input-touch.playing .trail { display: flex; }
+body.input-touch.playing.touch-rail-hidden .trail { display: none; }
+body.input-touch.playing.touch-rail-hidden .ttab { display: grid; }
+body.input-touch.playing.game-possess:not(.game-typing) .tstick,
+body.input-touch.playing.game-possess .tbtn.tleave { display: grid; }
+
+.trail {
+  position: absolute; z-index: 4; top: 50%; right: max(8px, env(safe-area-inset-right)); transform: translateY(-50%);
+  flex-direction: column; gap: 6px;
+}
+.tbtn {
+  --s: 54px;
+  width: var(--s); height: var(--s); padding: 0; display: grid; place-content: center; justify-items: center; gap: 1px;
+  border-radius: 12px; cursor: pointer; touch-action: manipulation;
+  color: var(--gold-hi); background: rgba(20, 14, 10, .72); border: 1px solid var(--border-hi);
+  box-shadow: inset 0 1px 0 rgba(255, 225, 170, .08), 0 4px 14px rgba(0, 0, 0, .45);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+.tbtn b { font: 700 21px/1 var(--body); }
+.tbtn span { font: 700 9.5px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tbtn:active { filter: brightness(1.3); }
+.tbtn.on { color: #221303; background: linear-gradient(180deg, #ffd98a, var(--gold) 45%, #c58a2a); border-color: var(--gold-hi); }
+.tbtn.on span { color: #3a2208; }
+body.game-typing .tbtn.kbd:not(.on) { animation: tglow 1.2s ease-in-out infinite; }
+@keyframes tglow { 50% { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(227, 171, 69, .35); } }
+
+.tmore {
+  position: absolute; z-index: 5; top: 50%; right: calc(max(8px, env(safe-area-inset-right)) + 66px); transform: translateY(-50%);
+  display: grid; grid-template-columns: repeat(4, auto); gap: 6px; padding: 8px; border-radius: 14px;
+  background: rgba(10, 7, 6, .9); border: 1px solid var(--border-hi); box-shadow: var(--shadow);
+}
+.tmore[hidden] { display: none; }
+body:not(.input-touch) .tmore, body:not(.playing) .tmore { display: none; }
+
+.ttab {
+  position: absolute; z-index: 4; top: 50%; right: 0; transform: translateY(-50%); width: 22px; height: 64px; padding: 0;
+  place-content: center; border-radius: 10px 0 0 10px; border: 1px solid var(--border-hi); border-right: 0;
+  color: var(--gold-hi); background: rgba(20, 14, 10, .72); font: 700 18px/1 var(--body);
+}
+
+.tstick {
+  position: absolute; z-index: 4; left: max(18px, env(safe-area-inset-left)); bottom: 18px; width: 128px; height: 128px;
+  place-items: center; border-radius: 50%; touch-action: none;
+  background: radial-gradient(circle, rgba(20, 14, 10, .35), rgba(20, 14, 10, .7)); border: 1px solid var(--border-hi);
+}
+.tstick i { width: 46%; height: 46%; border-radius: 50%; background: radial-gradient(circle at 40% 35%, var(--gold-hi), var(--gold-lo)); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.tbtn.tleave { display: none; position: absolute; z-index: 4; right: max(8px, env(safe-area-inset-right)); bottom: 12px; }
+body.input-touch.playing.game-possess .trail { top: 40%; }
+
+/* The stand-in text field for the phone's keyboard: focusable, not seen. 16px
+   keeps iOS from zooming the page when it takes focus. */
+.tfield { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; font-size: 16px; pointer-events: none; }
+
+/* Fill the tab on a touch screen: the game alone, the side bar has the way out. */
+body.theater.input-touch .stage-bar { display: none; }
+body.theater.input-touch .shell { height: 100vh; height: 100dvh; }
+
+/* Held upright, the game is tiny: say so instead of showing the side bar. */
+@media (orientation: portrait) {
+  body.input-touch.playing .trail, body.input-touch.playing .tmore { display: none; }
+  body.input-touch.playing #stage::after {
+    content: "Turn your device sideways to play"; position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 4;
+    padding: 7px 12px; border-radius: 8px; white-space: nowrap; font: 600 12.5px/1.2 var(--body); color: var(--gold-hi);
+    background: rgba(10, 7, 6, .85); border: 1px solid var(--border-hi); pointer-events: none;
+  }
+}
+
+/* Phones: a smaller bar. */
+@media (max-height: 520px) {
+  .tbtn { --s: 44px; border-radius: 10px; }
+  .tbtn b { font-size: 18px; }
+  .tbtn span { font-size: 8.5px; }
+  .tmore { right: calc(max(8px, env(safe-area-inset-right)) + 54px); }
+  .tstick { width: 104px; height: 104px; bottom: 10px; }
 }

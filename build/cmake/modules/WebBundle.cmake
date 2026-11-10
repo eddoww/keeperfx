@@ -20,6 +20,7 @@ add_custom_target(web-site ALL
         "$<TARGET_FILE_DIR:keeperfx>/keeperfx.wasm"
         "${CMAKE_SOURCE_DIR}/web/index.html"
         "${CMAKE_SOURCE_DIR}/web/kfx_loader.js"
+        "${CMAKE_SOURCE_DIR}/web/kfx_touch.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_account.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_site.js"
         "${CMAKE_SOURCE_DIR}/web/site.css"

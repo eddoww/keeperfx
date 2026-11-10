@@ -228,9 +228,18 @@ async function writeConfig() {
   // mode: exact in fullscreen, sharp on high-DPI screens, and scaled down by
   // the browser while the game sits in its frame on the page (fitCanvas).
   const dpr = window.devicePixelRatio || 1;
-  const sw = Math.max(window.screen.width || 0, window.innerWidth);
-  const sh = Math.max(window.screen.height || 0, window.innerHeight);
-  const scale = Math.min(dpr, 3840 / sw, 2160 / sh);
+  let sw = Math.max(window.screen.width || 0, window.innerWidth);
+  let sh = Math.max(window.screen.height || 0, window.innerHeight);
+  let scale = Math.min(dpr, 3840 / sw, 2160 / sh);
+  // Phones and tablets: always landscape (the game has no portrait layout),
+  // and at most about 1.2 megapixels (0.8 with little memory), which keeps a
+  // phone GPU at the display's refresh rate and still looks sharp on its
+  // small screen.
+  if (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) {
+    if (sh > sw) [sw, sh] = [sh, sw];
+    const budget = (navigator.deviceMemory && navigator.deviceMemory <= 2) ? 0.8e6 : 1.2e6;
+    scale = Math.min(scale, Math.sqrt(budget / (sw * sh)));
+  }
   const w = Math.max(640, Math.round(sw * scale / 2) * 2);
   const h = Math.max(480, Math.round(sh * scale / 2) * 2);
   const page = `${w}x${h}w32`;
@@ -257,13 +266,16 @@ async function writeConfig() {
 // files: array of {path, file}, path relative to whatever the player picked.
 async function importDkFiles(files) {
   const wanted = new Map(DK_FILES.map((rel) => [rel, null]));
+  // Phones and tablets often can't pick a folder, only files: their names
+  // are unique, so a file without its folder still finds its place.
+  const byName = new Map(DK_FILES.map((rel) => [rel.split('/')[1], rel]));
   const music = [];
   for (const { path, file } of files) {
     const parts = path.toLowerCase().split('/');
     const name = parts[parts.length - 1];
     const dir = parts.length > 1 ? parts[parts.length - 2] : '';
-    const rel = `${dir}/${name}`;
-    if (wanted.has(rel) && !wanted.get(rel)) wanted.set(rel, file);
+    const rel = wanted.has(`${dir}/${name}`) ? `${dir}/${name}` : (parts.length === 1 && byName.get(name)) || '';
+    if (rel && !wanted.get(rel)) wanted.set(rel, file);
     else if (MUSIC_RE.test(name)) music.push(file);
   }
   const missing = [...wanted].filter(([, f]) => !f).map(([rel]) => rel);
@@ -331,9 +343,11 @@ function waitForDkFiles() {
         resolve();
       } catch (e) { fail(e); }
     };
-    $('dk-folder').addEventListener('change', (ev) => {
-      accept([...ev.target.files].map((file) => ({ path: file.webkitRelativePath || file.name, file })));
-    });
+    for (const id of ['dk-folder', 'dk-files']) {
+      $(id).addEventListener('change', (ev) => {
+        accept([...ev.target.files].map((file) => ({ path: file.webkitRelativePath || file.name, file })));
+      });
+    }
     const drop = $('dropzone');
     drop.addEventListener('dragover', (ev) => { ev.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
@@ -376,6 +390,11 @@ const isFullscreen = () => document.fullscreenElement === $('stage');
 function toggleFullscreen() {
   if (document.fullscreenElement) {
     document.exitFullscreen();
+    return;
+  }
+  // No fullscreen for page elements (iPhone Safari): fill the tab instead.
+  if (!$('stage').requestFullscreen) {
+    toggleTheater();
     return;
   }
   $('stage').requestFullscreen({ navigationUI: 'hide' }).then(() => {
