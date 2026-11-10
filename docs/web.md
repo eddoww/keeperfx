@@ -26,10 +26,11 @@ Saves, settings, replays and screenshots are kept there too.
   them from the browser cache.
 
 The site around the game is one document with a page per URL fragment:
-`#/` (home), `#/play`, `#/lobbies`, `#/fame` (Hall of Fame, with
+`#/` (home), `#/play`, `#/lobbies`, `#/workshop` (with `#/workshop/<category>`,
+`#/workshop/installed` and `#/workshop/item/<id>`), `#/fame` (Hall of Fame, with
 `#/fame/levels/<campaign>/<level>` and `#/keeper/<name>`) and `#/guide`. The
-lobbies and the Hall of Fame need the site's server (see "Online play"); on
-plain static hosting they are left out. While a game runs, links to the other
+lobbies, the workshop and the Hall of Fame need the site's server (see "Online
+play"); on plain static hosting they are left out. While a game runs, links to the other
 pages open in a new tab.
 
 It needs a browser with WebAssembly and WebGL 2 (current Chrome, Edge, Firefox
@@ -191,9 +192,9 @@ How it fits together:
   host and the players; another (`Directory`) keeps the lobby list, and a
   third (`Tavern`) holds the pages' WebSockets for presence, chat and news,
   and tells them when the lobby list changes.
-- On the page, `web/kfx_loader.js` starts the game (`window.KFX`) and
+- On the page, `web/kfx_loader.js` starts the game (`window.KFX`),
   `web/kfx_site.js` is everything around it: the pages, sign-in, lobbies,
-  tavern and records.
+  tavern and records, and `web/kfx_workshop.js` is the workshop.
 - In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
   (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
   `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's
@@ -208,6 +209,67 @@ through the relay, which the Workers free plan (100,000 Durable Object requests
 a day, incoming WebSocket messages counted 20:1) covers for roughly ten hours of
 two-player games a day; Workers Paid lifts that.
 
+### The Workshop
+
+`#/workshop` lists the [KeeperFX Workshop](https://keeperfx.net/workshop) on
+keeperfx.net: search, categories, sorting, and a page per item with its
+screenshots, description, author, rating and a link back to keeperfx.net.
+**Add to my game** downloads an item into the browser; **Play** starts one of
+its maps straight away (`-campaign <pack> -level <n>`, against computer
+keepers for multiplayer maps); **Host online** opens a lobby with the map that
+starts once enough keepers have joined (`-waitusers`); **Remove** deletes it.
+Campaigns are started from the game's own Campaigns menu, so they keep their
+story, land view and saves.
+
+What installs:
+
+| Kind | In the browser |
+|---|---|
+| Maps, map packs, multiplayer maps and packs | Yes |
+| Campaigns | Yes (up to 128 MB per download) |
+| Mods, creatures, applications, other | No: they need hand edits to the game's own files, or are desktop programs. The page says so and links to keeperfx.net. |
+
+How an item is laid out (`web/kfx_workshop.js`): the archive (zip, 7z or rar,
+unpacked by [libarchive.js](https://github.com/nika-begiashvili/libarchivejs),
+`web/vendor/`, loaded only when needed) is placed as desktop KeeperFX would
+have it. A map pack or campaign `.cfg` in the archive (one with
+`LEVELS_LOCATION`) decides where its folders go under `levels/`, `campgns/`
+or `multiplayer/`. Loose map files, which desktop players copy into an
+existing pack, get a map pack of their own instead: `levels/ws<id>.cfg` or
+`multiplayer/ws<id>.cfg`, named after the item and copied from the pack their
+folder names (e.g. `classic`), else `standard`/`modern`. Nothing replaces a
+file of the game itself, and two items may not share a file. Lua scripts are
+checked for LuaJIT-only features (`ffi`, `goto`), which the browser's Lua 5.1
+lacks; the item page warns when it finds them.
+
+Installed files are kept in their own IndexedDB database
+(`keeperfx-workshop`), not in `/persist`, so a second tab saving its
+`/persist` cannot drop them. At start the loader lists them in `/kfx` as lazy
+placeholders like the game data (`kfxws:<id>/<path>` URLs), read when the game
+opens them.
+
+Online: the host's page adds `workshop=<id>.<file>,...` to the lobby (the map
+picked on the workshop page, or else every installed multiplayer item), the
+relay puts it in the lobby's metadata, and a joiner's page installs exactly
+those versions before the game connects. The lobby list and invites show
+them. Someone joining from the game's own lobby list instead is told to get
+the maps first, with a button that joins again through the page. The game's
+check that all players' loaded files match the host's still applies.
+
+The Worker (`web/server/src/workshop.js`) reaches keeperfx.net for the page,
+which cannot itself (no CORS there):
+
+| Route | Upstream, caching |
+|---|---|
+| `GET /api/workshop/catalogue` | keeperfx.net's `/api/v1/workshop/search` with a blank query (every item, about 1 MB), passed through unparsed; refreshed at most every 6 hours per Cloudflare location, with a copy in R2 for when keeperfx.net is down |
+| `GET /api/workshop/item/<id>` | `/api/v1/workshop/item/<id>` (files) and the item's page (screenshots); 1 hour |
+| `GET /api/workshop/file/<id>/<file>` | `/workshop/download/...` once, then kept in the private R2 bucket `keeperfx-workshop` (binding `WORKSHOP`); served only while keeperfx.net still lists the file |
+
+Every request to keeperfx.net carries a `KeeperFX-Web/1.0` User-Agent naming
+this site. Screenshots load from keeperfx.net directly. Do not give the
+`keeperfx-workshop` bucket a public domain: files must only go out while
+keeperfx.net offers them.
+
 ### Running the Worker
 
 ```sh
@@ -216,10 +278,12 @@ npm install
 npm run dev            # local: http://127.0.0.1:8787, with local D1 and Durable Objects
 ```
 
-To deploy, create the D1 database once and put its id in `wrangler.jsonc`, then:
+To deploy, create the D1 database and the workshop's R2 bucket once (put the
+database id in `wrangler.jsonc`), then:
 
 ```sh
 npx wrangler d1 create keeperfx
+npx wrangler r2 bucket create keeperfx-workshop   # private; see "The Workshop"
 npx wrangler d1 migrations apply keeperfx --remote
 npx wrangler deploy
 ```
