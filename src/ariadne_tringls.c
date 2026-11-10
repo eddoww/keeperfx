@@ -341,16 +341,6 @@ void triangulation_init_triangles(long pt_id1, long pt_id2, long pt_id3, long pt
     Triangles[1].navigation_flags = 7;
 }
 
-char triangle_divide_areas_s8differ(long ntri, long ncorA, long ncorB, long pt_x, long pt_y)
-{
-    struct Point* pt = get_triangle_point(ntri, ncorA);
-    long tipA_x = (pt->x << 8);
-    long tipA_y = (pt->y << 8);
-    pt = get_triangle_point(ntri,ncorB);
-    long tipB_x = (pt->x << 8);
-    long tipB_y = (pt->y << 8);
-    return LbCompareMultiplications(tipA_x-pt_x, tipB_y-pt_y, tipA_y-pt_y, tipB_x-pt_x);
-}
 /******************************************************************************/
 #ifdef __cplusplus
 }

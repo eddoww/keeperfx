@@ -21,6 +21,7 @@
 
 #include "bflib_basics.h"
 #include "globals.h"
+#include "bflib_math.h"
 #include "ariadne_points.h"
 
 #define TRIANLGLES_COUNT 100000
@@ -73,7 +74,6 @@ void edgelen_set(long tri_id);
 long edge_rotateAC(long tri1_id, long cor1_id);
 
 void triangulation_init_triangles(long pt_id1, long pt_id2, long pt_id3, long pt_id4);
-char triangle_divide_areas_s8differ(long ntri, long ncorA, long ncorB, long pt_x, long pt_y);
 /******************************************************************************/
 // Small accessors used in the pathfinding inner loops, inline to avoid call overhead
 
@@ -133,6 +133,17 @@ static inline long link_find(long ntri, long val)
         }
     }
     return -1;
+}
+
+static inline char triangle_divide_areas_s8differ(long ntri, long ncorA, long ncorB, long pt_x, long pt_y)
+{
+    struct Point* pt = get_triangle_point(ntri, ncorA);
+    long tipA_x = (pt->x << 8);
+    long tipA_y = (pt->y << 8);
+    pt = get_triangle_point(ntri,ncorB);
+    long tipB_x = (pt->x << 8);
+    long tipB_y = (pt->y << 8);
+    return LbCompareMultiplications(tipA_x-pt_x, tipB_y-pt_y, tipA_y-pt_y, tipB_x-pt_x);
 }
 /******************************************************************************/
 #ifdef __cplusplus
