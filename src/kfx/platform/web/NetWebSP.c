@@ -10,6 +10,11 @@
  *     maps to game user ids.
  *     WebSockets are reliable and ordered, so the "unsequenced" channel uses
  *     the same path. Waiting for a message yields to the browser (Asyncify).
+ *     A dropped socket is resumed by the page (web/kfx_web.js) without losing
+ *     frames; meanwhile the relay tells the host LINK_DOWN, and the host gives
+ *     that player PEER_TIMEOUT_MS to come back before timing them out, as
+ *     ENet does on the desktop (the game then pauses, the computer keeps
+ *     their keeper, and they can rejoin through the spectator seat).
  * @par Copying and copyrights:
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -43,6 +48,7 @@ extern void kfx_net_hosting(const char *code);
 enum {
     OP_SEND = 1, OP_DATA = 1, OP_BROADCAST = 2, OP_ACCEPT = 3, OP_REJECT = 4, OP_KICK = 5,
     OP_CONNECT = 6, OP_DISCONNECT = 7, OP_ACCEPTED = 8, OP_CLOSING = 9,
+    OP_LINK_DOWN = 10, OP_LINK_UP = 11,
 };
 #define RELAY_HOST_LEFT 255
 #define MAX_RELAY_CONN 256
@@ -65,6 +71,8 @@ static TbBool server_dropped;           // client: drop of SERVER_ID already rep
 // Host side: relay connection <-> game user.
 static uint16_t conn_user[MAX_RELAY_CONN];
 static uint8_t user_conn[MAX_NET_CONNECTIONS];
+// Host side: when a joiner's socket dropped (LINK_DOWN), 0 while connected.
+static TbClockMSec conn_down_at[MAX_RELAY_CONN];
 // Incoming messages per source user.
 static struct QueuedMsg *queue_head[MAX_NET_CONNECTIONS];
 static struct QueuedMsg *queue_tail[MAX_NET_CONNECTIONS];
@@ -109,8 +117,10 @@ static void reset_state(void)
         clear_queue(u);
         user_conn[u] = 0;
     }
-    for (int c = 0; c < MAX_RELAY_CONN; c++)
+    for (int c = 0; c < MAX_RELAY_CONN; c++) {
         conn_user[c] = NO_USER;
+        conn_down_at[c] = 0;
+    }
     room_code[0] = '\0';
     server_dropped = false;
 }
@@ -153,6 +163,7 @@ static void handle_host_frame(const unsigned char *f, int len,
         enum NetJoinRejection reason = (new_user ? new_user : OnNewUser)(&id, joining);
         if (reason == NetJoin_Accepted && id < MAX_NET_CONNECTIONS) {
             conn_user[conn] = id;
+            conn_down_at[conn] = 0;
             user_conn[id] = (uint8_t)conn;
             LbNetLog("Web: connection %d accepted as user %d\n", conn, (int)id);
             send_frame(OP_ACCEPT, conn, NULL, 0);
@@ -170,6 +181,7 @@ static void handle_host_frame(const unsigned char *f, int len,
     case OP_DISCONNECT: {
         NetUserId id = conn_user[conn];
         conn_user[conn] = NO_USER;
+        conn_down_at[conn] = 0;
         if (id != NO_USER) {
             user_conn[id] = 0;
             LbNetLog("Web: user %d disconnected\n", (int)id);
@@ -177,8 +189,46 @@ static void handle_host_frame(const unsigned char *f, int len,
         }
         break;
     }
+    case OP_LINK_DOWN:
+        if (conn_user[conn] != NO_USER && !conn_down_at[conn]) {
+            conn_down_at[conn] = LbTimerClock() | 1;
+            LbNetLog("Web: user %d lost their connection, waiting for them\n", (int)conn_user[conn]);
+        }
+        break;
+    case OP_LINK_UP:
+        if (conn_down_at[conn]) {
+            conn_down_at[conn] = 0;
+            LbNetLog("Web: user %d reconnected\n", (int)conn_user[conn]);
+        }
+        break;
     default:
         break;
+    }
+}
+
+/** Host: forgets the relay connection of user `id` and tells the game it left. */
+static void host_lose_user(int conn, enum NetDropReason reason)
+{
+    NetUserId id = conn_user[conn];
+    conn_user[conn] = NO_USER;
+    conn_down_at[conn] = 0;
+    if (id == NO_USER)
+        return;
+    user_conn[id] = 0;
+    report_drop(id, reason);
+}
+
+/** Host: players whose connection stayed down too long time out. */
+static void host_check_dropped_links(void)
+{
+    TbClockMSec now = LbTimerClock();
+    for (int conn = 1; conn < MAX_RELAY_CONN; conn++) {
+        if (!conn_down_at[conn] || now - conn_down_at[conn] < PEER_TIMEOUT_MS)
+            continue;
+        LbNetLog("Web: user %d did not come back, timing out\n", (int)conn_user[conn]);
+        unsigned char r = NetJoin_Accepted;
+        send_frame(OP_KICK, conn, &r, 1); // the relay frees the seat
+        host_lose_user(conn, NETDROP_TIMEOUT);
     }
 }
 
@@ -218,7 +268,12 @@ static void pump(enum NetJoinRejection (*new_user)(NetUserId *assigned_id, enum 
             ERRORLOG("Web: lost the connection to the lobby relay");
             room_code[0] = '\0';
             kfx_net_hosting(NULL);
+            // Nobody can reach us any more: let the game carry on without them.
+            for (int conn = 1; conn < MAX_RELAY_CONN; conn++)
+                host_lose_user(conn, NETDROP_DISCONNECT);
         }
+    } else if (role == WEB_HOST) {
+        host_check_dropped_links();
     }
 }
 
@@ -419,6 +474,7 @@ static void web_drop_user(NetUserId id, enum NetJoinRejection reason)
         int conn = user_conn[id];
         send_frame(OP_KICK, conn, &r, 1);
         conn_user[conn] = NO_USER;
+        conn_down_at[conn] = 0;
         user_conn[id] = 0;
     }
     if (drop_callback)
@@ -437,6 +493,7 @@ static void web_reassign_user(NetUserId old_id, NetUserId new_id)
         unsigned char r = NetJoin_Accepted;
         send_frame(OP_KICK, user_conn[new_id], &r, 1); // a stale connection held that seat
         conn_user[user_conn[new_id]] = NO_USER;
+        conn_down_at[user_conn[new_id]] = 0;
     }
     int conn = user_conn[old_id];
     user_conn[new_id] = (uint8_t)conn;

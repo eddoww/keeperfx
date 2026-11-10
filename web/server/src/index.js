@@ -16,6 +16,8 @@
 //        [&qmseat=2|any&qmname=<n>]   ... a lobby that quick-match players may be sent to
 //   GET  /api/workshop/...            the KeeperFX Workshop, cached (workshop.js)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
+//   GET  /api/rooms/<CODE>?resume=<id>&secret=..&ack=N  WebSocket: resume a dropped link (room.js)
+//        (&link=1 on host and join: resumable links)
 //   GET  /site.json                   page settings (dataUrl: where game data lives,
 //                                     serviceWorker: false to switch the offline app off)
 //
@@ -55,6 +57,7 @@ async function hostRoom(request, env, ctx) {
     const unlisted = url.searchParams.get('unlisted') === '1';
     // Workshop items (id.file) the host's game may use: joiners' pages install them first.
     const workshop = url.searchParams.get('workshop') || '';
+    const link = url.searchParams.get('link') === '1';
     url.search = '';
     if (WORKSHOP_RE.test(workshop)) url.searchParams.set('workshop', workshop);
     url.searchParams.set('role', 'host');
@@ -63,6 +66,7 @@ async function hostRoom(request, env, ctx) {
     if (unlisted) url.searchParams.set('unlisted', '1');
     const asked = new URL(request.url).searchParams;
     if (asked.get('qm') || asked.get('qmseat')) url.searchParams.set('qm', '1'); // quick match: tell the tavern when it ends
+    if (link) url.searchParams.set('link', '1');
     const resp = await roomStub(env, code).fetch(new Request(url, request));
     if (resp.status === 101) quickMatchHosted(request, env, ctx, code, user);
     if (resp.status !== 409) return resp; // 409: code already in use, pick another
@@ -87,9 +91,11 @@ async function joinRoom(request, env, code) {
   if (!CODE_RE.test(code)) return json({ error: 'No such lobby' }, { status: 404 });
   const url = new URL(request.url);
   const role = url.searchParams.get('role') === 'spectator' ? 'spectator' : 'player';
+  const keep = ['link', 'resume', 'secret', 'ack'].map((k) => [k, url.searchParams.get(k)]).filter(([, v]) => v !== null);
   url.search = '';
   url.searchParams.set('role', role);
   url.searchParams.set('code', code);
+  for (const [k, v] of keep) url.searchParams.set(k, v.slice(0, 64));
   return roomStub(env, code).fetch(new Request(url, request));
 }
 
