@@ -10,6 +10,8 @@
 //   POST /api/scores, GET /api/scores/..., /api/keepers/<name>   Hall of Fame (scores.js)
 //   GET  /api/rooms/host[?unlisted=1] WebSocket: host a new lobby (relay creates the code)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
+//   GET  /api/rooms/<CODE>?resume=<id>&secret=..&ack=N  WebSocket: resume a dropped link (room.js)
+//        (&link=1 on host and join: resumable links)
 //   GET  /site.json                   page settings (dataUrl: where game data lives)
 //
 // Everything else is the static site (assets binding).
@@ -42,11 +44,13 @@ async function hostRoom(request, env) {
     const code = newCode();
     const url = new URL(request.url);
     const unlisted = url.searchParams.get('unlisted') === '1';
+    const link = url.searchParams.get('link') === '1';
     url.search = '';
     url.searchParams.set('role', 'host');
     url.searchParams.set('code', code);
     if (user) url.searchParams.set('user', user.username);
     if (unlisted) url.searchParams.set('unlisted', '1');
+    if (link) url.searchParams.set('link', '1');
     const resp = await roomStub(env, code).fetch(new Request(url, request));
     if (resp.status !== 409) return resp; // 409: code already in use, pick another
   }
@@ -58,9 +62,11 @@ async function joinRoom(request, env, code) {
   if (!CODE_RE.test(code)) return json({ error: 'No such lobby' }, { status: 404 });
   const url = new URL(request.url);
   const role = url.searchParams.get('role') === 'spectator' ? 'spectator' : 'player';
+  const keep = ['link', 'resume', 'secret', 'ack'].map((k) => [k, url.searchParams.get(k)]).filter(([, v]) => v !== null);
   url.search = '';
   url.searchParams.set('role', role);
   url.searchParams.set('code', code);
+  for (const [k, v] of keep) url.searchParams.set(k, v.slice(0, 64));
   return roomStub(env, code).fetch(new Request(url, request));
 }
 
