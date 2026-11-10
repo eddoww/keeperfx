@@ -94,6 +94,14 @@ enum NetCompatResult net_users_compat(const struct NetUser *a, const struct NetU
     return net_compat_check(&a->compat, a->compat_known, &a->version, &b->compat, b->compat_known, &b->version);
 }
 
+TbBool net_user_has_capability(NetUserId id, uint32_t capability)
+{
+    if (id < 0 || id >= MAX_NET_CONNECTIONS) {
+        return false;
+    }
+    return (net_compat_common_capabilities(&netstate.users[id].compat, netstate.users[id].compat_known) & capability) == capability;
+}
+
 void net_compat_format(const struct NetCompatInfo *info, char *out, size_t out_size)
 {
     snprintf(out, out_size, "%u-%u/%u", (unsigned)info->protocol_oldest, (unsigned)info->protocol, (unsigned)info->sim);

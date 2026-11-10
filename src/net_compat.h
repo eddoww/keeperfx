@@ -65,8 +65,9 @@ extern "C" {
 
 enum NetCapabilities {
     NetCap_None = 0,
+    NetCap_DeltaResync = 0x0001,  // resync sends only the parts of the game state that differ (net_resync.cpp)
 };
-#define NET_CAPABILITIES_LOCAL (NetCap_None)
+#define NET_CAPABILITIES_LOCAL (NetCap_DeltaResync)
 
 #pragma pack(1)
 struct NetCompatInfo {

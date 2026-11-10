@@ -43,6 +43,8 @@
 #include "kjm_input.h"
 #include "kfx/save/core/save_resync.h"
 #include "kfx/save/core/save_config_overlay.h"
+#include "replay.h"
+#include <SDL3/SDL.h>
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -337,7 +339,7 @@ static TbBool receive_resync_message(char **message_out, size_t *message_size_ou
             continue;
         }
         if (received_size < sizeof(ResyncHeader)) {
-            if (received_size > 0 && message_buffer[0] == NETMSG_RESYNC_DATA) {
+            if (received_size > 0 && (message_buffer[0] == NETMSG_RESYNC_DATA || message_buffer[0] == NETMSG_RESYNC_DELTA)) {
                 ERRORLOG("Received incomplete resync data: %u bytes", (uint32_t)received_size);
             } else {
                 ERRORLOG("Ignoring message too small for resync data: %u bytes", (uint32_t)received_size);
@@ -345,7 +347,7 @@ static TbBool receive_resync_message(char **message_out, size_t *message_size_ou
             free(message_buffer);
             continue;
         }
-        if (message_buffer[0] != NETMSG_RESYNC_DATA) {
+        if (message_buffer[0] != NETMSG_RESYNC_DATA && message_buffer[0] != NETMSG_RESYNC_DELTA) {
             MULTIPLAYER_LOG("Received wrong message type: %d", message_buffer[0]);
             free(message_buffer);
             continue;
@@ -591,16 +593,350 @@ static TbBool apply_resync_game_message(const char * message_buffer, size_t mess
     return result;
 }
 
-static char *create_resync_game_message(size_t *message_size)
+/******************************************************************************/
+// Delta resync (NetCap_DeltaResync).
+//
+// Every player sees a desync on the same game turn: they compare the checksums in the same
+// packets. A client then keeps the resync data of its own state at that point, where the host
+// builds its own (the end of process_packets), and sends the host a hash of each block of it.
+// When the host resyncs, such a client gets only the blocks of the host's data whose hashes
+// differ, laid over the copy it kept; the result is checked against the CRC of the host's data.
+// The state is ~23 MB, ~320 KB compressed; a delta is usually a small fraction of that. A client
+// that cannot use a delta answers NETMSG_RESYNC_RESULT and the host sends it the full state.
+
+#define DELTA_MIN_BLOCK 8192
+#define DELTA_MAX_BLOCKS 4096
+#define DELTA_HASH_WAIT_MIN_MS 150
+#define DELTA_HASH_WAIT_MAX_MS 2000
+
+#pragma pack(1)
+struct ResyncHashesHeader {
+    uint32_t generation;
+    uint32_t base_id;
+    uint32_t total_length;
+    uint32_t block_size;
+    uint32_t block_count;
+};
+
+struct ResyncDeltaHeader {
+    unsigned char message_type;
+    uint32_t compressed_length;
+    uint32_t payload_length;
+    uint32_t full_length;
+    uint32_t full_checksum;
+    uint32_t gameplay_generation;
+    uint32_t base_id;
+    uint32_t block_size;
+};
+
+struct ResyncResult {
+    uint32_t generation;
+    uint8_t ok;
+};
+#pragma pack()
+
+struct DeltaHashes {
+    uint32_t *hashes;
+    struct ResyncHashesHeader header;
+};
+
+// client: its resync data from when it saw the desync
+static char *delta_base = NULL;
+static size_t delta_base_len = 0;
+static uint32_t delta_base_id = 0;
+// host: what each client sent
+static struct DeltaHashes user_hashes[MAX_NET_USERS];
+// host: the last full resync message, for a client whose delta failed
+static char *last_full_message = NULL;
+static size_t last_full_message_size = 0;
+static uint32_t last_full_generation = 0;
+
+// 32 bits per block keep the hashes message small; a collision only costs a NETMSG_RESYNC_RESULT
+// round trip, as the rebuilt state is checked against the CRC of the host's data.
+static uint32_t delta_block_hash(const char *data, size_t len)
 {
-    size_t full_resync_len = 0;
-    char * full_resync_data = build_resync_game_data(&full_resync_len);
-    if (full_resync_data == NULL) {
+    return (uint32_t)crc32(0L, (const Bytef *)data, (uInt)len);
+}
+
+static uint32_t delta_block_size(size_t total)
+{
+    size_t size = (total + DELTA_MAX_BLOCKS - 1) / DELTA_MAX_BLOCKS;
+    size = (size + 4095) & ~(size_t)4095;
+    return (uint32_t)max(size, (size_t)DELTA_MIN_BLOCK);
+}
+
+static size_t delta_block_length(size_t total, uint32_t block_size, uint32_t index)
+{
+    size_t start = (size_t)index * block_size;
+    if (start >= total) {
+        return 0;
+    }
+    return min((size_t)block_size, total - start);
+}
+
+static void forget_user_hashes(NetUserId user)
+{
+    free(user_hashes[user].hashes);
+    memset(&user_hashes[user], 0, sizeof(user_hashes[user]));
+}
+
+void net_resync_forget_delta_state(void)
+{
+    free(delta_base);
+    delta_base = NULL;
+    delta_base_len = 0;
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+        forget_user_hashes(user);
+    }
+}
+
+/** Client, at the end of process_packets on a turn where the game is out of sync. */
+void net_resync_note_client_desync(void)
+{
+    if (!network_is_active() || network_is_host() || network_user_is_spectator(netstate.my_id) || delta_base != NULL) {
+        return;
+    }
+    if (!net_user_has_capability(SERVER_ID, NetCap_DeltaResync)) {
+        return;
+    }
+    TbClockMSec start_time = LbTimerClock();
+    size_t len = 0;
+    char *data = build_resync_game_data(&len);
+    if (data == NULL) {
+        return;
+    }
+    uint32_t block_size = delta_block_size(len);
+    uint32_t count = (uint32_t)((len + block_size - 1) / block_size);
+    char *write_pos = begin_net_message(NETMSG_RESYNC_HASHES);
+    if ((size_t)(write_pos - netstate.msg_buffer) + sizeof(struct ResyncHashesHeader) + count * sizeof(uint32_t) > sizeof(netstate.msg_buffer)) {
+        free(data);
+        return;
+    }
+    delta_base = data;
+    delta_base_len = len;
+    delta_base_id += 1;
+    struct ResyncHashesHeader header = { netstate.gameplay_generation, delta_base_id, (uint32_t)len, block_size, count };
+    memcpy(write_pos, &header, sizeof(header));
+    write_pos += sizeof(header);
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t hash = delta_block_hash(data + (size_t)i * block_size, delta_block_length(len, block_size, i));
+        memcpy(write_pos, &hash, sizeof(hash));
+        write_pos += sizeof(hash);
+    }
+    send_message_buffer(SERVER_ID, write_pos);
+    NETLOG("Desync: kept own state (%u bytes) and sent the host %u block hashes in %u ms",
+        (unsigned)len, (unsigned)count, (unsigned)(LbTimerClock() - start_time));
+}
+
+/** Host: a client's block hashes (NETMSG_RESYNC_HASHES). */
+TbError process_resync_hashes_message(NetUserId source, const char *buffer, size_t buffer_size)
+{
+    if (!network_is_host() || source <= SERVER_ID || source >= MAX_NET_USERS || buffer_size < sizeof(struct ResyncHashesHeader)) {
+        return Lb_OK;
+    }
+    struct ResyncHashesHeader header;
+    memcpy(&header, buffer, sizeof(header));
+    if (header.block_size < DELTA_MIN_BLOCK || header.block_count == 0
+        || buffer_size != sizeof(header) + (size_t)header.block_count * sizeof(uint32_t)
+        || (uint64_t)header.block_count * header.block_size < header.total_length
+        || (uint64_t)(header.block_count - 1) * header.block_size >= header.total_length) {
+        WARNLOG("Invalid resync block hashes from user %d", (int)source);
+        return Lb_OK;
+    }
+    forget_user_hashes(source);
+    user_hashes[source].hashes = (uint32_t *)malloc(header.block_count * sizeof(uint32_t));
+    if (user_hashes[source].hashes == NULL) {
+        return Lb_OK;
+    }
+    memcpy(user_hashes[source].hashes, buffer + sizeof(header), header.block_count * sizeof(uint32_t));
+    user_hashes[source].header = header;
+    MULTIPLAYER_LOG("Host: user %d sent %u resync block hashes", (int)source, (unsigned)header.block_count);
+    return Lb_OK;
+}
+
+/** Host: a client could not use its delta (NETMSG_RESYNC_RESULT): send it the full state. */
+TbError process_resync_result_message(NetUserId source, const char *buffer, size_t buffer_size)
+{
+    if (!network_is_host() || source <= SERVER_ID || source >= MAX_NET_USERS || buffer_size != sizeof(struct ResyncResult)) {
+        return Lb_OK;
+    }
+    struct ResyncResult result;
+    memcpy(&result, buffer, sizeof(result));
+    if (result.ok || result.generation != last_full_generation || last_full_message == NULL) {
+        return Lb_OK;
+    }
+    NETLOG("Host: user %d could not apply the resync delta, sending the full state", (int)source);
+    netstate.sp->sendmsg_single(source, last_full_message, last_full_message_size);
+    return Lb_OK;
+}
+
+static TbBool user_wants_delta(NetUserId user)
+{
+    return user > SERVER_ID && user < MAX_NET_USERS && netstate.users[user].progress == USER_LOGGEDIN
+        && net_user_has_capability(user, NetCap_DeltaResync);
+}
+
+/** Host: gives the clients that can take a delta a moment to send their block hashes. */
+static void wait_for_delta_hashes(uint32_t generation)
+{
+    TbClockMSec wait = DELTA_HASH_WAIT_MIN_MS;
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+        if (user_wants_delta(user)) {
+            wait = max(wait, (TbClockMSec)(2 * GetPing(user) + 150));
+        }
+    }
+    wait = min(wait, (TbClockMSec)DELTA_HASH_WAIT_MAX_MS);
+    TbClockMSec start = LbTimerClock();
+    for (;;) {
+        TbBool missing = false;
+        for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+            if (user_wants_delta(user) && (user_hashes[user].hashes == NULL || user_hashes[user].header.generation != generation)) {
+                missing = true;
+            }
+        }
+        if (!missing || LbTimerClock() - start >= wait || quit_game || exit_keeper) {
+            break;
+        }
+        netstate.sp->update(OnNewUser);
+        for (NetUserId peer_id = 0; peer_id < MAX_NET_USERS; peer_id++) {
+            if (!can_send_to_peer(peer_id)) {
+                continue;
+            }
+            while (netstate.sp->msgready(peer_id, 0)) {
+                process_network_message(peer_id, game.packets, sizeof(struct Packet), NETMSG_GAMEPLAY_UNSEQUENCED, NULL);
+            }
+        }
+        if (!poll_inputs()) {
+            exit_keeper = 1;
+        }
+        SDL_Delay(1);
+    }
+    MULTIPLAYER_LOG("Host: waited %u ms for resync block hashes", (unsigned)(LbTimerClock() - start));
+}
+
+/** Host: the blocks of data whose hashes differ from those the client sent, or NULL if a delta would not pay. */
+static char *encode_resync_delta(const char *data, size_t len, uint32_t full_checksum, const struct DeltaHashes *client,
+    size_t full_message_size, size_t *message_size)
+{
+    const uint32_t block_size = client->header.block_size;
+    const uint32_t count = (uint32_t)((len + block_size - 1) / block_size);
+    char *payload = (char *)malloc(len + (size_t)count * sizeof(uint32_t));
+    if (payload == NULL) {
         return NULL;
     }
-    char *message_buffer = encode_resync_message(full_resync_data, full_resync_len, message_size);
-    free(full_resync_data);
-    return message_buffer;
+    size_t payload_len = 0;
+    uint32_t sent_blocks = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        size_t block_len = delta_block_length(len, block_size, i);
+        const char *block = data + (size_t)i * block_size;
+        if (i < client->header.block_count && block_len == delta_block_length(client->header.total_length, block_size, i)
+            && delta_block_hash(block, block_len) == client->hashes[i]) {
+            continue;
+        }
+        memcpy(payload + payload_len, &i, sizeof(i));
+        payload_len += sizeof(i);
+        memcpy(payload + payload_len, block, block_len);
+        payload_len += block_len;
+        sent_blocks++;
+    }
+    uLongf compressed_size = compressBound(payload_len);
+    char *message = (char *)malloc(sizeof(struct ResyncDeltaHeader) + compressed_size);
+    if (message == NULL) {
+        free(payload);
+        return NULL;
+    }
+    int result = compress2((Bytef *)(message + sizeof(struct ResyncDeltaHeader)), &compressed_size, (const Bytef *)payload, payload_len, Z_BEST_SPEED);
+    free(payload);
+    // Not worth it if it isn't much smaller than the full state.
+    if (result != Z_OK || sizeof(struct ResyncDeltaHeader) + compressed_size > full_message_size / 2) {
+        free(message);
+        return NULL;
+    }
+    struct ResyncDeltaHeader header;
+    header.message_type = NETMSG_RESYNC_DELTA;
+    header.compressed_length = (uint32_t)compressed_size;
+    header.payload_length = (uint32_t)payload_len;
+    header.full_length = (uint32_t)len;
+    header.full_checksum = full_checksum;
+    header.gameplay_generation = netstate.gameplay_generation;
+    header.base_id = client->header.base_id;
+    header.block_size = block_size;
+    memcpy(message, &header, sizeof(header));
+    *message_size = sizeof(header) + compressed_size;
+    NETLOG("Host: resync delta of %u of %u blocks, %u bytes (full state %u bytes)",
+        (unsigned)sent_blocks, (unsigned)count, (unsigned)*message_size, (unsigned)full_message_size);
+    return message;
+}
+
+/** Client: rebuilds the host's resync data from a delta and the kept copy of its own. */
+static TbBool decode_resync_delta(const char *message, size_t message_size, char **data_out, size_t *len_out, uint32_t *generation)
+{
+    if (message_size < sizeof(struct ResyncDeltaHeader)) {
+        return false;
+    }
+    struct ResyncDeltaHeader header;
+    memcpy(&header, message, sizeof(header));
+    if (delta_base == NULL || header.base_id != delta_base_id || header.compressed_length != message_size - sizeof(header)
+        || header.block_size < DELTA_MIN_BLOCK || header.full_length > sizeof(game) + 16 * 1024 * 1024
+        || header.payload_length > header.full_length + (header.full_length / DELTA_MIN_BLOCK + 1) * sizeof(uint32_t)) {
+        WARNLOG("Resync delta does not fit the kept state (base %u, kept %u)", (unsigned)header.base_id, (unsigned)delta_base_id);
+        return false;
+    }
+    char *payload = (char *)malloc(max(header.payload_length, 1U));
+    char *full = (char *)malloc(max(header.full_length, 1U));
+    uLongf payload_len = header.payload_length;
+    if (payload == NULL || full == NULL
+        || uncompress((Bytef *)payload, &payload_len, (const Bytef *)(message + sizeof(header)), header.compressed_length) != Z_OK
+        || payload_len != header.payload_length) {
+        free(payload);
+        free(full);
+        return false;
+    }
+    size_t common = min(delta_base_len, (size_t)header.full_length);
+    memcpy(full, delta_base, common);
+    if (header.full_length > common) {
+        memset(full + common, 0, header.full_length - common);
+    }
+    TbBool ok = true;
+    size_t pos = 0;
+    while (ok && pos < payload_len) {
+        uint32_t index;
+        if (payload_len - pos < sizeof(index)) {
+            ok = false;
+            break;
+        }
+        memcpy(&index, payload + pos, sizeof(index));
+        pos += sizeof(index);
+        size_t block_len = delta_block_length(header.full_length, header.block_size, index);
+        if (block_len == 0 || payload_len - pos < block_len) {
+            ok = false;
+            break;
+        }
+        memcpy(full + (size_t)index * header.block_size, payload + pos, block_len);
+        pos += block_len;
+    }
+    free(payload);
+    if (ok && (uint32_t)crc32(crc32(0L, Z_NULL, 0), (const Bytef *)full, header.full_length) != header.full_checksum) {
+        WARNLOG("Resync delta rebuilt a state with the wrong checksum");
+        ok = false;
+    }
+    if (!ok) {
+        free(full);
+        return false;
+    }
+    *data_out = full;
+    *len_out = header.full_length;
+    *generation = header.gameplay_generation;
+    return true;
+}
+
+static void send_resync_result(TbBool ok, uint32_t generation)
+{
+    struct ResyncResult result = { generation, (uint8_t)(ok ? 1 : 0) };
+    char *write_pos = begin_net_message(NETMSG_RESYNC_RESULT);
+    memcpy(write_pos, &result, sizeof(result));
+    write_pos += sizeof(result);
+    send_message_buffer(SERVER_ID, write_pos);
 }
 
 TbBool send_resync_game(void)
@@ -612,16 +948,45 @@ TbBool send_resync_game(void)
     NETLOG("Initiating re-synchronization of network game");
     take_game_timestamp();
 
-    size_t message_size = 0;
+    const uint32_t previous_generation = netstate.gameplay_generation;
     netstate.gameplay_generation += 1;
-    char *message_buffer = create_resync_game_message(&message_size);
+    size_t full_len = 0;
+    char *full_data = build_resync_game_data(&full_len);
+    size_t message_size = 0;
+    char *message_buffer = NULL;
+    if (full_data != NULL) {
+        message_buffer = encode_resync_message(full_data, full_len, &message_size);
+    }
     if (message_buffer == NULL) {
+        free(full_data);
         netstate.gameplay_generation -= 1;
         return false;
     }
-    send_resync_message(message_buffer, message_size);
+    wait_for_delta_hashes(previous_generation);
+    const uint32_t full_checksum = (uint32_t)crc32(crc32(0L, Z_NULL, 0), (const Bytef *)full_data, (uInt)full_len);
+    NETLOG("Host: Sending resync data to all clients");
+    for (NetUserId user_index = 0; user_index < MAX_NET_CONNECTIONS; ++user_index) {
+        if (user_index == SERVER_ID || netstate.users[user_index].progress != USER_LOGGEDIN || (user_index >= MAX_NET_USERS && netstate.users[user_index].spectator_state != NetSpectator_Streaming)) {
+            continue;
+        }
+        char *delta = NULL;
+        size_t delta_size = 0;
+        if (user_wants_delta(user_index) && user_hashes[user_index].hashes != NULL && user_hashes[user_index].header.generation == previous_generation) {
+            delta = encode_resync_delta(full_data, full_len, full_checksum, &user_hashes[user_index], message_size, &delta_size);
+        }
+        if (delta != NULL) {
+            netstate.sp->sendmsg_single(netstate.users[user_index].id, delta, delta_size);
+            free(delta);
+        } else {
+            netstate.sp->sendmsg_single(netstate.users[user_index].id, message_buffer, message_size);
+        }
+    }
+    free(full_data);
     replay_record_resync(message_buffer, message_size);
-    free(message_buffer);
+    free(last_full_message);
+    last_full_message = message_buffer;
+    last_full_message_size = message_size;
+    last_full_generation = netstate.gameplay_generation;
     animate_resync_progress_bar(90, 100);
     NETLOG("Host: Resync data queued");
     return true;
@@ -637,8 +1002,40 @@ TbBool receive_resync_game(void)
     if (!receive_resync_message(&message_buffer, &message_size)) {
         return false;
     }
-    TbBool result = apply_resync_game_message(message_buffer, message_size);
-    if (result) {
+    TbBool result;
+    if (message_buffer[0] == NETMSG_RESYNC_DELTA) {
+        TbClockMSec start_time = LbTimerClock();
+        char *full_data = NULL;
+        size_t full_len = 0;
+        uint32_t generation = 0;
+        struct ResyncDeltaHeader header;
+        memcpy(&header, message_buffer, min(sizeof(header), message_size));
+        result = decode_resync_delta(message_buffer, message_size, &full_data, &full_len, &generation)
+            && apply_resync_game_data(full_data, full_len);
+        free(message_buffer);
+        message_buffer = NULL;
+        if (result) {
+            netstate.gameplay_generation = generation;
+            NETLOG("Resync delta (%u bytes) applied in %u ms", (unsigned)message_size, (unsigned)(LbTimerClock() - start_time));
+            if (replay.save_enable) {
+                // Replays and the spectators they serve keep full states.
+                message_buffer = encode_resync_message(full_data, full_len, &message_size);
+            }
+        } else {
+            // The host sends the full state instead.
+            send_resync_result(false, header.gameplay_generation);
+            free(full_data);
+            full_data = NULL;
+            if (!receive_resync_message(&message_buffer, &message_size)) {
+                return false;
+            }
+            result = message_buffer[0] == NETMSG_RESYNC_DATA && apply_resync_game_message(message_buffer, message_size);
+        }
+        free(full_data);
+    } else {
+        result = apply_resync_game_message(message_buffer, message_size);
+    }
+    if (result && message_buffer != NULL) {
         replay_record_resync(message_buffer, message_size);
     }
     free(message_buffer);
@@ -657,6 +1054,7 @@ TbBool receive_resync_game(void)
 
 static void finish_resync(const struct Packet *saved_packets)
 {
+    net_resync_forget_delta_state();
     if (Lvl_script != NULL) {
         lua_set_random_seed(game.action_random_seed);
     }
