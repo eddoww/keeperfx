@@ -39,6 +39,7 @@
 #include "keeperfx.hpp"
 #include <SDL3/SDL.h>
 #include "kfx/renderer/RendererManager.h" // RendererPhysicalWidth
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 using namespace std;
@@ -360,6 +361,9 @@ static void process_event(const SDL_Event *ev)
         }
         else
         {
+            // In the browser the page places an uncaptured cursor itself.
+            if (KFX_WEB_MOUSE_FROM_PAGE())
+                break;
             // The game frame may be scaled inside the window; keep the game cursor
             // following the OS cursor, carrying sub-pixel remainders.
             static float rel_x = 0.0f, rel_y = 0.0f;

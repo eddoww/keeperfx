@@ -286,6 +286,9 @@ async function writeConfig() {
   const set = {
     FRONTEND_RES: `640x480w32 ${page} ${page}`,
     INGAME_RES: page,
+    // The page places the cursor; the game locks the mouse only in possession
+    // (see "The mouse"), unless the player chose "Lock mouse".
+    CAPTURE_CURSOR: (mouseLockChosen() || !enginePlacesMouse()) ? 'ON' : 'OFF',
   };
   if (params.get('renderer')) set.RENDERER = params.get('renderer').toUpperCase();
   // ?cfg=KEY=VALUE;KEY=VALUE overrides any other keeperfx.cfg line.
@@ -465,11 +468,84 @@ window.addEventListener('keydown', (ev) => {
   }
   // The page can scroll now that the game sits in a frame: keep the keys the
   // game uses for its own camera from scrolling it.
-  if (KFX.state === 'running' && !ev.target.closest('input, textarea, select, dialog')
+  if (KFX.state === 'running' && !pageKeeps(ev.target)
       && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Tab'].includes(ev.key)) {
     ev.preventDefault();
   }
 }, { capture: true });
+
+// ---- Keyboard: the game owns it while it runs --------------------------------
+
+// SDL reads keys from the window, whatever has focus, and cancels their default
+// action, except while the game itself takes text (chat, a save's name, the
+// high score name): then it leaves keydown alone so the browser makes the
+// keypress the typed text comes from. If a link or button outside the game
+// still has focus then (the Hall of Fame link the player clicked, which opened
+// in a new tab, the sign-in button after its dialog closed), Enter there opens
+// that link or presses that button. The rule while a game runs:
+//   - the page keeps the keys only in an open dialog and in a text field
+//     (the player clicked into it, or a dialog put them there); the game
+//     doesn't see those keys;
+//   - every other key is the game's: on any other page control it does
+//     nothing there (its default action is cancelled) and the keyboard focus
+//     goes back to the game.
+// The touch keyboard's stand-in field (web/kfx_touch.js) is a text field and
+// passes its keys to the game itself.
+const TEXT_INPUTS = ['text', 'search', 'email', 'url', 'tel', 'password', 'number'];
+function pageKeeps(el) {
+  if (!el || !el.closest) return false;
+  if (el.closest('dialog[open]') || el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+  return el.tagName === 'INPUT' && TEXT_INPUTS.includes(el.type);
+}
+// A page control that would act on a game key: anything focusable other than
+// the game, the page itself and what pageKeeps() allows.
+function strayFocus(el) {
+  return !!el && el !== $('canvas') && el !== document.body && el !== document.documentElement && !pageKeeps(el);
+}
+function focusGame() {
+  if (strayFocus(document.activeElement) || document.activeElement === document.body) {
+    $('canvas').focus({ preventScroll: true });
+  }
+}
+for (const type of ['keydown', 'keypress', 'keyup']) {
+  window.addEventListener(type, (ev) => {
+    if (KFX.state !== 'running' || !ev.isTrusted || !strayFocus(ev.target)) return;
+    ev.preventDefault(); // SDL still gets the key: it listens further on
+    if (type !== 'keydown') return;
+    $('canvas').focus({ preventScroll: true });
+    // Cancelling keydown also cancels the keypress SDL types text from: send
+    // the character on (SDL ignores it unless the game is taking text).
+    if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      const ch = ev.key;
+      setTimeout(() => $('canvas').dispatchEvent(new KeyboardEvent('keypress', {
+        key: ch, code: ev.code, charCode: ch.codePointAt(0), bubbles: true, cancelable: true,
+      })));
+    }
+  }, { capture: true });
+}
+// Keys typed into the page's own fields and dialogs stay out of the game. This
+// runs before SDL's listener on the window.
+for (const type of ['keydown', 'keypress', 'keyup']) {
+  document.addEventListener(type, (ev) => {
+    if (KFX.state === 'running' && pageKeeps(ev.target)) ev.stopPropagation();
+  });
+}
+// Focus goes back to the game when a game starts, after a click on a page
+// control (a toast's button, the bar above the game) has done its work, and
+// when something else puts it on one (a dialog closing gives focus back to
+// the button that opened it).
+let pointerAt = 0;
+window.addEventListener('pointerdown', () => { pointerAt = performance.now(); }, { capture: true });
+document.addEventListener('click', () => {
+  if (KFX.state === 'running') setTimeout(() => { if (strayFocus(document.activeElement)) focusGame(); });
+});
+document.addEventListener('focusin', (ev) => {
+  if (KFX.state === 'running' && strayFocus(ev.target) && performance.now() - pointerAt > 1000) {
+    setTimeout(() => { if (document.activeElement === ev.target) focusGame(); });
+  }
+});
+document.addEventListener('kfx:state', (ev) => { if (ev.detail === 'running') focusGame(); });
 
 // ---- Mouse focus ------------------------------------------------------------
 
@@ -509,6 +585,108 @@ function fixPointerEnter(canvas) {
   };
   add.call(canvas, 'pointermove', enterIfNeeded, { capture: true });
   add.call(canvas, 'pointerdown', enterIfNeeded, { capture: true });
+}
+
+// ---- The mouse ----------------------------------------------------------------
+
+// The game follows the mouse without capturing it: the page puts the game's
+// cursor where the pointer is (kfx_web_mouse_point in
+// src/kfx/platform/web/WebInput.cpp) and SDL hides the system pointer over the
+// game. Esc stays an ordinary key (the game's menu) and the pointer can leave
+// for the page. Only when the game grabs the mouse, in creature possession
+// where it steers by the mouse's motion, does it take the browser's pointer
+// lock (Esc releases it, a click on the game takes it back), and lets it go
+// when the possession ends. "Lock mouse" in the bar above the game keeps it
+// locked all the time instead (CAPTURE_CURSOR, the desktop game's way).
+//
+// A frame on a page has no screen edge to stop the pointer at, so for
+// MOUSE_EDGE CSS pixels past the game's edge, and over the black bars around
+// it in fullscreen, the cursor stays on the edge and keeps scrolling the
+// view; a drag begun on the game follows the pointer anywhere until the button
+// is let go. Further out, the cursor stays put and the view doesn't scroll.
+const MOUSE_EDGE = 24;
+const MOUSE_LOCK_KEY = 'kfx.mouseLock';
+let mouseHeld = false;
+const mouseApi = (name) => (KFX.state === 'running' && typeof Module === 'object' && Module[`_kfx_web_${name}`]) || null;
+const mouseLockChosen = () => { try { return localStorage.getItem(MOUSE_LOCK_KEY) === '1'; } catch (e) { return false; } };
+// Builds from before the page placed the cursor keep the mouse captured.
+const enginePlacesMouse = () => typeof Module === 'object' && !!Module._kfx_web_mouse_point;
+const usingMouse = () => !document.body.classList.contains('input-touch') && !document.body.classList.contains('input-pad');
+
+function mouseToGame(ev, leaving) {
+  const point = mouseApi('mouse_point');
+  if (!point || document.pointerLockElement) return;
+  if (ev.type === 'pointerdown' && ev.target === $('canvas')) mouseHeld = true;
+  if (!ev.buttons) mouseHeld = false;
+  const r = $('canvas').getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return;
+  const s = $('stage').getBoundingClientRect();
+  const x = ev.clientX;
+  const y = ev.clientY;
+  const near = x >= r.left - MOUSE_EDGE && x <= r.right + MOUSE_EDGE && y >= r.top - MOUSE_EDGE && y <= r.bottom + MOUSE_EDGE;
+  const overStage = x >= s.left && x <= s.right && y >= s.top && y <= s.bottom;
+  const inside = !leaving && !document.querySelector('dialog[open]') && (mouseHeld || near || overStage);
+  const clamp = (v) => Math.min(Math.max(v, 0), 0.9999);
+  point(clamp((x - r.left) / r.width), clamp((y - r.top) / r.height), inside ? 1 : 0);
+}
+for (const type of ['pointermove', 'pointerdown', 'pointerup']) {
+  window.addEventListener(type, (ev) => { if (ev.pointerType === 'mouse') mouseToGame(ev, false); }, { capture: true });
+}
+// The pointer left the browser window, or the window lost focus.
+document.addEventListener('pointerout', (ev) => {
+  if (ev.pointerType === 'mouse' && !ev.relatedTarget && !mouseHeld) mouseToGame(ev, true);
+});
+window.addEventListener('blur', () => {
+  mouseHeld = false;
+  const point = mouseApi('mouse_point');
+  if (point && !document.pointerLockElement) point(0.5, 0.5, 0);
+});
+
+// The game grabbed the mouse (web/kfx_touch.js passes on what the game is
+// doing): lock the pointer now if the browser lets the page, which it does
+// for a moment after a click (the click that possessed the creature);
+// otherwise SDL takes it on the next click on the game.
+function lockPointer() {
+  if (document.pointerLockElement || !usingMouse()) return;
+  const canvas = $('canvas');
+  if (navigator.userActivation && !navigator.userActivation.isActive) { mouseNotice(); return; }
+  try {
+    const p = canvas.requestPointerLock();
+    if (p && p.catch) p.catch(() => mouseNotice());
+  } catch (e) { mouseNotice(); }
+}
+let noticeAt = 0;
+function mouseNotice() {
+  if (!(gameContext & 32) || document.pointerLockElement || !usingMouse() || Date.now() - noticeAt < 15000) return;
+  noticeAt = Date.now();
+  Site.toast(gameContext & 2 ? 'Click the game to steer with the mouse.' : 'Click the game to capture the mouse.', { stage: true, ms: 3500 });
+}
+let gameContext = 0;
+document.addEventListener('kfx:input', (ev) => {
+  const was = gameContext;
+  gameContext = ev.detail;
+  if ((gameContext & 32) && !(was & 32)) lockPointer();
+  // SDL lets go too, but not always (a lock it asked for and the page got).
+  if (!(gameContext & 32) && (was & 32) && document.pointerLockElement === $('canvas')) document.exitPointerLock();
+});
+document.addEventListener('pointerlockerror', () => mouseNotice());
+// Esc took the lock away while the game still holds the mouse.
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && KFX.state === 'running') setTimeout(mouseNotice, 300);
+});
+
+function setMouseLock(on) {
+  try { localStorage.setItem(MOUSE_LOCK_KEY, on ? '1' : '0'); } catch (e) { /* this visit only */ }
+  renderMouseLock();
+  const capture = mouseApi('mouse_capture');
+  if (capture) capture(on ? 1 : 0);
+  if (on) lockPointer();
+}
+function renderMouseLock() {
+  const on = mouseLockChosen() || !enginePlacesMouse();
+  document.body.classList.toggle('mouse-lock', on);
+  $('btn-mouselock').classList.toggle('on', on);
+  $('btn-mouselock').hidden = !enginePlacesMouse();
 }
 
 // ---- Startup ----------------------------------------------------------------
@@ -719,6 +897,7 @@ async function boot() {
   window.addEventListener('resize', fitCanvas);
 
   fixPointerEnter($('canvas'));
+  renderMouseLock();
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
   args.push(...choiceArgs(choice));
@@ -961,7 +1140,7 @@ async function forgetDkFiles() {
 // later Space or Enter in the game doesn't press it again.
 for (const [id, action] of Object.entries({
   'btn-fullscreen': toggleFullscreen, 'hud-exit': toggleFullscreen, 'btn-theater': toggleTheater,
-  'btn-log': downloadLog, 'btn-leave': leaveGame, 'invite-copy': copyInvite, 'forget-button': forgetDkFiles,
+  'btn-log': downloadLog, 'btn-leave': leaveGame, 'btn-mouselock': () => setMouseLock(!mouseLockChosen()), 'invite-copy': copyInvite, 'forget-button': forgetDkFiles,
 })) {
   $(id).addEventListener('click', (ev) => { action(); ev.currentTarget.blur(); });
 }

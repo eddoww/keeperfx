@@ -177,6 +177,7 @@
       <span id="downloads" class="downloads" hidden></span>
       <div class="stage-tools">
         <button type="button" class="tool version-chip" id="stage-version" hidden></button>
+        <button type="button" class="tool" id="btn-mouselock" title="Keep the mouse in the game all the time (Esc releases it), not only in possession" hidden><svg class="icon"><use href="#i-lock"/></svg><span>Lock mouse</span></button>
         <button type="button" class="tool" id="btn-theater" title="Fill the tab"><svg class="icon"><use href="#i-theater"/></svg><span>Fill tab</span></button>
         <button type="button" class="tool" id="btn-fullscreen" title="Fullscreen (F11)"><svg class="icon"><use href="#i-expand"/></svg><span>Fullscreen</span></button>
         <button type="button" class="tool" id="btn-log" title="Download the game's log file"><svg class="icon"><use href="#i-log"/></svg><span>Log</span></button>
@@ -269,8 +270,10 @@
     </div>
 
     <div class="stage-foot" id="stage-foot">
-      <span class="hint-mouse"><kbd>Click</kbd> the game to capture the mouse</span>
-      <span class="hint-mouse"><kbd>Esc</kbd> releases it</span>
+      <span class="hint-mouse hint-follow"><kbd>Esc</kbd> game menu</span>
+      <span class="hint-mouse hint-follow">Possessing a creature locks the mouse: <kbd>Esc</kbd> frees it, a click takes it back</span>
+      <span class="hint-mouse hint-lock"><kbd>Click</kbd> the game to capture the mouse</span>
+      <span class="hint-mouse hint-lock"><kbd>Esc</kbd> releases it</span>
       <span class="hint-mouse"><kbd>F11</kbd> fullscreen</span>
       <span class="hint-mouse"><kbd>Shift</kbd>+<kbd>C</kbd> screenshot</span>
       <span class="hint-touch"><kbd>Tap</kbd> click</span>
@@ -399,7 +402,12 @@
     <section class="slab pad" id="controls">
       <h2>Controls and screen</h2>
       <dl class="keys">
-        <dt><kbd>Click</kbd></dt><dd>Captures the mouse, as the desktop game does. <kbd>Esc</kbd> releases it.</dd>
+        <dt>Mouse</dt><dd>The game's hand follows the mouse, and the mouse is free to leave the game for the page,
+          so <kbd>Esc</kbd> opens the game's menu at the first press. Push the pointer against the game's edge, or
+          just past it, to scroll the view. Possessing a creature locks the mouse to the game so you can steer;
+          <kbd>Esc</kbd> frees it there, a click on the game takes it back, and leaving the creature lets it go.</dd>
+        <dt>Lock mouse</dt><dd>The button above the game keeps the mouse in the game all the time, as the desktop game
+          does: click the game to capture it, <kbd>Esc</kbd> releases it (so the game's menu takes a second press).</dd>
         <dt><kbd>Left</kbd> / <kbd>Right</kbd></dt><dd>Left click digs, builds and picks up creatures; right click drops them or slaps.</dd>
         <dt><kbd>F11</kbd></dt><dd>Fullscreen and back, like the Fullscreen button above the game. In fullscreen, resting the
           pointer at the top edge shows an exit button, and <kbd>Esc</kbd> leaves too (in Chrome and Edge you hold it,
