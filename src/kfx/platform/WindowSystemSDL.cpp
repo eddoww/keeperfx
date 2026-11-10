@@ -149,20 +149,28 @@ bool WindowSystemSDL::GetCursorPosition(int* out_x, int* out_y) const
         return false;
     float wx = 0.0f, wy = 0.0f;
     SDL_GetMouseState(&wx, &wy);
+    float gx = 0.0f, gy = 0.0f;
+    WindowToGame(wx, wy, &gx, &gy);
+    if (out_x) *out_x = (int)SDL_floor(gx);
+    if (out_y) *out_y = (int)SDL_floor(gy);
+    return true;
+}
+
+void WindowSystemSDL::WindowToGame(float wx, float wy, float* out_gx, float* out_gy) const
+{
     int px = 0, py = 0, pw = 0, ph = 0;
     GetPresentRect(&px, &py, &pw, &ph);
     float ux = 1.0f, uy = 1.0f;
     GetPixelsPerWindowUnit(&ux, &uy);
-    int gx = (int)wx;
-    int gy = (int)wy;
-    if (m_gameW > 0 && m_gameH > 0 && pw > 0 && ph > 0)
+    float gx = wx;
+    float gy = wy;
+    if (m_window && m_gameW > 0 && m_gameH > 0 && pw > 0 && ph > 0)
     {
-        gx = (int)SDL_floor((wx * ux - px) * m_gameW / pw);
-        gy = (int)SDL_floor((wy * uy - py) * m_gameH / ph);
+        gx = (wx * ux - px) * m_gameW / pw;
+        gy = (wy * uy - py) * m_gameH / ph;
     }
-    if (out_x) *out_x = gx;
-    if (out_y) *out_y = gy;
-    return true;
+    if (out_gx) *out_gx = gx;
+    if (out_gy) *out_gy = gy;
 }
 
 void WindowSystemSDL::GetCursorScale(float* out_sx, float* out_sy) const

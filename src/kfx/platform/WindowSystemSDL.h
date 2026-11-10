@@ -23,6 +23,8 @@ public:
     bool GetCursorPosition(int* out_x, int* out_y) const override;
     void GetCursorScale(float* out_sx, float* out_sy) const override;
     bool IsCursorInWindow() const override;
+    /** Maps a point in window units to game pixels (the scaled, letterboxed game frame). */
+    void WindowToGame(float wx, float wy, float* out_gx, float* out_gy) const;
 
     bool HasWindow() const override;
     SDL_Window* GetSDLWindow() const;
