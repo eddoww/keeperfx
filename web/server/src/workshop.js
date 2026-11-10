@@ -109,7 +109,7 @@ function catalogue(ctx, env) {
 /**
  * The files listed on an item's page (its "Downloads" table, newest first).
  * keeperfx.net's item API leaves some items' files out (mods.7z of the DK2
- * Salamander, say); the page has them. Same parsing as
+ * Salamander, the current version of Contextual Icons); the page has them. Same parsing as
  * web/tools/workshop-survey/fetch.mjs.
  */
 function pageFiles(html, id) {
@@ -127,7 +127,7 @@ function pageFiles(html, id) {
   return files;
 }
 
-/** Files (from keeperfx.net's item API, else its page) and screenshots (from the item's page). */
+/** Files (from the item's page, else keeperfx.net's item API) and screenshots (from the item's page). */
 async function itemDetails(ctx, env, id) {
   return cachedDoc(ctx, env, `item-v2/${id}`, ITEM_TTL, async () => {
     const resp = await upstreamJson(`/api/v1/workshop/item/${id}`);
@@ -147,7 +147,10 @@ async function itemDetails(ctx, env, id) {
         images = [...new Set([...html.matchAll(re)].map((m) => `${UPSTREAM}/workshop/image/${id}/${m[1]}`))].slice(0, 12);
         // "This workshop item is meant for modders and mapmakers and will not change anything in the game..."
         forModders = /meant for modders and mapmakers/i.test(html);
-        if (!files.length) files = pageFiles(html, id);
+        // The page's table is the current list: the API leaves out newer
+        // files of some items (and lists none for others).
+        const listed = pageFiles(html, id);
+        if (listed.length) files = listed;
       }
     } catch (e) { /* screenshots are optional */ }
     return JSON.stringify({ id, name: String(item.name || ''), files, images, forModders });

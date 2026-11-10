@@ -693,26 +693,71 @@ level); **Remove** deletes it.
 Campaigns are started from the game's own Campaigns menu, so they keep their
 story, land view and saves.
 
-What installs:
+Every kind installs with one click except desktop programs:
 
 | Kind | In the browser |
 |---|---|
 | Maps, map packs, multiplayer maps and packs | Yes |
 | Campaigns | Yes (up to 128 MB per download) |
-| Mods, creatures, applications, other | No: they need hand edits to the game's own files, or are desktop programs. The page says so and links to keeperfx.net. |
+| Mods, creatures, "Other" | Yes, as a mod layer (below); switch on and off and order them under **My mods** (`#/workshop/mine`) |
+| Applications | No: map editors, launchers and other tools are programs for a computer. The page links to the download on keeperfx.net. |
 
-How an item is laid out (`web/kfx_workshop.js`): the archive (zip, 7z or rar,
-unpacked by [libarchive.js](https://github.com/nika-begiashvili/libarchivejs),
-`web/vendor/`, loaded only when needed) is placed as desktop KeeperFX would
-have it. A map pack or campaign `.cfg` in the archive (one with
-`LEVELS_LOCATION`) decides where its folders go under `levels/`, `campgns/`
-or `multiplayer/`. Loose map files, which desktop players copy into an
-existing pack, get a map pack of their own instead: `levels/ws<id>.cfg` or
+How an item is laid out (`web/kfx_wslayout.js`, shared with the survey tool
+below): the archive (zip, 7z or rar, unpacked by
+[libarchive.js](https://github.com/nika-begiashvili/libarchivejs),
+`web/vendor/`, loaded only when needed; archives inside it are opened too,
+except sprite zips; a download that is no archive is that one file) is
+placed as desktop KeeperFX would have it. A map pack or campaign `.cfg` in
+the archive (one with `LEVELS_LOCATION`) decides where its folders go under
+`levels/`, `campgns/` or `multiplayer/`; one that plays the game's own levels
+with its own creatures or rules (its `LEVELS_LOCATION` is a folder of the
+game) is a campaign too, and a generic name (`campaign.cfg`) becomes
+`ws<id>.cfg`. Loose map files, which desktop players copy into an existing
+pack, get a map pack of their own: `levels/ws<id>.cfg` or
 `multiplayer/ws<id>.cfg`, named after the item and copied from the pack their
-folder names (e.g. `classic`), else `standard`/`modern`. Nothing replaces a
-file of the game itself, and two items may not share a file. Lua scripts are
-checked for LuaJIT-only features (`ffi`, `goto`), which the browser's Lua 5.1
-lacks; the item page warns when it finds them.
+folder names (e.g. `classic`), else `standard`/`modern`. A copy of a campaign
+KeeperFX ships itself is reported as already in the game.
+
+Everything that changes the game becomes a **mod layer**, using the engine's
+own mod system (`src/config_mods.c`): `mods/<name>/` holds `fxdata/`
+(configs, which the engine merges over its own block by block, sprite zips,
+`lua/init.lua`), `creatrs/`, `data/` (textures), `sound/`, `music/`,
+`keeperfx.cfg`, or a campaign's own `_cfgs`/`_crtr` folders, and
+`mods/load_order.cfg` lists the mods in three layers: after the base game,
+after the campaign, after the map. Nothing of the game is replaced, so
+switching a mod off or removing it leaves the game as it was.
+
+- Items packaged as mods (`mods/<name>/...`) keep their folder name and the
+  layer their own `load_order.cfg` gives.
+- Items made to be copied over the game ("extract into your KeeperFX folder")
+  become `mods/ws<id>/`; a campaign's `_cfgs`/`_crtr` files load after the
+  campaign.
+- Items with manual steps ("add these lines to magic.cfg / objects.cfg",
+  "put the zip in fxdata, the cfg in creatrs, add the name to creature.cfg")
+  have them done: config parts (in `.cfg`, `.ini`, `.toml` or `.txt` files)
+  go into the config their blocks belong to (`[shotN]` to `magic.cfg`,
+  `[objectN]` to `objects.cfg`...), sprite zips to `fxdata/` (a folder of
+  frames with its `sprites.json` is zipped), creature files to `creatrs/`,
+  and each new creature is added by a small generated `fxdata/lua/init.lua`
+  calling `NewCreatureType` in `OnModGameStart_ws<id>`, the way packaged
+  creature mods do it, so creature mods never overwrite each other's creature
+  lists. The item page says "the author's manual steps are done for you".
+- Things the engine does not take from mods are left out and named on the
+  item page: replacement sound banks and speech (`sound/*.dat`,
+  `campgns/keeporig_rus/`), fonts, `ldata/` pictures. An item that is only
+  that is refused.
+
+Which mods are on, and their order, is the player's (`localStorage`
+`kfx.mods`). Each start writes `mods/load_order.cfg` for that game
+(`Workshop.prepareStart()`); **Start without mods** (start screen, My mods,
+and the exit panel after a game with mods crashed) adds `-nomods`. Two mods
+that set the same key of the same config block, or add the same creature,
+are listed as a conflict (the later one wins), and so are conflicts an author
+declares in the description. Links in an item's description that say it
+"requires" another item are offered for installation with it (asked once).
+
+Lua scripts are checked for LuaJIT-only features (`ffi`, `goto`), which the
+browser's Lua 5.1 lacks; the item page warns when it finds them.
 
 Installed files are kept in their own IndexedDB database
 (`keeperfx-workshop`), not in `/persist`, so a second tab saving its
@@ -720,13 +765,40 @@ Installed files are kept in their own IndexedDB database
 placeholders like the game data (`kfxws:<id>/<path>` URLs), read when the game
 opens them.
 
-Online: the host's page adds `workshop=<id>.<file>,...` to the lobby (the map
-picked on the workshop page, or else every installed multiplayer item), the
-relay puts it in the lobby's metadata, and a joiner's page installs exactly
-those versions before the game connects. The lobby list and invites show
-them. Someone joining from the game's own lobby list instead is told to get
-the maps first, with a button that joins again through the page. The game's
-check that all players' loaded files match the host's still applies.
+Online: the host's page adds `workshop=<id>.<file>,...,<id>.<file>.m,...` to
+the lobby: the map picked on the workshop page (or else every installed
+multiplayer item), then the mods ticked in the host dialog, in load order
+(".m"). The relay puts it in the lobby's metadata; the Lobbies page, invites,
+the watch page and Live now show them, and Join becomes **Install N mods and
+join**. A joiner's (or spectator's) page installs exactly those versions,
+turns on exactly those mods for that game and starts it with `-mpmods`; mods
+added just for a lobby stay off in the player's own set afterwards. Mods that
+only change textures, sounds or music stay each player's own. Quick match
+lobbies run without mods. Someone joining from the game's own lobby list
+(whose game runs with their own set) is told the lobby uses mods or maps, with
+a button that joins again through the page.
+
+Upstream turns mods off whenever the game is online (#4664: players with
+different mods desynced). `-mpmods` (browser build only, `src/config_mods.c`)
+keeps them: the page guarantees the same set, and the engine's check that
+every loaded file matches the host's (#5582: configs, creature files, sprite
+zips, Lua, maps; not textures, sounds or music) sends a player whose files
+differ back to the lobby with the list, e.g. `File differs ... mods/
+instant_charge_up/fxdata/rules.cfg (only loaded by host)`. Replays start
+without mods.
+
+#### The workshop survey
+
+`web/tools/workshop-survey/` checks the installer against the whole
+Workshop. `fetch.mjs` fetches politely (one request at a time with a pause,
+`KeeperFX-Web/1.0` User-Agent) into `~/.cache/kfx-workshop-survey/`
+(`api/`, `pages/`, `files/<id>/<file>/`), never twice: `node fetch.mjs
+catalogue`, `items`, `pages nofiles`, `files all --max-mb 128`.
+`survey.mjs` unpacks every cached archive with bsdtar and runs
+`web/kfx_wslayout.js` over it with the site's game data
+(`~/.cache/kfx-web-base/site/gamedata`): per category, what installs and why
+the rest does not; `--legacy [commit]` runs the installer of an older commit
+instead; `--json` writes the per-item results.
 
 The Worker (`web/server/src/workshop.js`) reaches keeperfx.net for the page,
 which cannot itself (no CORS there):
@@ -734,11 +806,12 @@ which cannot itself (no CORS there):
 | Route | Upstream, caching |
 |---|---|
 | `GET /api/workshop/catalogue` | keeperfx.net's `/api/v1/workshop/search` with a blank query (every item, about 1 MB), passed through unparsed; refreshed at most every 6 hours per Cloudflare location, with a copy in R2 for when keeperfx.net is down |
-| `GET /api/workshop/item/<id>` | `/api/v1/workshop/item/<id>` (files) and the item's page (screenshots); 1 hour |
+| `GET /api/workshop/item/<id>` | `/api/v1/workshop/item/<id>` (files) and the item's page (screenshots, whether keeperfx.net marks it as meant for modders and mapmakers, and its files when the API lists none, as it does for most uploads since August 2026); 1 hour |
 | `GET /api/workshop/file/<id>/<file>` | `/workshop/download/...` once, then kept in the private R2 bucket `keeperfx-workshop` (binding `WORKSHOP`); served only while keeperfx.net still lists the file |
 
 Every request to keeperfx.net carries a `KeeperFX-Web/1.0` User-Agent naming
-this site. Screenshots load from keeperfx.net directly. Do not give the
+this site. Screenshots load from keeperfx.net directly. A local Worker can be
+pointed at a mirror with the var `WORKSHOP_UPSTREAM` (tests only). Do not give the
 `keeperfx-workshop` bucket a public domain: files must only go out while
 keeperfx.net offers them.
 

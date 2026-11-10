@@ -86,9 +86,10 @@ export function pageInfo(id) {
 
 /** The newest file of an item and where its archive is (or would be) cached. */
 export function newestFile(id) {
-  const item = itemJson(id);
-  let list = item && item.files && item.files.length ? item.files : null;
-  if (!list) { const page = pageInfo(id); list = page && page.files.length ? page.files : null; }
+  // The page's table first (as web/server/src/workshop.js): the API can be stale.
+  const page = pageInfo(id);
+  let list = page && page.files.length ? page.files : null;
+  if (!list) { const item = itemJson(id); list = item && item.files && item.files.length ? item.files : null; }
   if (!list) return null;
   const f = list[0];
   return { ...f, local: path.join(DIR, 'files', String(id), String(f.id), f.filename) };

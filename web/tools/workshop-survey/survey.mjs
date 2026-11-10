@@ -125,6 +125,7 @@ function classify(x, plan) {
     const kind = plan.mods.length ? (plan.packs.length ? 'maps+mod' : 'mod') : plan.packs.length ? 'maps' : 'additions';
     return { ok: true, kind, ...result, replaced: plan.problems.filter((p) => p.cause === 'replaces-game-files').map((p) => p.file) };
   }
+  if (plan.problems.some((p) => p.cause === 'original-game-files')) return { ok: false, cause: 'original Dungeon Keeper files (soundtrack)', ...result };
   if (plan.problems.some((p) => p.cause === 'replaces-game-files')) return { ok: false, cause: 'only replaces game files mods cannot change', ...result };
   if (plan.programs) return { ok: false, cause: 'desktop program', ...result };
   if (plan.leftovers.length) return { ok: false, cause: 'nothing the game can use found', ...result };

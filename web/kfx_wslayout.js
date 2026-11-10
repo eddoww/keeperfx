@@ -271,6 +271,7 @@
     // plays the game's own levels with its own creatures or rules (its
     // LEVELS_LOCATION is a folder of the game) is a campaign or pack too.
     const cfgs = entries.filter((e) => /\.cfg$/i.test(e.path) && !/(^|\/)mods\//i.test(e.path) && cfgValue(text(e.data), 'LEVELS_LOCATION'));
+    const shipped = []; // campaigns and packs of the game's own the archive has copies of
     for (const cfg of cfgs) {
       if (used.has(cfg.path)) continue;
       let src = text(cfg.data);
@@ -288,7 +289,13 @@
       if (cfgRel.split('/').length !== 2) cfgRel = `${where.game}${baseOf(cfg.path)}`;
       const top = lower(cfgRel.split('/')[0]);
       if (!lower(cfg.path).startsWith(lower(where.archive)) || !TOPS.includes(top) || cfgRel.split('/').length !== 2) continue;
-      if (game.has(cfgRel)) continue; // a pack of the game's own: placed as loose maps (or a mod) below
+      if (game.has(cfgRel)) {
+        // A campaign or pack KeeperFX ships itself (Ancient Keeper...): a copy
+        // of its own files. Its maps are not made into a pack of their own.
+        shipped.push(cfgRel);
+        for (const e of entries) if (lower(e.path).startsWith(lower(where.archive)) && MAP_FILE.test(baseOf(e.path)) && game.has(where.game + e.path.slice(where.archive.length))) used.add(e.path);
+        continue;
+      }
       // A name every such item uses (campgns/campaign.cfg...) gets the item's own.
       const oldName = baseOf(cfgRel).replace(/\.cfg$/i, '');
       const newName = GENERIC_PACK.test(oldName) ? `ws${item.id}` : oldName;
@@ -395,7 +402,7 @@
     }
     let n = 0;
     for (const d of groups.keys()) {
-      const members = entries.filter((e) => !used.has(e.path) && dirOf(e.path) === d && !/\.(zip|7z|rar|exe|dll)$/i.test(e.path)
+      const members = entries.filter((e) => !used.has(e.path) && dirOf(e.path) === d && (!/\.(zip|7z|rar|exe|dll)$/i.test(e.path) || /^map\d{5}\.zip$/i.test(baseOf(e.path)))
         && (MAP_FILE.test(baseOf(e.path)) || /^text_[a-z]{3}\.dat$/i.test(baseOf(e.path)) || !/\.(cfg|toml)$/i.test(e.path)));
       if (!members.some((e) => /\.(dat|txt|slb|tng|lof|lif)$/i.test(e.path) && MAP_FILE.test(baseOf(e.path)))) continue;
       const lofKinds = members.filter((e) => /\.lof$/i.test(e.path)).map((e) => cfgValue(text(e.data), 'KIND').toUpperCase());
@@ -472,8 +479,22 @@
       if (PROGRAM.test(base)) { used.add(e.path); continue; }
       // a) Shaped like the game's own folders.
       if (parts.length > 1 && ['fxdata', 'creatrs', 'sound', 'music'].includes(top)) {
-        mine();
         const p = [top, ...parts.slice(1)].join('/');
+        // The original game's soundtrack (keeper02.ogg...): each player's own
+        // Dungeon Keeper files bring it; this site does not hand it out.
+        if (top === 'music' && /^keeper\d\d\.(ogg|mp3|flac|wav)$/i.test(base)) {
+          problems.push({ cause: 'original-game-files', file: p });
+          used.add(e.path);
+          continue;
+        }
+        // The engine takes music and configs from mods, but not a sound bank
+        // or font of its own (sound/sound.dat, speech_*.dat, fxdata/*.dat...).
+        if (game.has(p) && (top === 'sound' || (top === 'fxdata' && !/\.(cfg|toml|zip|lua)$/i.test(base)))) {
+          problems.push({ cause: 'replaces-game-files', file: p });
+          used.add(e.path);
+          continue;
+        }
+        mine();
         if (top === 'fxdata' && parts.length === 2 && /\.(cfg|toml)$/i.test(base)) addPart(lb, text(e.data), e.path);
         else put(`mods/${own}/${top === 'creatrs' ? `creatrs/${lb}` : p}`, e.data);
         used.add(e.path);
@@ -504,7 +525,7 @@
       }
       if (parts.length > 1 && TOPS.includes(top)) {
         const target = [top, ...parts.slice(1)].join('/');
-        if (game.has(target)) problems.push({ cause: 'replaces-game-files', file: target });
+        if (game.has(target) || (game.list && game.list(`${top}/${parts[1]}/`).length)) problems.push({ cause: 'replaces-game-files', file: target });
         else if (game.has(`${top}/${parts[1]}.cfg`) || parts.length === 2) {
           // New files for a campaign of the game's own (a speech language, say).
           put(target, e.data);
@@ -656,7 +677,8 @@
       generated,
       programs: entries.filter((e) => PROGRAM.test(e.path)).length,
       // "This creature has officially been included as part of KeeperFX"
-      inGame: /officially (been )?(included|added)|has been (included|added) (in|to|as part of) keeperfx|now (part of|included in) keeperfx/.test(words),
+      shipped,
+      inGame: (shipped.length > 0 && !packs.length && !modList.length) || /officially (been )?(included|added)|has been (included|added) (in|to|as part of) keeperfx|now (part of|included in) keeperfx/.test(words),
       leftovers: entries.filter((e) => !used.has(e.path) && !JUNK.test(e.path)).map((e) => e.path),
     };
   }

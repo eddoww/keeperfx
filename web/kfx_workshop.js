@@ -441,6 +441,9 @@ const Workshop = (() => {
 
   /** Why an item's archive gave nothing to install. */
   function whyNot(plan) {
+    if (plan.problems.some((p) => p.cause === 'original-game-files')) {
+      return 'It holds files of the original Dungeon Keeper (its soundtrack), which this site does not hand out: your own Dungeon Keeper files bring them. Desktop players can get it on keeperfx.net.';
+    }
     const replaced = plan.problems.filter((p) => p.cause === 'replaces-game-files').map((p) => p.file);
     if (replaced.length) return `It replaces files of the game itself (${replaced.slice(0, 3).join(', ')}${replaced.length > 3 ? '…' : ''}), which the game does not take from mods, so it cannot be added here without changing your game for good.`;
     if (plan.programs) return 'It is a program for desktop computers, which a browser cannot run.';
