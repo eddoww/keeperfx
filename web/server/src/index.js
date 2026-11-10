@@ -8,7 +8,10 @@
 //   GET  /api/lobbies/<CODE>          one lobby, listed or not (invite links)
 //   GET  /api/tavern                  WebSocket: who is online, chat, live news (tavern.js)
 //   POST /api/scores, GET /api/scores/..., /api/keepers/<name>   Hall of Fame (scores.js)
-//   GET  /api/rooms/host[?unlisted=1] WebSocket: host a new lobby (relay creates the code)
+//   GET  /api/rooms/host[?unlisted=1][&workshop=<id>.<file>,...]
+//                                     WebSocket: host a new lobby (relay creates the code);
+//                                     `workshop`: items joiners need (shown with the lobby)
+//   GET  /api/workshop/...            the KeeperFX Workshop, cached (workshop.js)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
 //   GET  /site.json                   page settings (dataUrl: where game data lives)
 //
@@ -19,6 +22,7 @@ import { handleScores } from './scores.js';
 import { Room } from './room.js';
 import { Directory } from './directory.js';
 import { Tavern } from './tavern.js';
+import { handleWorkshop } from './workshop.js';
 
 export { Room, Directory, Tavern };
 
@@ -26,6 +30,8 @@ export { Room, Directory, Tavern };
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 5;
 const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
+
+const WORKSHOP_RE = /^\d{1,7}\.\d{1,9}(,\d{1,7}\.\d{1,9}){0,7}$/;
 
 function newCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
@@ -42,7 +48,10 @@ async function hostRoom(request, env) {
     const code = newCode();
     const url = new URL(request.url);
     const unlisted = url.searchParams.get('unlisted') === '1';
+    // Workshop items (id.file) the host's game may use: joiners' pages install them first.
+    const workshop = url.searchParams.get('workshop') || '';
     url.search = '';
+    if (WORKSHOP_RE.test(workshop)) url.searchParams.set('workshop', workshop);
     url.searchParams.set('role', 'host');
     url.searchParams.set('code', code);
     if (user) url.searchParams.set('user', user.username);
@@ -102,6 +111,7 @@ async function handleApi(request, env, ctx, path) {
   if (path === 'scores' || path.startsWith('scores/') || path.startsWith('keepers/')) {
     return handleScores(request, env, ctx, path);
   }
+  if (path.startsWith('workshop/')) return handleWorkshop(request, env, ctx, path.slice(9));
   if (path === 'rooms/host') return hostRoom(request, env);
   const room = path.match(/^rooms\/([A-Za-z0-9]+)$/);
   if (room) return joinRoom(request, env, room[1]);

@@ -33,7 +33,10 @@
   "r2_buckets": [
     // Game data (gamedata/), uploaded with web/upload-r2.sh, served to players
     // from the bucket's public domain (DATA_URL below), not through the Worker.
-    { "binding": "DATA", "bucket_name": "keeperfx-data" }
+    { "binding": "DATA", "bucket_name": "keeperfx-data" },
+    // Workshop downloads kept after their first fetch from keeperfx.net
+    // (src/workshop.js). Private: never give this bucket a public domain.
+    { "binding": "WORKSHOP", "bucket_name": "keeperfx-workshop" }
   ],
   "vars": {
     // Where the page downloads game data from. Empty: gamedata/ next to the page.

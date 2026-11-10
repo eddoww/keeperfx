@@ -19,6 +19,9 @@
 // {"action": "update" | "game_started", ...fields}. The relay answers a new
 // host with {"type": "created", "code": "<lobby code>"}. A lobby hosted with
 // ?unlisted=1 stays out of the list: only its code or invite link leads to it.
+// ?workshop=<id>.<file>,... names the KeeperFX Workshop items the host has for
+// this lobby; it is added to the lobby's metadata, so joiners' pages can
+// install them before joining (web/kfx_workshop.js).
 
 import { DurableObject } from 'cloudflare:workers';
 
@@ -30,6 +33,12 @@ const HOST_LEFT = 255;
 const MAX_CONN = 250;
 const CLOSE_HOST_LEFT = 4100;
 const MAX_FRAME = 4 * 1024 * 1024; // resync snapshots can be large
+
+/** "12.345,67.890" (checked by the Worker) -> [{id: 12, file: 345}, ...] */
+function parseWorkshop(text) {
+  if (!text) return [];
+  return text.split(',').map((pair) => pair.split('.').map(Number)).map(([id, file]) => ({ id, file }));
+}
 
 function frame(op, conn, payload) {
   const out = new Uint8Array(2 + (payload ? payload.byteLength : 0));
@@ -64,6 +73,7 @@ export class Room extends DurableObject {
       server.serializeAttachment({
         host: true, code, user: url.searchParams.get('user') || '',
         unlisted: url.searchParams.get('unlisted') === '1',
+        workshop: parseWorkshop(url.searchParams.get('workshop')),
       });
       await this.ctx.storage.put({ code, nextConn: 1, createdAt: Math.floor(Date.now() / 1000) });
       server.send(JSON.stringify({ type: 'created', code }));
@@ -189,6 +199,7 @@ export class Room extends DurableObject {
       delete fields.action;
       delete fields.id;
       if (info.user) fields.hostAccount = info.user; // the host is signed in under this name
+      if (info.workshop && info.workshop.length) fields.workshop = info.workshop;
       // Kept here too, for invite links to lobbies that aren't listed (info()).
       await this.ctx.storage.put('meta', { ...((await this.ctx.storage.get('meta')) || {}), ...fields });
       if (!info.unlisted) await this.directory().update(info.code, fields);
