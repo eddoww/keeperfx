@@ -252,6 +252,17 @@ if [ "$CHANNEL" = alpha ]; then
     fi
     LAYERS+=("$PATCH")
 fi
+# Game files the port itself changes (config/ in the source is the package's
+# root: config/fxdata/... -> fxdata/...) go over upstream's packages.
+PORTDATA="$WORK/portdata"
+rm -rf "$PORTDATA" && mkdir -p "$PORTDATA"
+git -C "$SRC" diff --name-only --diff-filter=AM "$COMMIT" HEAD -- config/ | while IFS= read -r f; do
+    mkdir -p "$PORTDATA/$(dirname "${f#config/}")" && cp "$SRC/$f" "$PORTDATA/${f#config/}"
+done
+if [ -n "$(ls -A "$PORTDATA")" ]; then
+    echo "== game files changed by the port: $(cd "$PORTDATA" && find . -type f | sed 's#^\./##' | tr '\n' ' ')"
+    LAYERS+=("$PORTDATA")
+fi
 rm -rf "$STAGE" && mkdir -p "$STAGE"
 cp build-web/site/keeperfx.js build-web/site/keeperfx.wasm "$STAGE/"
 python3 web/package-data.py "$STAGE" "${LAYERS[@]}" > "$WORK/data.log" 2>&1 || die 12 data-failed "web/package-data.py failed (see data.log)" "$INFO_JSON"
