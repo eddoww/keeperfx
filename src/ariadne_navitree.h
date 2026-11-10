@@ -34,6 +34,8 @@ extern "C" {
 #pragma pack(1)
 
 extern long tree_val[TREEVALS_COUNT];
+extern unsigned char Tags[TREEITEMS_COUNT];
+extern unsigned char tag_current;
 
 #pragma pack()
 /******************************************************************************/
@@ -41,8 +43,16 @@ void navitree_reset(void);
 void tags_init(void);
 long update_border_tags(long tag_id, int32_t *border_pt, long border_len);
 long border_tags_to_current(int32_t *border_pt, long border_len);
-TbBool is_current_tag(long tag_id);
-void store_current_tag(long tag_id);
+
+static inline TbBool is_current_tag(long tag_id)
+{
+    return (tag_current == Tags[tag_id]);
+}
+
+static inline void store_current_tag(long tag_id)
+{
+    Tags[tag_id] = tag_current;
+}
 
 TbBool navitree_add(long itm_pos, long itm_dat, long mvcost);
 long copy_tree_to_route(long tag_start_id, long tag_end_id, int32_t *route_pts, long route_len);
