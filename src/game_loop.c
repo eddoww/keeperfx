@@ -39,6 +39,7 @@
 #include "kjm_input.h"
 #include "moonphase.h"
 #include "vidmode.h"
+#include "kfx/platform/web/WebPlatform.h"
 #include "frontend.h"
 #include "game_saves.h"
 #include "bflib_mouse.h"
@@ -752,6 +753,7 @@ static void keeper_gameplay_loop(void)
         frametime_start_measurement(Frametime_FullFrame);
         if (frametime_enabled())
             framerate_measurement_capture(Framerate_FullFrame);
+        KFX_WEB_VIDEO_UPDATE();
         gameplay_loop_logic();
         gameplay_loop_draw();
         gameplay_loop_network();

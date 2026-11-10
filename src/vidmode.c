@@ -48,6 +48,7 @@
 #include "game_legacy.h"
 #include "creature_graphics.h"
 #include "keeperfx.hpp"
+#include "kfx/platform/web/WebPlatform.h"
 #include "custom_sprites.h"
 #include "sprites.h"
 #include "post_inc.h"
@@ -234,7 +235,7 @@ void set_game_vidmode(uint i, TbScreenMode nmode)
 
 TbScreenMode get_game_vidmode(uint i)
 {
-  return switching_vidmodes[i%MAX_GAME_VIDMODE_COUNT];
+  return KFX_WEB_VIDEO_MODE(0, switching_vidmodes[i%MAX_GAME_VIDMODE_COUNT]);
 }
 
 TbScreenMode try_failsafe_vidmode(void)
@@ -260,7 +261,7 @@ void set_failsafe_vidmode(TbScreenMode nmode)
 
 TbScreenMode get_movies_vidmode(void)
 {
-  return movies_vidmode;
+  return KFX_WEB_VIDEO_MODE(1, movies_vidmode);
 }
 
 void set_movies_vidmode(TbScreenMode nmode)
@@ -270,7 +271,7 @@ void set_movies_vidmode(TbScreenMode nmode)
 
 TbScreenMode get_frontend_vidmode(void)
 {
-  return frontend_vidmode;
+  return KFX_WEB_VIDEO_MODE(1, frontend_vidmode);
 }
 
 void set_frontend_vidmode(TbScreenMode nmode)
