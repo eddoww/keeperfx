@@ -41,14 +41,19 @@ const Replays = (() => {
   function buildId() {
     if (!buildPromise) {
       buildPromise = (async () => {
-        if (!ENGINE) return '';
-        const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
+        // With selectable game versions (web/kfx_versions.js) the engine is the
+        // chosen build, and its data list is that build's.
+        const version = typeof Versions !== 'undefined' ? await Versions.ready.catch(() => null) : null;
+        const multi = version && !version.legacy;
+        const engine = multi ? version.id : ENGINE;
+        if (!engine) return '';
+        const manifest = await (await fetch(multi ? version.manifestUrl : 'gamedata/manifest.json', { cache: 'no-cache' })).json();
         const lines = manifest.files
           .filter(([rel]) => RULE_DIRS.has(rel.split('/')[0]) && !MEDIA_RE.test(rel))
           .map(([rel, , hash]) => `${rel}\t${hash}`).sort().join('\n');
         const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(lines));
         const rules = [...new Uint8Array(digest)].slice(0, 4).map((b) => b.toString(16).padStart(2, '0')).join('');
-        return `${ENGINE}.${rules}`;
+        return `${engine}.${rules}`;
       })().catch(() => '');
     }
     return buildPromise;

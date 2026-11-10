@@ -8,7 +8,7 @@ copy of one with a fresh copy of another fails ("LinkError ... function import
 requires a callable", or an old loader that lacks newer page features). This
 hashes them and makes index.html request every script and stylesheet as
 <name>?v=<hash>;
-the loader asks for keeperfx.wasm?v=<hash> too (the kfx-build meta tag), so
+the loader asks for keeperfx.js and keeperfx.wasm with ?v=<hash> too (the kfx-build meta tag), so
 browser and CDN caches can never mix two builds.
 
 It also stamps the service worker (sw.js, see web/sw.js) with the build and
@@ -21,6 +21,11 @@ registering it (meta kfx-sw).
 It also writes the kfx-engine meta tag: a hash of keeperfx.wasm alone. A
 replay only plays back on the engine that recorded it (web/kfx_replays.js),
 and page-only changes must not count as a new engine.
+
+A site with several engine builds (web/publish-build.py, builds/<id>/) has no
+keeperfx.wasm next to the page: each build's files have their own immutable
+URL, and the page speaks to all of them through one contract (KFX_WEB_API in
+web/kfx_web.js), so only the page's own files are hashed.
 """
 import hashlib
 import json
@@ -66,7 +71,11 @@ def shell_files(site, html):
                 sub = local_path(icon["src"], path)
                 if sub and os.path.isfile(os.path.join(site, sub)):
                     found.add(sub)
-    found.add("keeperfx.wasm")  # loaded by keeperfx.js
+    # The engine next to the page, started by web/kfx_versions.js (a site with
+    # several engine builds may have none here).
+    for name in ("keeperfx.js", "keeperfx.wasm"):
+        if os.path.isfile(os.path.join(site, name)):
+            found.add(name)
     return sorted(found)
 
 
@@ -93,8 +102,9 @@ def main():
     html = STAMPABLE_SCRIPT.sub(rf'<script src="\1?v={build}"', html)
     html = STAMPABLE_STYLE.sub(rf'<link rel="stylesheet" href="\1?v={build}"', html)
     html = re.sub(r'<meta name="kfx-build" content="[^"]*">', f'<meta name="kfx-build" content="{build}">', html)
-    with open(os.path.join(site, "keeperfx.wasm"), "rb") as f:
-        engine = hashlib.sha1(f.read()).hexdigest()[:12]
+    engine = ""
+    if os.path.isfile(os.path.join(site, "keeperfx.wasm")):
+        engine = hashlib.sha1(read(site, "keeperfx.wasm")).hexdigest()[:12]
     html = re.sub(r'<meta name="kfx-engine" content="[^"]*">', f'<meta name="kfx-engine" content="{engine}">', html)
     html = re.sub(r'<meta name="kfx-sw" content="[^"]*">', f'<meta name="kfx-sw" content="{"on" if sw_on else "off"}">', html)
     with open(path, "w", encoding="utf-8") as f:
@@ -116,7 +126,7 @@ def stamp_service_worker(site, html, files, build, sw_on):
         return
     # The URLs exactly as the page asks for them (scripts and styles carry ?v=).
     versioned = {m[0] for m in STAMPABLE_SCRIPT.findall(html) + STAMPABLE_STYLE.findall(html)}
-    versioned.add("keeperfx.wasm")
+    versioned.update(("keeperfx.js", "keeperfx.wasm"))
     entries = [["./", None]]  # the page (index.html), checked by its kfx-build stamp
     for name in files:
         url = f"{name}?v={build}" if name in versioned else name

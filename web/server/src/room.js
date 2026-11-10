@@ -136,6 +136,7 @@ export class Room extends DurableObject {
         unlisted: url.searchParams.get('unlisted') === '1',
         workshop: parseWorkshop(url.searchParams.get('workshop')),
         qm: url.searchParams.get('qm') === '1',
+        build: url.searchParams.get('build') || '',
       };
       server.serializeAttachment(info);
       await this.ctx.storage.put({ code, nextConn: 1, createdAt: Math.floor(Date.now() / 1000), qm: info.qm });
@@ -332,7 +333,7 @@ export class Room extends DurableObject {
       const stored = (await this.ctx.storage.get(`link:${id}`)) || {};
       base = link.host
         ? { host: true, code: stored.code || (await this.ctx.storage.get('code')), user: stored.user || '', unlisted: !!stored.unlisted,
-          workshop: stored.workshop || [], qm: !!stored.qm }
+          workshop: stored.workshop || [], qm: !!stored.qm, build: stored.build || '' }
         : { host: false, conn: link.conn, accepted: stored.accepted !== false };
     }
     const { replaced, bye, ...info } = base;
@@ -366,7 +367,7 @@ export class Room extends DurableObject {
   async dropLink(ws, info, link) {
     link.ws = null;
     const rec = { id: link.id, secret: link.secret, host: link.host, conn: link.conn, inSeq: link.inSeq, outSeq: link.outSeq };
-    if (link.host) Object.assign(rec, { code: info.code, user: info.user, unlisted: !!info.unlisted, workshop: info.workshop || [], qm: !!info.qm });
+    if (link.host) Object.assign(rec, { code: info.code, user: info.user, unlisted: !!info.unlisted, workshop: info.workshop || [], qm: !!info.qm, build: info.build || '' });
     else rec.accepted = !!info.accepted;
     await this.ctx.storage.put(`link:${link.id}`, rec);
     if (link.host) {
@@ -537,6 +538,7 @@ export class Room extends DurableObject {
       delete fields.id;
       if (info.user) fields.hostAccount = info.user; // the host is signed in under this name
       if (info.workshop && info.workshop.length) fields.workshop = info.workshop;
+      if (info.build) fields.build = info.build;     // the engine build it runs (web/kfx_versions.js)
       // Kept here too, for invite links to lobbies that aren't listed (info()).
       await this.ctx.storage.put('meta', { ...((await this.ctx.storage.get('meta')) || {}), ...fields });
       if (!info.unlisted) await this.directory().update(info.code, fields);

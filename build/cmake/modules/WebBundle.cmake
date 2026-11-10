@@ -38,6 +38,7 @@ add_custom_target(web-site ALL
         "${CMAKE_SOURCE_DIR}/web/kfx_offline.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_rejoin.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_replays.js"
+        "${CMAKE_SOURCE_DIR}/web/kfx_versions.js"
         "${CMAKE_SOURCE_DIR}/web/site.css"
         "${CMAKE_SOURCE_DIR}/web/kfx_offline.css"
         "${CMAKE_SOURCE_DIR}/web/sw.js"

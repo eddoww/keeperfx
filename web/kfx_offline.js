@@ -242,12 +242,20 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
 
   // ---- Game data groups --------------------------------------------------------------
 
+  // The chosen game version when the site offers several (web/kfx_versions.js),
+  // else null: one engine next to the page with gamedata/.
+  async function gameVersion() {
+    const version = typeof Versions !== 'undefined' ? await Versions.ready.catch(() => null) : null;
+    return version && !version.legacy ? version : null;
+  }
+
   // gamedata/manifest.json: {files: [[path, size, hash, parts]], prefetch: [...]}.
   let manifestPromise = null;
   function loadManifest() {
     if (!manifestPromise) {
       manifestPromise = (async () => {
-        const url = new URL('gamedata/manifest.json', location.href).href;
+        const version = await gameVersion();
+        const url = version ? version.manifestUrl : new URL('gamedata/manifest.json', location.href).href;
         const resp = await fetch(url, { cache: 'no-cache' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         // Keep it for offline starts even before the service worker runs.
@@ -262,8 +270,11 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
   // A data file's download URLs and their sizes. Must match how
   // web/kfx_loader.js names them (createPlaceholders, fetchDataOnce), since
   // both use the same cache.
-  function fileUrls(base, rel, size, hash, parts) {
-    const url = new URL(`${encodeURI(rel)}?v=${hash}`, base);
+  function fileUrl(base, rel, hash, cas) {
+    return new URL(cas ? hash : `${encodeURI(rel)}?v=${hash}`, base); // cas: shared by versions, named by content
+  }
+  function fileUrls(base, rel, size, hash, parts, cas) {
+    const url = fileUrl(base, rel, hash, cas);
     if (!(parts > 1)) return [[url.href, size]];
     return Array.from({ length: parts }, (_, i) =>
       [`${url.origin}${url.pathname}.part${i}${url.search}`, Math.min(PART_SIZE, size - i * PART_SIZE)]);
@@ -283,7 +294,9 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
   async function groups() {
     const manifest = await loadManifest();
     const lang = language();
-    const base = new URL((await Site.config).dataUrl || 'gamedata/', location.href).href;
+    const version = await gameVersion();
+    const cas = manifest.layout === 'cas';
+    const base = version ? version.dataBase : new URL((await Site.config).dataUrl || 'gamedata/', location.href).href;
     const key = `${lang} ${base}`;
     if (groupsCache && groupsCache.manifest === manifest && groupsCache.key === key) return groupsCache;
     const camps = manifest.files.map(([rel]) => /^campgns\/([^/]+)\.cfg$/.exec(rel)).filter(Boolean)
@@ -320,11 +333,11 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
       const camp = id.startsWith('campaign:') ? id.slice(9) : '';
       const g = group(id, camp || (id === 'maps' ? 'Free play and multiplayer maps' : 'Speech in other languages'),
         camp ? 'Campaign' : (id === 'maps' ? 'The levels outside the campaigns, for free play and skirmish' : 'For playing in another language'));
-      const urls = fileUrls(base, rel, size, hash, parts);
+      const urls = fileUrls(base, rel, size, hash, parts, cas);
       g.urls.push(...urls);
       g.bytes += size;
       g.files++;
-      byUrl.set(new URL(`${encodeURI(rel)}?v=${hash}`, base).href, { group: g, rel });
+      byUrl.set(fileUrl(base, rel, hash, cas).href, { group: g, rel });
       for (const [u] of urls) byUrl.set(u, { group: g, rel });
     }
     const list = sortGroups([...byId.values()]);

@@ -176,6 +176,7 @@
       </div>
       <span id="downloads" class="downloads" hidden></span>
       <div class="stage-tools">
+        <button type="button" class="tool version-chip" id="stage-version" hidden></button>
         <button type="button" class="tool" id="btn-theater" title="Fill the tab"><svg class="icon"><use href="#i-theater"/></svg><span>Fill tab</span></button>
         <button type="button" class="tool" id="btn-fullscreen" title="Fullscreen (F11)"><svg class="icon"><use href="#i-expand"/></svg><span>Fullscreen</span></button>
         <button type="button" class="tool" id="btn-log" title="Download the game's log file"><svg class="icon"><use href="#i-log"/></svg><span>Log</span></button>
@@ -215,6 +216,7 @@
             <button type="button" class="btn primary" id="invited-join">Join this lobby</button>
           </div>
           <h2>Choose your path</h2>
+          <div class="version-row" id="version-row" hidden></div>
           <div class="namefield" id="namefield">
             <label for="keeper-name">Keeper name</label>
             <input id="keeper-name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Keeper">
@@ -549,6 +551,12 @@
   </form>
 </dialog>
 
+<!-- Game version (web/kfx_versions.js) -->
+<dialog id="version-dialog" class="dialog wide">
+  <form method="dialog" class="dialog-close"><button aria-label="Close">&times;</button></form>
+  <div id="version-box"></div>
+</dialog>
+
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="qm-dock" id="qm-dock" aria-live="polite" hidden></div>
 
@@ -559,8 +567,8 @@
 <script src="kfx_cloudsaves.js"></script>
 <script src="kfx_offline.js"></script>
 <script src="kfx_replays.js"></script>
+<script src="kfx_versions.js"></script>
 <script src="kfx_loader.js"></script>
 <script src="kfx_rejoin.js"></script>
-<script src="keeperfx.js" async></script>
 </body>
 </html>

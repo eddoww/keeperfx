@@ -361,8 +361,19 @@ const Site = (() => {
     $('host-name').select();
   }
 
-  function join(code, spectate) {
-    return start({ mode: 'join', code, spectate: !!spectate });
+  /** lobby (optional): its list entry, so a lobby on another game version switches to it. */
+  async function join(code, spectate, lobby) {
+    if (!lobby && online && typeof Versions !== 'undefined' && Versions.multi) {
+      try { lobby = (await api(`lobbies/${encodeURIComponent(code)}`, { cache: 'no-store' })).lobby; } catch (e) { /* the game says what is wrong */ }
+    }
+    const choice = { mode: 'join', code, spectate: !!spectate };
+    const version = lobby && typeof Versions !== 'undefined' ? Versions.forLobby(lobby) : null;
+    if (version && version.missing) {
+      toast(`Lobby ${code} runs KeeperFX ${lobby.version || 'of another version'}, which this site no longer offers.`, { bad: true, ms: 9000 });
+      return false;
+    }
+    if (version && version.build && !version.same) choice.build = version.build.id;
+    return start(choice);
   }
 
   // ---- Lobbies ----------------------------------------------------------------
@@ -411,13 +422,22 @@ const Site = (() => {
     if (l.spectatorsEnabled) meta.push(h('span', {}, icon('eye'), `${l.spectatorCount || 0} watching`));
     if (l.hostAccount) meta.push(h('span', {}, icon('crown'), 'hosted by ', keeperLink(l.hostAccount)));
     if (l.createdAt) meta.push(h('span', {}, icon('clock'), `opened ${ago(l.createdAt * 1000)}`));
+    // Game version (web/kfx_versions.js): joining one on another version switches to it.
+    const version = typeof Versions !== 'undefined' ? Versions.forLobby(l) : { same: true };
+    if (version.build && Versions.multi) meta.push(h('span', {}, Versions.tag(version.build, true)));
+    else if (version.missing) meta.push(h('span', {}, `version ${l.version || '?'}`));
     const actions = [];
+    const other = version.build && !version.same ? ' (switches version)' : '';
     if (mine) actions.push(h('a', { class: 'btn', href: '#/play' }, 'Your lobby'));
-    if (canJoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => join(l.id) }, icon('sword'), inLobby(l) ? 'Join' : 'Rejoin'));
-    if (window.Rejoin && Rejoin.canRejoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => Rejoin.start() }, icon('sword'), 'Rejoin your game'));
-    if (canWatch(l)) actions.push(h('button', { class: 'btn', type: 'button', onclick: () => join(l.id, true) }, icon('eye'), 'Watch'));
-    if (l.spectatorsEnabled && !inLobby(l)) {
-      actions.push(h('a', { class: 'btn icon-only', href: `#/watch/${l.id}`, title: 'Watch link to share' }, icon('link')));
+    if (version.missing && !mine) {
+      actions.push(h('span', { class: 'pill plain', title: 'This lobby runs a game version this site no longer offers' }, 'Other version'));
+    } else {
+      if (canJoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', title: other ? `Reloads into ${version.build.title}` : null, onclick: () => join(l.id, false, l) }, icon('sword'), inLobby(l) ? 'Join' : 'Rejoin', other));
+      if (window.Rejoin && Rejoin.canRejoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => Rejoin.start() }, icon('sword'), 'Rejoin your game'));
+      if (canWatch(l)) actions.push(h('button', { class: 'btn', type: 'button', onclick: () => join(l.id, true, l) }, icon('eye'), 'Watch'));
+      if (l.spectatorsEnabled && !inLobby(l)) {
+        actions.push(h('a', { class: 'btn icon-only', href: `#/watch/${l.id}`, title: 'Watch link to share' }, icon('link')));
+      }
     }
     if (!actions.length) actions.push(h('span', { class: 'pill plain' }, players.length >= max ? 'Full' : 'Closed'));
     return h('article', { class: `lobby${cls === 'busy' ? ' busy' : ''}${mine ? ' mine' : ''}` },
@@ -686,6 +706,7 @@ const Site = (() => {
         ' ', h('small', {}, r.online && r.humans > 1 ? 'online' : r.campaignName)] },
       { title: 'Score', num: true, gold: true, cell: (r) => num(r.score) },
       { title: 'Time', num: true, cell: (r) => gameTime(r.turns) },
+      { title: 'Version', num: true, cell: (r) => h('small', {}, r.version || '') },
     ], data.recent, 'No conquests recorded yet.'));
   }
 
@@ -760,6 +781,7 @@ const Site = (() => {
           r.won && !r.ranked ? h('small', {}, ' not ranked') : null] },
         { title: 'Score', num: true, cell: (r) => num(r.score) },
         { title: 'Time', num: true, cell: (r) => gameTime(r.turns) },
+        { title: 'Version', num: true, cell: (r) => h('small', {}, r.version || '') },
       ], k.recent, 'No games recorded yet.'));
     document.dispatchEvent(new CustomEvent('site:fame', { detail: { kind: 'keeper', name: k.name, node: body } }));
   }
@@ -903,6 +925,7 @@ const Site = (() => {
   });
   document.addEventListener('kfx:result', (ev) => onLevelResult(ev.detail));
   document.addEventListener('kfx:hosting', () => { if (current.view === 'lobbies') renderLobbies(); });
+  document.addEventListener('kfx:versions', () => { if (lobbies) renderLobbies(); });
 
   // While a game runs, links to other pages open in a new tab instead of
   // replacing (or hiding) the game.

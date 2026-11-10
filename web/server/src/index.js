@@ -19,8 +19,10 @@
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
 //   GET  /api/rooms/<CODE>?resume=<id>&secret=..&ack=N  WebSocket: resume a dropped link (room.js)
 //        (&link=1 on host and join: resumable links)
-//   GET  /site.json                   page settings (dataUrl: where game data lives,
-//                                     serviceWorker: false to switch the offline app off)
+//   GET  /site.json                   page settings (dataUrl, buildsUrl: where game data and engine builds
+//                                     live; serviceWorker: false to switch the offline app off)
+//   GET  /builds/*, /data/*           engine builds and their shared game data (builds.js), from R2
+//                                     when BUILDS_FROM is "r2", else from the static site
 //
 // Everything else is the static site (assets binding).
 
@@ -32,6 +34,7 @@ import { Room } from './room.js';
 import { Directory } from './directory.js';
 import { Tavern } from './tavern.js';
 import { handleWorkshop } from './workshop.js';
+import { serveBuilds } from './builds.js';
 
 export { Room, Directory, Tavern };
 
@@ -60,6 +63,7 @@ async function hostRoom(request, env, ctx) {
     // Workshop items (id.file) the host's game may use: joiners' pages install them first.
     const workshop = url.searchParams.get('workshop') || '';
     const link = url.searchParams.get('link') === '1';
+    const build = url.searchParams.get('build') || '';
     url.search = '';
     if (WORKSHOP_RE.test(workshop)) url.searchParams.set('workshop', workshop);
     url.searchParams.set('role', 'host');
@@ -69,6 +73,8 @@ async function hostRoom(request, env, ctx) {
     const asked = new URL(request.url).searchParams;
     if (asked.get('qm') || asked.get('qmseat')) url.searchParams.set('qm', '1'); // quick match: tell the tavern when it ends
     if (link) url.searchParams.set('link', '1');
+    // The engine build the host runs (web/kfx_versions.js): listed, so joiners switch to it.
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(build)) url.searchParams.set('build', build);
     const resp = await roomStub(env, code).fetch(new Request(url, request));
     if (resp.status === 101) quickMatchHosted(request, env, ctx, code, user);
     if (resp.status !== 409) return resp; // 409: code already in use, pick another
@@ -157,7 +163,11 @@ export default {
       if (env.DATA_URL) site.dataUrl = env.DATA_URL;
       // Kill switch for the offline app: pages remove their service worker.
       if (env.SERVICE_WORKER === 'off') site.serviceWorker = false;
+      if (env.BUILDS_URL) site.buildsUrl = env.BUILDS_URL;
       return json(site);
+    }
+    if (url.pathname.startsWith('/builds/') || url.pathname.startsWith('/data/')) {
+      return serveBuilds(request, env, url);
     }
     if (url.pathname.startsWith('/api/')) {
       try {

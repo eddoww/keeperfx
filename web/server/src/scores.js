@@ -172,6 +172,7 @@ function resultRow(row) {
     name: row.username, campaign: row.campaign, campaignName: row.campaign_name, level: row.level,
     levelName: row.level_name, kind: row.kind, online: !!row.online, humans: row.humans, won: !!row.won,
     ranked: !!row.ranked, score: row.score, turns: row.turns, at: row.created_at,
+    version: row.version, // the game version that played it (several are offered: web/kfx_versions.js)
   };
 }
 

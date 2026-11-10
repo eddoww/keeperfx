@@ -14,7 +14,7 @@
     "directory": "../../build-web/site",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/site.json"]
+    "run_worker_first": ["/api/*", "/site.json", "/builds/*", "/data/*"]
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "keeperfx", "database_id": "a48ddbde-2ea5-4a8d-b166-4788fcd7484c", "migrations_dir": "migrations" }
@@ -50,6 +50,13 @@
     // "off" removes the offline app's service worker from players' browsers
     // (kill switch, see docs/web.md "App and offline play"); normally "on".
     "SERVICE_WORKER": "on",
+    // Engine builds (web/publish-build.py, web/upload-builds.sh). BUILDS_FROM "r2":
+    // the Worker serves /builds/ and /data/ from the DATA bucket; otherwise from the
+    // static site (if it has them). BUILDS_URL, if set, sends the page straight to
+    // the bucket's public domain instead (no Worker requests), e.g.
+    // "https://keeper-data.edwindejong.net/builds/". Empty both: one engine next to the page.
+    "BUILDS_FROM": "",
+    "BUILDS_URL": "",
     // The tavern chat on the site: "off" closes it (news lines stay).
     "CHAT": "on",
     // Account names, comma separated, that may remove tavern lines and mute players.
