@@ -19,8 +19,16 @@ player, saves, campaign progress and settings also go to their account (see
   game alone. To leave fullscreen press F11 again, rest the pointer at the top
   edge for the exit button, or use Esc; Chrome and Edge leave Esc to the game
   there and exit when it is held.
-- Click the game to capture the mouse (the browser's pointer lock, like
-  `CAPTURE_CURSOR` on the desktop); press Esc to release it.
+- The game's hand follows the mouse without capturing it, so the pointer can
+  leave the game for the page and Esc opens the game's menu at the first
+  press. Pushing the pointer against the game's edge, or up to 24 pixels past
+  it (and over the black bars around it in fullscreen), scrolls the view.
+  Possessing a creature locks the mouse to the game (the browser's pointer
+  lock) for steering: Esc frees it there, a click on the game takes it back,
+  and leaving the creature lets it go. **Lock mouse** above the game keeps it
+  locked all the time instead, as `CAPTURE_CURSOR` does on the desktop (click
+  to capture, Esc releases it, so the menu takes a second press); the choice
+  is kept in the browser.
 - Screenshots (Shift+C) are saved in the browser and also handed to the
   browser as downloads.
 - The game data downloads as the game needs it; the files a normal start uses
@@ -99,11 +107,13 @@ example 1612x744 on a 2532x1170 phone and 1314x914 on a 1180x820 iPad.
   the browser, or the other way round.
 - The display modes in `keeperfx.cfg` are replaced with windowed modes sized to
   the screen (exact in fullscreen); the page scales the picture to its frame.
-- Keep `RELATIVE_MOUSE_MODE=ON` (the default). With it off, the game moves its
-  cursor to the screen centre at some points (starting a level, the land
-  view) and expects the system pointer to follow, which a web page cannot do,
-  so the two drift apart until the pointer leaves the page and comes back.
-  Touch doesn't have this problem: every touch places the cursor itself.
+- The mouse is not captured outside possession (the page writes
+  `CAPTURE_CURSOR=OFF` unless the player chose Lock mouse; builds from before
+  this keep it on). Keep `RELATIVE_MOUSE_MODE=ON` (the default): it is what
+  locks the pointer in possession. The game still moves its cursor to the
+  screen centre at some points (starting a level, the land view) and a page
+  cannot move the system pointer, but the page places the cursor at the
+  pointer again on the next move, so the two never stay apart.
 
 ## URL options
 
@@ -910,6 +920,27 @@ the redirect `https://<your site>/api/auth/discord/callback`, set
   the canvas. Focus also goes back to the canvas when a game starts, after a
   click on a page control, and when something else moves it to one (a dialog
   closing).
+- **Mouse**: outside possession the page places the game's cursor, as it
+  does for touch: a capture `pointermove` listener on the window
+  (`web/kfx_loader.js`, "The mouse") calls `kfx_web_mouse_point` in
+  `src/kfx/platform/web/WebInput.cpp` with the pointer's position across the
+  canvas, clamped to it, and whether it counts as inside the game (over the
+  canvas, within 24 CSS pixels of its edge, over the stage's black bars, or a
+  button pressed on the game still held). Inside sets the cursor and drives
+  edge panning (`KFX_WEB_CURSOR_INSIDE`); outside leaves the cursor where it
+  is and stops panning. SDL's own motion events are ignored for the cursor
+  then (`KFX_WEB_MOUSE_FROM_PAGE` in `bflib_inputctrl.cpp`); its button events
+  are used as before. Dragging the small map, where the game puts the cursor
+  back in the middle every frame and scrolls by the motion, gets the motion
+  (for touch too). When the game grabs the mouse (`LOCK_CURSOR_IN_POSSESSION`,
+  or `CAPTURE_CURSOR`), SDL's relative mode asks for the pointer lock, but
+  Emscripten defers that request to the next keyboard event; so the page
+  locks the pointer itself when `kfx_web_input_context` reports the grab (bit
+  32), which the browser allows for a few seconds after the click that
+  possessed the creature, and unlocks it when the grab ends. Otherwise SDL
+  locks it on the next click on the game, and the page says so.
+  `kfx_web_mouse_capture` switches Lock mouse while a game runs. Toasts over
+  the game sit at its top and only their buttons and links take clicks.
 - **Touch input**: `web/kfx_touch.js` follows the fingers with touch events
   (they keep their coordinates under pointer lock, pointer events don't) and
   keeps them from SDL (capture listeners on `#stage` stop the touch pointer

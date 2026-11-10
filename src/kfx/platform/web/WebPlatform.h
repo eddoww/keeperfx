@@ -15,11 +15,14 @@ void kfx_web_frame_yield(void);
  * and level statistics (WebReport.c). */
 struct PlayerInfo;
 void web_report_level_result(struct PlayerInfo *player, unsigned char won);
-/* Touch input from the page (WebInput.cpp): whether the cursor counts as in
- * the window (with touch, only while a finger is down), and the two-finger
- * pan and twist, applied to the local dungeon camera. */
+/* Touch and mouse input from the page (WebInput.cpp): whether the cursor
+ * counts as in the window (with touch, only while a finger is down; with the
+ * mouse, while it is over the game or near its edge), whether the page places
+ * the cursor itself (an uncaptured mouse), and the two-finger pan and twist,
+ * applied to the local dungeon camera. */
 struct Camera;
 TbBool web_input_cursor_inside(TbBool host_inside);
+TbBool web_input_mouse_from_page(void);
 void web_input_apply_camera(struct Camera *cam);
 #ifdef __cplusplus
 }
@@ -27,11 +30,13 @@ void web_input_apply_camera(struct Camera *cam);
 #define KFX_WEB_FRAME_YIELD() kfx_web_frame_yield()
 #define KFX_WEB_LEVEL_RESULT(player, won) web_report_level_result(player, won)
 #define KFX_WEB_CURSOR_INSIDE(inside) web_input_cursor_inside(inside)
+#define KFX_WEB_MOUSE_FROM_PAGE() web_input_mouse_from_page()
 #define KFX_WEB_CAMERA_INPUT(cam) web_input_apply_camera(cam)
 #else
 #define KFX_WEB_FRAME_YIELD() do {} while (0)
 #define KFX_WEB_LEVEL_RESULT(player, won) do {} while (0)
 #define KFX_WEB_CURSOR_INSIDE(inside) (inside)
+#define KFX_WEB_MOUSE_FROM_PAGE() (0)
 #define KFX_WEB_CAMERA_INPUT(cam) do {} while (0)
 #endif
 

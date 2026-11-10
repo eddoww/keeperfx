@@ -278,7 +278,7 @@ button.mini-row { width: 100%; border: 0; background: none; font: inherit; text-
 }
 .shell .stage-bar, .shell .stage-foot { width: min(100%, max(560px, calc((100vh - var(--chrome)) * var(--ar)))); margin: 0 auto; }
 .stage { border-left: 1px solid var(--border); border-right: 1px solid var(--border); box-shadow: var(--shadow); }
-#canvas { display: block; background: #000; outline: none; image-rendering: pixelated; }
+#canvas { display: block; background: #000; outline: none; image-rendering: pixelated; -webkit-user-select: none; user-select: none; }
 #canvas.smooth { image-rendering: auto; }
 .stage-foot {
   display: flex; gap: 6px 22px; flex-wrap: wrap; align-items: center; min-height: 44px; padding: 8px 14px;
@@ -367,7 +367,10 @@ body.theater .stage { width: 100%; flex: 1; aspect-ratio: auto; border: 0; min-h
 body.playing #embers { display: none; }
 body.in-play .footer { display: none; }
 
-.stage-toasts { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: max-content; max-width: 90%; }
+/* At the top, where the game has no buttons, and only their own links and
+   buttons take clicks: the mouse isn't captured, so the game stays playable
+   under them. */
+.stage-toasts { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: max-content; max-width: 90%; }
 
 /* ---- Toasts ---------------------------------------------------------------- */
 
@@ -381,6 +384,12 @@ body.in-play .footer { display: none; }
 .toast.bad { border-left-color: var(--ember); }
 .toast.out { opacity: 0; transition: opacity .4s; }
 .toast a { margin-left: 6px; }
+.stage-toasts .toast { pointer-events: none; }
+.stage-toasts .toast :is(a, button) { pointer-events: auto; }
+/* The game draws its own cursor; SDL hides the system one over the canvas,
+   this over the bars around it (fullscreen) where the cursor sits on the edge. */
+body.playing.input-mouse .stage { cursor: none; }
+body.playing.input-mouse .stage :is(#overlay, .hud, .toast, .touch-ui) { cursor: auto; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* ---- Lobbies --------------------------------------------------------------- */
@@ -787,6 +796,7 @@ body.theater .qm-dock { display: none; }
 .stage-foot .hint-touch, .stage-foot .hint-pad { display: none; }
 body.input-touch .stage-foot .hint-mouse, body.input-pad .stage-foot .hint-mouse { display: none; }
 body.input-touch .stage-foot .hint-touch, body.input-pad .stage-foot .hint-pad { display: inline; }
+body:not(.mouse-lock) .stage-foot .hint-lock, body.mouse-lock .stage-foot .hint-follow { display: none; }
 
 /* No page scrolling, zooming, selection or callouts on the game. */
 body.input-touch .stage { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }

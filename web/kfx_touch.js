@@ -484,6 +484,7 @@ const Touch = (() => {
     if (next !== context) {
       const was = context;
       context = next;
+      document.dispatchEvent(new CustomEvent('kfx:input', { detail: next })); // web/kfx_loader.js (the mouse)
       document.body.classList.toggle('game-level', (next & 1) !== 0);
       document.body.classList.toggle('game-possess', (next & 2) !== 0);
       document.body.classList.toggle('game-typing', (next & 4) !== 0);

@@ -286,6 +286,9 @@ async function writeConfig() {
   const set = {
     FRONTEND_RES: `640x480w32 ${page} ${page}`,
     INGAME_RES: page,
+    // The page places the cursor; the game locks the mouse only in possession
+    // (see "The mouse"), unless the player chose "Lock mouse".
+    CAPTURE_CURSOR: (mouseLockChosen() || !enginePlacesMouse()) ? 'ON' : 'OFF',
   };
   if (params.get('renderer')) set.RENDERER = params.get('renderer').toUpperCase();
   // ?cfg=KEY=VALUE;KEY=VALUE overrides any other keeperfx.cfg line.
@@ -584,6 +587,108 @@ function fixPointerEnter(canvas) {
   add.call(canvas, 'pointerdown', enterIfNeeded, { capture: true });
 }
 
+// ---- The mouse ----------------------------------------------------------------
+
+// The game follows the mouse without capturing it: the page puts the game's
+// cursor where the pointer is (kfx_web_mouse_point in
+// src/kfx/platform/web/WebInput.cpp) and SDL hides the system pointer over the
+// game. Esc stays an ordinary key (the game's menu) and the pointer can leave
+// for the page. Only when the game grabs the mouse, in creature possession
+// where it steers by the mouse's motion, does it take the browser's pointer
+// lock (Esc releases it, a click on the game takes it back), and lets it go
+// when the possession ends. "Lock mouse" in the bar above the game keeps it
+// locked all the time instead (CAPTURE_CURSOR, the desktop game's way).
+//
+// A frame on a page has no screen edge to stop the pointer at, so for
+// MOUSE_EDGE CSS pixels past the game's edge, and over the black bars around
+// it in fullscreen, the cursor stays on the edge and keeps scrolling the
+// view; a drag begun on the game follows the pointer anywhere until the button
+// is let go. Further out, the cursor stays put and the view doesn't scroll.
+const MOUSE_EDGE = 24;
+const MOUSE_LOCK_KEY = 'kfx.mouseLock';
+let mouseHeld = false;
+const mouseApi = (name) => (KFX.state === 'running' && typeof Module === 'object' && Module[`_kfx_web_${name}`]) || null;
+const mouseLockChosen = () => { try { return localStorage.getItem(MOUSE_LOCK_KEY) === '1'; } catch (e) { return false; } };
+// Builds from before the page placed the cursor keep the mouse captured.
+const enginePlacesMouse = () => typeof Module === 'object' && !!Module._kfx_web_mouse_point;
+const usingMouse = () => !document.body.classList.contains('input-touch') && !document.body.classList.contains('input-pad');
+
+function mouseToGame(ev, leaving) {
+  const point = mouseApi('mouse_point');
+  if (!point || document.pointerLockElement) return;
+  if (ev.type === 'pointerdown' && ev.target === $('canvas')) mouseHeld = true;
+  if (!ev.buttons) mouseHeld = false;
+  const r = $('canvas').getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return;
+  const s = $('stage').getBoundingClientRect();
+  const x = ev.clientX;
+  const y = ev.clientY;
+  const near = x >= r.left - MOUSE_EDGE && x <= r.right + MOUSE_EDGE && y >= r.top - MOUSE_EDGE && y <= r.bottom + MOUSE_EDGE;
+  const overStage = x >= s.left && x <= s.right && y >= s.top && y <= s.bottom;
+  const inside = !leaving && !document.querySelector('dialog[open]') && (mouseHeld || near || overStage);
+  const clamp = (v) => Math.min(Math.max(v, 0), 0.9999);
+  point(clamp((x - r.left) / r.width), clamp((y - r.top) / r.height), inside ? 1 : 0);
+}
+for (const type of ['pointermove', 'pointerdown', 'pointerup']) {
+  window.addEventListener(type, (ev) => { if (ev.pointerType === 'mouse') mouseToGame(ev, false); }, { capture: true });
+}
+// The pointer left the browser window, or the window lost focus.
+document.addEventListener('pointerout', (ev) => {
+  if (ev.pointerType === 'mouse' && !ev.relatedTarget && !mouseHeld) mouseToGame(ev, true);
+});
+window.addEventListener('blur', () => {
+  mouseHeld = false;
+  const point = mouseApi('mouse_point');
+  if (point && !document.pointerLockElement) point(0.5, 0.5, 0);
+});
+
+// The game grabbed the mouse (web/kfx_touch.js passes on what the game is
+// doing): lock the pointer now if the browser lets the page, which it does
+// for a moment after a click (the click that possessed the creature);
+// otherwise SDL takes it on the next click on the game.
+function lockPointer() {
+  if (document.pointerLockElement || !usingMouse()) return;
+  const canvas = $('canvas');
+  if (navigator.userActivation && !navigator.userActivation.isActive) { mouseNotice(); return; }
+  try {
+    const p = canvas.requestPointerLock();
+    if (p && p.catch) p.catch(() => mouseNotice());
+  } catch (e) { mouseNotice(); }
+}
+let noticeAt = 0;
+function mouseNotice() {
+  if (!(gameContext & 32) || document.pointerLockElement || !usingMouse() || Date.now() - noticeAt < 15000) return;
+  noticeAt = Date.now();
+  Site.toast(gameContext & 2 ? 'Click the game to steer with the mouse.' : 'Click the game to capture the mouse.', { stage: true, ms: 3500 });
+}
+let gameContext = 0;
+document.addEventListener('kfx:input', (ev) => {
+  const was = gameContext;
+  gameContext = ev.detail;
+  if ((gameContext & 32) && !(was & 32)) lockPointer();
+  // SDL lets go too, but not always (a lock it asked for and the page got).
+  if (!(gameContext & 32) && (was & 32) && document.pointerLockElement === $('canvas')) document.exitPointerLock();
+});
+document.addEventListener('pointerlockerror', () => mouseNotice());
+// Esc took the lock away while the game still holds the mouse.
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && KFX.state === 'running') setTimeout(mouseNotice, 300);
+});
+
+function setMouseLock(on) {
+  try { localStorage.setItem(MOUSE_LOCK_KEY, on ? '1' : '0'); } catch (e) { /* this visit only */ }
+  renderMouseLock();
+  const capture = mouseApi('mouse_capture');
+  if (capture) capture(on ? 1 : 0);
+  if (on) lockPointer();
+}
+function renderMouseLock() {
+  const on = mouseLockChosen() || !enginePlacesMouse();
+  document.body.classList.toggle('mouse-lock', on);
+  $('btn-mouselock').classList.toggle('on', on);
+  $('btn-mouselock').hidden = !enginePlacesMouse();
+}
+
 // ---- Startup ----------------------------------------------------------------
 
 // Screenshots the game saves (scrshots/) go to the player's downloads, which
@@ -792,6 +897,7 @@ async function boot() {
   window.addEventListener('resize', fitCanvas);
 
   fixPointerEnter($('canvas'));
+  renderMouseLock();
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
   args.push(...choiceArgs(choice));
@@ -1032,7 +1138,7 @@ async function forgetDkFiles() {
 // later Space or Enter in the game doesn't press it again.
 for (const [id, action] of Object.entries({
   'btn-fullscreen': toggleFullscreen, 'hud-exit': toggleFullscreen, 'btn-theater': toggleTheater,
-  'btn-log': downloadLog, 'btn-leave': leaveGame, 'invite-copy': copyInvite, 'forget-button': forgetDkFiles,
+  'btn-log': downloadLog, 'btn-leave': leaveGame, 'btn-mouselock': () => setMouseLock(!mouseLockChosen()), 'invite-copy': copyInvite, 'forget-button': forgetDkFiles,
 })) {
   $(id).addEventListener('click', (ev) => { action(); ev.currentTarget.blur(); });
 }
