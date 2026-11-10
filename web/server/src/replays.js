@@ -5,6 +5,8 @@
 //   GET    /api/replays/<id>           one replay's details
 //   GET    /api/replays/<id>/file      the file itself (immutable, cached at the edge)
 //   DELETE /api/replays/<id>           its publisher or an admin
+//   GET    /api/replays/builds         engine builds published replays need (web/publish-build.py
+//                                      keeps them: --keep-referenced)
 //
 // The game records every level it plays to replays/ (src/replay.c); the page
 // (web/kfx_replays.js) uploads one with what it knows about it. Files live in
@@ -15,8 +17,10 @@
 // within per-player and site-wide limits (vars in wrangler.jsonc).
 //
 // A replay only plays back on the build of the game that recorded it. `build`
-// identifies that (the engine and the rules data, see kfx_replays.js); the
-// page compares it with its own before playing.
+// identifies that (the engine and the rules data, see kfx_replays.js):
+// "<engine>.<rules>", the engine being a hash of keeperfx.wasm (the engine next
+// to the page) or an engine build id (web/publish-build.py, e.g.
+// "1.4.0.5603-18d8d4c5"). The page loads that build to play it.
 
 import { currentUser, json } from './auth.js';
 
@@ -52,6 +56,10 @@ function text(value, max) {
 }
 
 const NAME_RE = /^[A-Za-z0-9_-]{1,16}$/;
+// "<engine>.<rules>": a wasm hash or an engine build id, then the rules hash.
+const BUILD_TAG_RE = /^([0-9a-f]{6,20}|[A-Za-z0-9][A-Za-z0-9._-]{0,63})(\.[0-9a-f]{6,20})?$/;
+/** The engine part of a build tag (what web/publish-build.py calls a build id). */
+export const engineOf = (tag) => String(tag || '').replace(/\.[0-9a-f]{6,20}$/, '');
 
 function isAdmin(env, user) {
   return !!user && (env.ADMIN_USERS || '').toLowerCase().split(',').map((n) => n.trim()).includes(user.username.toLowerCase());
@@ -71,8 +79,8 @@ export function cleanMeta(raw, publisher, now) {
   const campaign = text(raw.campaign, 80).toLowerCase().replace(/\.cfg$/, '');
   if (campaign && !/^[a-z0-9][a-z0-9 _.-]{0,63}$/.test(campaign)) return null;
   const level = int(raw.level, 1, 65535);
-  const build = text(raw.build, 40);
-  if (level === null || !/^[0-9a-f]{6,20}(\.[0-9a-f]{6,20})?$/.test(build)) return null;
+  const build = text(raw.build, 96);
+  if (level === null || !BUILD_TAG_RE.test(build)) return null;
   const players = [publisher];
   for (const name of Array.isArray(raw.players) ? raw.players.slice(0, 8) : []) {
     if (typeof name === 'string' && NAME_RE.test(name) && !players.some((p) => p.toLowerCase() === name.toLowerCase())) players.push(name);
@@ -249,6 +257,18 @@ async function remove(request, env, id) {
   return json({ ok: true });
 }
 
+/** The engine builds that published replays were recorded with, so the builds
+ * pipeline does not delete them (web/publish-build.py --keep-referenced). */
+async function referencedBuilds(env) {
+  const rows = await env.DB.prepare('SELECT build, COUNT(*) AS n FROM replays GROUP BY build').all();
+  const counts = {};
+  for (const row of rows.results) {
+    const engine = engineOf(row.build);
+    if (engine) counts[engine] = (counts[engine] || 0) + row.n;
+  }
+  return json({ builds: Object.keys(counts).sort(), replays: counts }, { headers: { 'Cache-Control': 'no-store' } });
+}
+
 /** path: "replays" or "replays/<id>[/file]" */
 export async function handleReplays(request, env, ctx, path) {
   const method = request.method;
@@ -257,6 +277,7 @@ export async function handleReplays(request, env, ctx, path) {
     if (method === 'GET') return list(request, env);
     return json({ error: 'Not found' }, { status: 404 });
   }
+  if (path === 'replays/builds') return method === 'GET' ? referencedBuilds(env) : json({ error: 'Not found' }, { status: 404 });
   const m = path.match(/^replays\/([a-z0-9]+)(\/file)?$/);
   if (!m || !ID_RE.test(m[1])) return json({ error: 'No such replay' }, { status: 404 });
   if (m[2]) return method === 'GET' ? file(request, env, ctx, m[1]) : json({ error: 'Not found' }, { status: 404 });

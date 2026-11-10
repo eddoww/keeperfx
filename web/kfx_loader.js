@@ -974,15 +974,21 @@ function newestSave() {
 function renderContinue() {
   const box = $('continue');
   if (!box) return;
-  const save = newestSave();
+  // An engine build from before -loadgame would refuse the command line.
+  const save = Versions.supports('loadgame') ? newestSave() : null;
   box.hidden = !save;
   if (!save) return;
   const { info } = save;
   box.querySelector('.continue-title').textContent = info.title || save.name;
+  // A save made by another game version loads (the save format reads across
+  // versions), with the game's own "made by version" warning; say so first.
+  const running = Versions.current && Versions.current.version;
+  const other = running && info.version && info.version !== '0.0.0.0' && info.version !== running ? info.version : '';
   box.querySelector('.continue-info').textContent = [
     /^fx1auto/.test(save.name) ? 'autosave' : 'your save',
     info.campaign && info.level > 0 ? `${info.campaign}, level ${info.level}` : '',
     ago(save.mtime),
+    other ? `made with version ${other}, this is ${running}` : '',
   ].filter(Boolean).join(' · ');
   box.dataset.file = save.name;
   box.dataset.label = info.title || 'your game';
@@ -1065,7 +1071,7 @@ var KFX = { // var: the site script reaches it as window.KFX
   },
   start(choice, { confirmed = false } = {}) {
     // A lobby on another game version: reload into that version, then start.
-    if (choice.build && Versions.current && !Versions.current.legacy && choice.build !== Versions.current.id) {
+    if (choice.build && Versions.multi && Versions.current && choice.build !== Versions.current.id) {
       if (this.state === 'running' && !confirmed && !confirm('Leave the current game and start this one? It runs another game version.')) return false;
       try { sessionStorage.setItem(START_KEY, JSON.stringify(choice)); } catch (e) { /* starts on the start screen */ }
       leaving = true;
@@ -1241,7 +1247,7 @@ async function boot() {
     const offered = Workshop.hostOffer(choice);
     if (offered) query.set('workshop', offered);
     for (const key of ['qm', 'qmseat', 'qmname']) if (choice[key]) query.set(key, String(choice[key]));
-    if (!build.legacy) query.set('build', build.id); // the lobby list shows it; joiners switch to it
+    if (Versions.multi) query.set('build', build.id); // the lobby list shows it; joiners switch to it
     Module.kfxHostQuery = query.toString();
     args.push('-server');
   } else if (choice.mode === 'replay') {
@@ -1355,7 +1361,7 @@ function showLobbyCode(code) {
   if (!code) return;
   const link = new URL(location.pathname, location.href);
   link.searchParams.set('join', code);
-  if (Versions.current && !Versions.current.legacy) link.searchParams.set('build', Versions.current.id);
+  if (Versions.multi && Versions.current) link.searchParams.set('build', Versions.current.id);
   inviteLink = link.href;
   badge.querySelector('.code').textContent = code;
   $('hud-lobby').textContent = `Lobby ${code}`;

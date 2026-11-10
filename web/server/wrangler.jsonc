@@ -55,8 +55,11 @@
     // static site (if it has them). BUILDS_URL, if set, sends the page straight to
     // the bucket's public domain instead (no Worker requests), e.g.
     // "https://keeper-data.edwindejong.net/builds/". Empty both: one engine next to the page.
+    // Set: players choose the game version (default: the newest alpha). Rollback: empty
+    // BUILDS_URL and deploy; pages then run the engine next to them again (docs/web.md,
+    // "Game versions").
     "BUILDS_FROM": "",
-    "BUILDS_URL": "",
+    "BUILDS_URL": "https://keeper-data.edwindejong.net/builds/",
     // The tavern chat on the site: "off" closes it (news lines stay).
     "CHAT": "on",
     // Account names, comma separated, that may remove tavern lines and mute players.

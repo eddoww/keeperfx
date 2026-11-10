@@ -55,6 +55,9 @@ function roomStub(env, code) {
   return env.ROOMS.get(env.ROOMS.idFromName(code));
 }
 
+// An engine build id (web/publish-build.py), or "page" for the engine next to the page.
+const BUILD_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
 async function hostRoom(request, env, ctx) {
   const user = await currentUser(request, env);
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -75,7 +78,7 @@ async function hostRoom(request, env, ctx) {
     if (asked.get('qm') || asked.get('qmseat')) url.searchParams.set('qm', '1'); // quick match: tell the tavern when it ends
     if (link) url.searchParams.set('link', '1');
     // The engine build the host runs (web/kfx_versions.js): listed, so joiners switch to it.
-    if (/^[A-Za-z0-9._-]{1,64}$/.test(build)) url.searchParams.set('build', build);
+    if (BUILD_RE.test(build)) url.searchParams.set('build', build);
     const resp = await roomStub(env, code).fetch(new Request(url, request));
     if (resp.status === 101) quickMatchHosted(request, env, ctx, code, user);
     if (resp.status !== 409) return resp; // 409: code already in use, pick another
@@ -91,7 +94,8 @@ function quickMatchHosted(request, env, ctx, code, user) {
   if (!qm && !seat) return;
   const tavern = env.TAVERN.get(env.TAVERN.idFromName('tavern'));
   const name = user ? user.username : (params.get('qmname') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16);
-  ctx.waitUntil((qm ? tavern.quickmatchHosted(qm.slice(0, 64), code) : tavern.quickmatchSeat(code, seat, name))
+  const build = params.get('build') || '';
+  ctx.waitUntil((qm ? tavern.quickmatchHosted(qm.slice(0, 64), code) : tavern.quickmatchSeat(code, seat, name, BUILD_RE.test(build) ? build : ''))
     .catch((e) => console.error('quickmatch', e)));
 }
 

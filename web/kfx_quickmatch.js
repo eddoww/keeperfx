@@ -105,8 +105,13 @@ const QuickMatch = (() => {
     join();
   }
 
-  function join() {
-    send({ type: 'qm-join', size, state: gameState(), name: Site.keeperName(), client, since: st.since });
+  // The engine build this page runs (web/kfx_versions.js): only keepers on the
+  // same build are matched, so nobody has to switch version to play.
+  async function join() {
+    await new Promise((r) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', r, { once: true }) : r())); // kfx_versions.js comes later
+    const version = typeof Versions !== 'undefined' ? await Versions.ready.catch(() => null) : null;
+    const build = version && Versions.multi ? version.id : '';
+    send({ type: 'qm-join', size, state: gameState(), name: Site.keeperName(), client, since: st.since, build });
   }
 
   function cancel() {

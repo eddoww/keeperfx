@@ -576,6 +576,8 @@ const Workshop = (() => {
     if (choice.mode === 'play') return mine;
     const local = mine.filter(localOnly);
     let shared = [];
+    // An engine build from before -mpmods turns mods off online: offer none there.
+    if (!mpMods()) return local;
     if (choice.mode === 'host' && !choice.qm) {
       shared = (Array.isArray(choice.mods) ? choice.mods : []).map(Number).map((id) => installed.get(id)).filter((it) => hasMods(it) && !localOnly(it));
       shared.sort((x, y) => mine.indexOf(x) - mine.indexOf(y));
@@ -585,8 +587,10 @@ const Workshop = (() => {
     return [...shared, ...local.filter((it) => !shared.includes(it))];
   }
 
+  /** Whether the running engine keeps mods online (-mpmods, web/kfx_versions.js supports()). */
+  const mpMods = () => typeof Versions === 'undefined' || Versions.supports('mpmods');
   /** Mods a host may offer a lobby: enabled ones that change how the game plays. */
-  const hostableMods = () => modItems().filter((it) => modOn(it) && !localOnly(it));
+  const hostableMods = () => (mpMods() ? modItems().filter((it) => modOn(it) && !localOnly(it)) : []);
 
   /**
    * Loader, just before the game starts: mods/load_order.cfg for this game.
@@ -602,7 +606,7 @@ const Workshop = (() => {
     KFX.mods = items.map((it) => ({ id: it.id, name: it.name, file: it.fileId }));
     if (choice.nomods) return ['-nomods'];
     // Online the engine leaves mods out unless told the page gave everyone the same.
-    if ((choice.mode === 'host' || choice.mode === 'join') && items.length) return ['-mpmods'];
+    if ((choice.mode === 'host' || choice.mode === 'join') && items.length && mpMods()) return ['-mpmods'];
     return [];
   }
 

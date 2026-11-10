@@ -30,6 +30,9 @@
 #   --upload [BUCKET]       upload to R2 (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID)
 #   --upload-local DIR      upload to wrangler's local R2 in DIR instead (testing)
 #   --default CHANNEL|ID    make this the site's default (publish-build.py --default)
+#   --site URL              the site (e.g. https://keeper.edwindejong.net): prune old builds,
+#                           keeping those its published replays need (publish-build.py
+#                           --keep-referenced URL/api/replays/builds); without it nothing is pruned
 #   --force                 build even if the site already has this build
 #   JOBS=4                  parallel compile jobs (always under nice)
 #
@@ -41,7 +44,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 CHANNEL=alpha COMMIT="" PORT=HEAD UPSTREAM=origin/master WORK=/tmp/kfx-upstream DEPS="" BUILDS_URL="" LAYOUT=""
-DK="" UPLOAD="" BUCKET=keeperfx-data FORCE="" DEFAULT="" WHERE=()
+DK="" UPLOAD="" BUCKET=keeperfx-data FORCE="" DEFAULT="" WHERE=() SITE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --channel) CHANNEL="$2"; shift 2 ;;
@@ -56,6 +59,7 @@ while [ $# -gt 0 ]; do
         --upload) UPLOAD=1; if [ $# -gt 1 ] && [[ "$2" != --* ]]; then BUCKET="$2"; shift; fi; shift ;;
         --upload-local) UPLOAD=1; WHERE=(--local --persist-to "$(cd "$2" && pwd)"); shift 2 ;;
         --default) DEFAULT="$2"; shift 2 ;;
+        --site) SITE="${2%/}"; shift 2 ;;
         --force) FORCE=1; shift ;;
         *) echo "Unknown option $1" >&2; exit 2 ;;
     esac
@@ -208,6 +212,7 @@ fi
 ADD_ARGS=(--site "$STAGE" --version "$VERSION" --channel "$CHANNEL" --date "$DATE" --upstream "$COMMIT"
           --port "$PORT_SHA" --notes "$NOTES" --changes "$CHANGES" --checkout "$SRC")
 [ -n "$DEFAULT" ] && ADD_ARGS+=(--default "$DEFAULT")
+[ -n "$SITE" ] && ADD_ARGS+=(--keep-referenced "$SITE/api/replays/builds")
 python3 "$HERE/publish-build.py" add "$LAYOUT" "${ADD_ARGS[@]}" | tee "$WORK/add.log"
 BUILD_ID="$(python3 -c 'import json,sys; i=json.load(open(sys.argv[1])); print(next(b["id"] for b in i["builds"] if b["upstream"]==sys.argv[2] and b["port"]==sys.argv[3]))' \
     "$LAYOUT/builds/index.json" "$COMMIT" "$PORT_SHA")"

@@ -108,8 +108,8 @@ export class Tavern extends DurableObject {
   }
 
   /** The Worker: a lobby that takes quick-match players opened. */
-  quickmatchSeat(code, size, name) {
-    return this.quickmatch.seat(code, size, name);
+  quickmatchSeat(code, size, name, build) {
+    return this.quickmatch.seat(code, size, name, build);
   }
 
   /** A quick-match lobby started its game or closed. */

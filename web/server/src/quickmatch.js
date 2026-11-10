@@ -5,12 +5,12 @@
 // talks the tavern hibernates.
 //
 // Where things are kept, so they survive hibernation:
-//   - who is queued: on each socket's attachment, `qm: {q:1, size, since, state, name, client}`.
+//   - who is queued: on each socket's attachment, `qm: {q:1, size, since, state, name, client, build}`.
 //     Closing the tab closes the socket, which takes the player out of the queue.
-//   - a match: storage `qm:m:<id>` {id, token, size, at, host, joiners, code?, cancelled?},
+//   - a match: storage `qm:m:<id>` {id, token, size, build, at, host, joiners, code?, cancelled?},
 //     each participant {sid, name, ticket, entry} (entry: their queue entry, to queue them again).
 //     A matched socket's attachment is `qm: {m:<id>, role, ticket}`.
-//   - a seat: storage `qm:s:<code>` {code, size, name, at, sent:[ms]}: a lobby that is open and
+//   - a seat: storage `qm:s:<code>` {code, size, name, build, at, sent:[ms]}: a lobby that is open and
 //     takes quick-match players (a lone keeper who opened a public lobby, an "any" match's lobby
 //     that has room, a host whose players left before the lobby opened).
 //
@@ -18,8 +18,10 @@
 // "idle" (start screen or stopped), "busy" (a game is running: joining means leaving it),
 // "nofiles" (no Dungeon Keeper files yet: can join once they are added, but can't host).
 // A match needs at least one keeper who can host; the host is picked idle first, then oldest.
+// build: the engine build the page runs (web/kfx_versions.js; "" on a single-build site). Only
+// keepers on the same build are matched or sent to a seat: different builds can't play together.
 //
-//   page -> tavern  {type:"qm-join", size:2|"any", state, name, client, since?}
+//   page -> tavern  {type:"qm-join", size:2|"any", state, name, client, since?, build?}
 //                   {type:"qm-state", state}           the game's state changed
 //                   {type:"qm-leave"}                  cancel (queue or match)
 //                   {type:"qm-reloading"}              the page reloads into the match (keep my place)
@@ -49,6 +51,8 @@ const SEAT_WARMUP_MS = 60 * 1000;      // a seat whose lobby has not described i
 const MAX_SINCE_AGE = 30 * 60 * 1000;   // a page coming back keeps its place up to this long
 const MAX_PLAYERS = 4;
 const NAME_RE = /^[A-Za-z0-9_-]{1,16}$/;
+const BUILD_RE = /^[A-Za-z0-9._-]{1,64}$/;
+const buildOf = (value) => (typeof value === 'string' && BUILD_RE.test(value) ? value : '');
 const STATES = ['idle', 'busy', 'nofiles'];
 
 const randomHex = (bytes) => [...crypto.getRandomValues(new Uint8Array(bytes))]
@@ -143,9 +147,9 @@ export class QuickMatch {
   }
 
   /** The Worker: a lobby opened with ?qmseat=; quick-match players may be sent to it. */
-  seat(code, size, name) {
+  seat(code, size, name, build) {
     return this.serial(async () => {
-      await this.addSeat(code, size === '2' || size === 2 ? 2 : 0, name);
+      await this.addSeat(code, size === '2' || size === 2 ? 2 : 0, name, [], buildOf(build));
       await this.matchUp();
     });
   }
@@ -177,6 +181,7 @@ export class QuickMatch {
           state: STATES.includes(msg.state) ? msg.state : 'nofiles',
           name,
           client,
+          build: buildOf(msg.build),
         };
         // One place per browser: a second tab takes it over.
         if (client) {
@@ -285,7 +290,7 @@ export class QuickMatch {
     const host = this.bySid(match.host.sid);
     if (match.cancelled) {
       if (match.cancelled === 'players-left') {
-        await this.addSeat(code, match.size, match.host.name);
+        await this.addSeat(code, match.size, match.host.name, [], match.build || '');
         this.send(host, { type: 'qm-seat', code });
         await this.matchUp();
       }
@@ -300,14 +305,14 @@ export class QuickMatch {
     if (host) this.setQm(host, null);
     // An "any" match with room left keeps taking keepers until its game starts.
     if (!match.size && match.joiners.length + 1 < MAX_PLAYERS) {
-      await this.addSeat(code, 0, match.host.name, match.joiners.map(() => Date.now()));
+      await this.addSeat(code, 0, match.host.name, match.joiners.map(() => Date.now()), match.build || '');
     }
     await this.matchUp();
   }
 
-  async addSeat(code, size, name, sent = []) {
+  async addSeat(code, size, name, sent = [], build = '') {
     if (!/^[A-Z0-9]{4,8}$/.test(code || '')) return;
-    await this.ctx.storage.put(`qm:s:${code}`, { code, size, name: name || 'a keeper', at: Date.now(), sent });
+    await this.ctx.storage.put(`qm:s:${code}`, { code, size, name: name || 'a keeper', at: Date.now(), sent, build });
   }
 
   // ---- Matching -------------------------------------------------------------------------
@@ -380,6 +385,7 @@ export class QuickMatch {
         if (room <= 0) break;
         // A two-keeper player only takes a lobby where they make the second keeper.
         if (this.info(ws).qm.size === 2 && occupied !== 1) continue;
+        if ((this.info(ws).qm.build || '') !== (seat.build || '')) continue; // another game version
         this.setQm(ws, null);
         this.send(ws, { type: 'qm-go', code: seat.code, host: seat.name });
         seat.sent.push(now);
@@ -396,7 +402,8 @@ export class QuickMatch {
       const first = waiting.find((ws) => !skipped.has(ws));
       if (!first) break;
       const entry = (ws) => this.info(ws).qm;
-      const others = waiting.filter((ws) => ws !== first);
+      const build = entry(first).build || '';
+      const others = waiting.filter((ws) => ws !== first && (entry(ws).build || '') === build);
       let group;
       if (entry(first).size === 2) {
         const mate = others.find((ws) => canHost(entry(first)) || canHost(entry(ws)));
@@ -433,6 +440,7 @@ export class QuickMatch {
       id: randomHex(8),
       token: randomHex(12),
       size: group.length === 2 && group.some((ws) => entries.get(ws).size === 2) ? 2 : 0,
+      build: entries.get(hostWs).build || '',
       at: Date.now(),
       host: person(hostWs),
       joiners: group.filter((ws) => ws !== hostWs).map(person),

@@ -18,6 +18,11 @@
 //   copy kept for offline starts.
 // - /api and /site.json always go to the network; offline they fail at once,
 //   so the page drops to solo play instead of waiting.
+// - Engine builds of a site with several (web/kfx_versions.js): their files
+//   (builds/<id>/keeperfx.js, .wasm, manifest.json, on this origin or the
+//   bucket's) never change, so they are answered from keeperfx-engines when
+//   the page has put them there (Versions.cacheEngine), else from the network.
+//   The page keeps that cache to the builds it used lately.
 // - Kill switch: a build stamped with --no-sw (ENABLED false) or an unstamped
 //   copy of this file removes its caches and unregisters itself.
 'use strict';
@@ -30,6 +35,8 @@ const PRECACHE = [];
 const SHELL_PREFIX = 'keeperfx-shell-';
 const SHELL = SHELL_PREFIX + BUILD;
 const META = 'keeperfx-meta'; // the last gamedata/manifest.json that loaded
+const ENGINES = 'keeperfx-engines'; // engine builds kept for offline starts (web/kfx_versions.js)
+const ENGINE_FILE = /\/builds\/[A-Za-z0-9._-]{1,64}\/(keeperfx\.js|keeperfx\.wasm|manifest\.json)$/;
 const SCOPE = new URL(self.registration.scope);
 const INDEX = SCOPE.href; // the page, precached as "./" (hosts may redirect index.html there)
 const MANIFEST = new URL('gamedata/manifest.json', SCOPE).href;
@@ -83,7 +90,7 @@ self.addEventListener('install', (ev) => {
 self.addEventListener('activate', (ev) => {
   ev.waitUntil((async () => {
     for (const key of await caches.keys()) {
-      if ((key.startsWith(SHELL_PREFIX) && key !== SHELL) || (!ON && key === META)) await caches.delete(key);
+      if ((key.startsWith(SHELL_PREFIX) && key !== SHELL) || (!ON && (key === META || key === ENGINES))) await caches.delete(key);
     }
     if (!ON) {
       // Kill switch: gone for good. Pages already open keep running from
@@ -134,6 +141,12 @@ async function dataManifest(req) {
   }
 }
 
+// An engine build's file: immutable, so the kept copy whenever there is one.
+async function engineFile(req) {
+  const hit = await (await caches.open(ENGINES)).match(req.url);
+  return hit || fetch(req);
+}
+
 async function fromShell(key, req) {
   const hit = await (await caches.open(SHELL)).match(key);
   return hit || fetch(req);
@@ -143,6 +156,10 @@ self.addEventListener('fetch', (ev) => {
   const req = ev.request;
   if (!ON || req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (ENGINE_FILE.test(url.pathname) && req.mode !== 'navigate') {
+    ev.respondWith(engineFile(req));
+    return;
+  }
   // Other origins (a dataUrl bucket, Discord, fonts) go straight to the network.
   if (url.origin !== SCOPE.origin || !url.pathname.startsWith(SCOPE.pathname)) return;
   const rel = url.pathname.slice(SCOPE.pathname.length);

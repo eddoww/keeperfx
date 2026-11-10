@@ -19,15 +19,30 @@ Commands:
 
   add <layout> --site <dir> --version 1.4.0.5603 --channel alpha [options]
       Add the build in <dir> (keeperfx.js, keeperfx.wasm and gamedata/ with
-      manifest.json, as web/package-data.py makes it) to <layout>. Then prune:
-      each channel keeps its newest --keep builds (and any build marked
-      "keep"); older ones move to "retired", as does a build of the same
-      version made from an older port. A retired build's files are
-      deleted --grace-days later (players who started it just before may
-      still be loading its data), together with the data no other build
-      uses. Writes <layout>/plan.json: what web/upload-builds.sh must upload
+      manifest.json, as web/package-data.py makes it) to <layout>. A build of
+      the same version made from an older port is retired. Then, only with
+      --keep-referenced, prune: each channel offers its newest --keep-count
+      builds (and any build marked "keep", and the default); an older build
+      that a published replay was recorded with stays, "archived" (the page
+      runs it for its replays but does not offer it), and the others move to
+      "retired". A retired build's files are deleted --grace-days later
+      (players who started it just before may still be loading its data),
+      together with the data no other build uses. Without --keep-referenced
+      nothing is pruned: every build stays offered (about 10 MB each in R2:
+      its engine and the data files that changed).
+      Writes <layout>/plan.json: what web/upload-builds.sh must upload
       and delete, in a safe order (data, then the build, then index.json last,
       so a failure half way leaves the site on its previous builds).
+
+      --keep-referenced URL: the site's /api/replays/builds (web/server/src/
+      replays.js), which lists the builds published replays need; if it does
+      not answer, the command fails rather than delete what replays need.
+      "none" prunes without asking (old replays of pruned builds can then only
+      be downloaded, not watched).
+
+      Each build records the page features its engine has ("features",
+      web/kfx_versions.js supports()), found in the source tree it was built
+      from (--checkout) or given with --features.
 
   pull <layout> <builds-url>
       Fetch index.json and the manifests of the builds a deployed site lists
@@ -59,6 +74,37 @@ CHANNELS = {
     "dev": {"name": "Test", "about": "A build made by hand for testing."},
 }
 ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# Page features that need the engine's help, and how to see that a source tree
+# has them. A build without one gets a page that leaves the feature out.
+FEATURES = {
+    "loadgame": ("src/main.cpp", '"loadgame"'),  # -loadgame: autosave "Continue"
+    "mpmods": ("src/main.cpp", '"mpmods"'),      # -mpmods: Workshop mods in online lobbies
+}
+
+
+def detect_features(checkout):
+    found = []
+    for name, (path, needle) in FEATURES.items():
+        try:
+            with open(os.path.join(checkout, path), encoding="utf-8", errors="replace") as f:
+                if needle in f.read():
+                    found.append(name)
+        except OSError:
+            pass
+    return found
+
+
+def referenced_builds(url):
+    """Build ids that published replays need (web/server/src/replays.js);
+    none for --keep-referenced none."""
+    if url == "none":
+        return set()
+    try:
+        data = fetch_json(url)
+        return set(data["builds"])
+    except Exception as e:  # noqa: BLE001 - any failure must stop the pruning
+        sys.exit(f"Could not read the builds replays need from {url} ({e}); nothing pruned. "
+                 "Retry, or pass --keep-referenced none to prune anyway.")
 
 
 def now_iso():
@@ -223,6 +269,8 @@ def cmd_add(args):
         "notes": args.notes or "",
         "changes": changes,
         "api": args.api or web_api_version(args.checkout),
+        "features": sorted(f for f in args.features.split(",") if f) if args.features is not None
+        else detect_features(args.checkout),
         "engineBytes": os.path.getsize(wasm) + os.path.getsize(js),
         "dataFiles": len(manifest["files"]),
         "dataBytes": total,
@@ -243,7 +291,11 @@ def cmd_add(args):
                                                 "channel": old["channel"], "retired": now_iso()})
         print(f"{old['id']} is replaced by {build_id}")
 
-    deletes = prune(layout, index, args.keep_count, args.grace_days)
+    if args.keep_referenced:
+        deletes = prune(layout, index, args.keep_count, args.grace_days, referenced_builds(args.keep_referenced))
+    else:
+        print("Not pruning (no --keep-referenced): every build stays offered")
+        deletes = prune(layout, index, 10 ** 6, args.grace_days, None)
     save_index(layout, index)
     write_plan(layout, uploads, build_files, deletes)
     print(f"Added {build_id}: {len(uploads)} new data files ({new_bytes / 1048576:.1f} MiB) of "
@@ -251,17 +303,29 @@ def cmd_add(args):
           f"{len(deletes)} objects to delete")
 
 
-def prune(layout, index, keep_count, grace_days):
-    """Retire builds beyond each channel's newest keep_count; return the
-    objects of builds retired more than grace_days ago that nothing else uses."""
+def prune(layout, index, keep_count, grace_days, referenced=None):
+    """Retire builds beyond each channel's newest keep_count, except those in
+    `referenced` (replays need them), which stay archived (referenced None:
+    not a pruning pass, archived builds stay as they are); return the objects
+    of builds retired more than grace_days ago that nothing else uses."""
     seen = {}
     active = []
     retired = index.setdefault("retired", [])
     stamp = now_iso()
     for b in index["builds"]:
         n = seen.get(b["channel"], 0)
-        seen[b["channel"]] = n + 1
-        if n < keep_count or b.get("keep") or b["id"] == index.get("default"):
+        if b.get("archived") and n < keep_count and referenced is not None:
+            b.pop("archived")  # offered again (a newer build was removed)
+        if not b.get("archived"):
+            seen[b["channel"]] = n + 1
+        if (n < keep_count and not b.get("archived")) or b.get("keep") or b["id"] == index.get("default"):
+            active.append(b)
+        elif referenced is None and b.get("archived"):
+            active.append(b)  # not a pruning pass: stays as it is
+        elif referenced is not None and b["id"] in referenced:
+            if not b.get("archived"):
+                print(f"{b['id']} is archived: published replays need it")
+            b["archived"] = True
             active.append(b)
         else:
             retired.append({"id": b["id"], "version": b["version"], "channel": b["channel"], "retired": stamp})
@@ -380,7 +444,10 @@ def main():
     a.add_argument("--checkout", default=ROOT, help="source tree it was built from (for --api)")
     a.add_argument("--keep", action="store_true", help="never prune this build")
     a.add_argument("--default", help="make this channel or build id the default")
-    a.add_argument("--keep-count", type=int, default=3, help="builds each channel keeps (default 3)")
+    a.add_argument("--keep-count", type=int, default=3, help="builds each channel offers (default 3)")
+    a.add_argument("--keep-referenced", metavar="URL",
+                   help="prune, keeping the builds replays need: the site's /api/replays/builds, or 'none'")
+    a.add_argument("--features", help="comma-separated page features the engine has (default: found in --checkout)")
     a.add_argument("--grace-days", type=float, default=14)
     a.set_defaults(func=cmd_add)
     p = sub.add_parser("pull")
