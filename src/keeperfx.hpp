@@ -127,6 +127,8 @@ struct StartupParameters {
     TbBool one_player;
     TbBool easter_egg;
     TbBool ignore_mods;
+    /** Browser build: keep the loaded mods in multiplayer (-mpmods; see config_mods.c). */
+    TbBool mods_in_multiplayer;
     unsigned char operation_flags;
     unsigned char flags_font;
     unsigned char mode_flags;

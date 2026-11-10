@@ -1891,6 +1891,11 @@ static short process_command_line(unsigned short argc, char *argv[])
       if (strcasecmp(parstr, "nomods") == 0) {
           start_params.ignore_mods = true;
       } else
+#ifdef __EMSCRIPTEN__
+      if (strcasecmp(parstr, "mpmods") == 0) {
+          start_params.mods_in_multiplayer = true;
+      } else
+#endif
       if (strcasecmp(parstr,"alex") == 0)
       {
          start_params.easter_egg = true;
