@@ -45,7 +45,7 @@ const Workshop = (() => {
     50: 'Applications are desktop programs (map editors, tools, launchers). They do not run inside the game, and a browser cannot run them: download it from keeperfx.net for your computer.',
   };
   const GROUPS = [
-    ['', 'All playable'], ['maps', 'Maps'], ['packs', 'Map packs'], ['campaigns', 'Campaigns'],
+    ['', 'All'], ['maps', 'Maps'], ['packs', 'Map packs'], ['campaigns', 'Campaigns'],
     ['multiplayer', 'Multiplayer'], ['mods', 'Mods & creatures'], ['tools', 'Tools'], ['installed', 'Installed'], ['mine', 'My mods'],
   ];
   const KIND_LABELS = {
@@ -158,14 +158,21 @@ const Workshop = (() => {
    */
   function conflictsOf(items) {
     const out = [];
-    const seen = new Set();
+    // One line per pair of items and file, naming the blocks both change
+    // (the item counts in [common] only if nothing else clashes).
+    const pairs = new Map();
     for (const c of WorkshopLayout.conflicts(modsOf(items))) {
       if (c.a.item === c.b.item) continue;
       const key = `${c.a.item.id}/${c.b.item.id}/${c.file}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const what = c.block === 'creature' ? `the creature ${c.keys[0]}` : `${c.file}${c.block ? ` [${c.block}]` : ''}${c.keys.length ? ` (${c.keys.slice(0, 3).join(', ')}${c.keys.length > 3 ? '…' : ''})` : ''}`;
-      out.push({ a: c.a.item, b: c.b.item, text: `${c.a.item.name} and ${c.b.item.name} both change ${what}; ${c.b.item.name}, later in the order, wins.` });
+      if (!pairs.has(key)) pairs.set(key, { a: c.a.item, b: c.b.item, file: c.file, blocks: [] });
+      pairs.get(key).blocks.push(c.block === 'creature' ? `the creature ${c.keys[0]}` : c.block ? `[${c.block}]` : '');
+    }
+    for (const p of pairs.values()) {
+      let blocks = p.blocks.filter((b) => b && b !== '[common]');
+      if (!blocks.length) blocks = p.blocks.filter(Boolean);
+      const what = blocks[0] && blocks[0].startsWith('the creature') ? blocks[0]
+        : `${p.file}${blocks.length ? ` ${blocks.slice(0, 4).join(' ')}${blocks.length > 4 ? ` and ${blocks.length - 4} more` : ''}` : ''}`;
+      out.push({ a: p.a, b: p.b, text: `${p.a.name} and ${p.b.name} both change ${what}; ${p.b.name}, later in the order, wins.` });
     }
     for (const a of items) {
       for (const id of a.conflictsWith || []) {
@@ -635,6 +642,8 @@ const Workshop = (() => {
     if (!lobby) return;
     await loadInstalled();
     const missing = missingFor(lobby);
+    // Mods added just for this lobby stay out of the player's own set.
+    const fresh = missing.filter((w) => w.mod && !installed.has(w.id)).map((w) => w.id);
     for (const [i, w] of missing.entries()) {
       const name = (byId(w.id) || { name: `item ${w.id}` }).name;
       status(`Adding ${w.mod ? 'a mod' : 'a workshop map'} this lobby uses: ${name} (${i + 1} of ${missing.length})…`);
@@ -646,9 +655,13 @@ const Workshop = (() => {
         throw err;
       }
     }
+    if (fresh.length) {
+      const { off } = modPrefs();
+      saveMods(modItems().map((it) => it.id), [...off.filter((x) => !fresh.includes(x)), ...fresh]);
+    }
     choice.lobbyMods = lobbyMods(lobby).map((w) => w.id);
     if (missing.length) Site.toast(`Added ${missing.length} workshop ${missing.length === 1 ? 'item' : 'items'} this lobby uses.`, { stage: true });
-    if (choice.lobbyMods.length) Site.toast(`This game runs with the lobby's ${choice.lobbyMods.length === 1 ? 'mod' : `${choice.lobbyMods.length} mods`}; your own set is back for your next game.`, { stage: true, ms: 9000 });
+    if (choice.lobbyMods.length) Site.toast(`This game runs with the lobby's ${choice.lobbyMods.length === 1 ? 'mod' : `${choice.lobbyMods.length} mods`}; your own set is back for your next game (mods added for it stay installed but off).`, { stage: true, ms: 9000 });
   }
 
   /**
@@ -686,11 +699,11 @@ const Workshop = (() => {
       const parts = [];
       if (maps.length) {
         parts.push(h('span', { title: 'Workshop maps this lobby offers. They are added for you when you join.' }, icon('map'), 'Workshop: ',
-          ...maps.flatMap((w, i) => [i ? ', ' : '', link(w)])));
+          h('i', { class: 'ws-names' }, ...maps.flatMap((w, i) => [i ? ', ' : '', link(w)]))));
       }
       if (mods.length) {
         parts.push(h('span', { title: 'Mods on in this lobby, in their load order. Joining adds them (the host\'s versions) and turns on exactly these for that game; your own set is back afterwards.' },
-          icon('puzzle'), `${mods.length === 1 ? 'Mod' : `${mods.length} mods`}: `, ...mods.flatMap((w, i) => [i ? ', ' : '', link(w)])));
+          icon('puzzle'), `${mods.length === 1 ? 'Mod' : `${mods.length} mods`}: `, h('i', { class: 'ws-names' }, ...mods.flatMap((w, i) => [i ? ', ' : '', link(w)]))));
       }
       span.replaceChildren(...parts);
     };
@@ -843,7 +856,7 @@ const Workshop = (() => {
 
   function renderBrowse(body, group) {
     const head = h('div', { class: 'ws-tools' });
-    const search = h('input', { type: 'search', placeholder: 'Search maps, campaigns, authors…', value: query, 'aria-label': 'Search the workshop' });
+    const search = h('input', { type: 'search', placeholder: 'Search maps, mods, creatures, authors…', value: query, 'aria-label': 'Search the workshop' });
     search.addEventListener('input', () => { query = search.value; shown = PAGE; renderGrid(); });
     const select = h('select', { 'aria-label': 'Sort by' }, SORTS.map(([k, label]) => h('option', { value: k, selected: k === sort }, label)));
     select.addEventListener('change', () => { sort = select.value; store.set('kfx.workshopSort', sort); shown = PAGE; renderGrid(); });
@@ -1005,7 +1018,7 @@ const Workshop = (() => {
       if (!current || current.parts[1] !== String(id)) return;
       if (details.images && details.images.length) showImages(details.images);
       if (details.forModders && ok && !busy.has(id)) {
-        actions.append(h('p', { class: 'ws-note' }, icon('puzzle'), 'Its author marks it as material for modders and map makers: it adds things to the game that maps, campaigns or scripts can use, and changes little on its own.'));
+        actions.append(h('p', { class: 'ws-note' }, icon('puzzle'), 'keeperfx.net marks it as meant for modders and map makers: it adds things to the game that maps, campaigns or scripts can use.'));
       }
       if (details.files.length) {
         files.replaceChildren(h('h3', {}, 'Versions'), h('ul', {}, details.files.slice(0, 6).map((f, i) => h('li', {},

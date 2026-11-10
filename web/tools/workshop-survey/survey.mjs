@@ -24,7 +24,8 @@ const args = process.argv.slice(2);
 const opt = (name, def) => (args.includes(name) ? args[args.indexOf(name) + 1] : def);
 const GAMEDATA = opt('--gamedata', path.join(os.homedir(), '.cache/kfx-web-base/site/gamedata'));
 const JSON_OUT = opt('--json', null);
-const LEGACY = args.includes('--legacy') ? (opt('--legacy', '') || 'e2b21ba79') : null;
+const legacyArg = args.includes('--legacy') ? args[args.indexOf('--legacy') + 1] : null;
+const LEGACY = args.includes('--legacy') ? (legacyArg && !legacyArg.startsWith('--') && !/^\d+$/.test(legacyArg) ? legacyArg : 'e2b21ba79') : null;
 const only = args.filter((a, i) => /^\d+$/.test(a) && !['--gamedata', '--json', '--legacy'].includes(args[i - 1])).map(Number);
 
 // The old installer's layout(), as it was (it refused the categories in UNSUPPORTED).
@@ -64,6 +65,7 @@ function unpack(file) {
     // bsdtar may have unpacked most of it; a total failure leaves the folder empty.
     if (!fs.readdirSync(dir).length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(String(e.stderr || e.message).trim().split('\n')[0]); }
   }
+  execFileSync('chmod', ['-R', 'u+rwX', dir]); // archives may hold read-only folders
   const out = [];
   const walk = (d, prefix) => {
     for (const name of fs.readdirSync(d)) {
@@ -116,6 +118,7 @@ function classify(x, plan) {
   const lua = [...plan.files].filter(([rel]) => /\.lua$/i.test(rel)).map(([, d]) => Buffer.from(d).toString('latin1'));
   const luaNeeds = lua.some(usesFfi) ? 'ffi' : lua.some(usesGoto) ? 'goto' : null;
   const result = { packs: plan.packs.length, mods: plan.mods.map((m) => ({ name: m.name, kinds: m.kinds, adds: m.adds, local: m.local, block: m.block })), luaNeeds, notes: plan.notes, leftovers: plan.leftovers.slice(0, 8), problems: plan.problems.slice(0, 6) };
+  if (x.category === 50) return { ok: false, cause: 'desktop program (Application)', ...result };
   if (plan.inGame) return { ok: true, kind: 'in KeeperFX already', ...result };
   const placed = plan.packs.length || plan.mods.length || [...plan.files.keys()].length;
   if (placed) {

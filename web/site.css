@@ -591,6 +591,7 @@ select, .select {
 .ws-safe small { color: var(--muted); }
 .ws-lobby-note { display: inline-flex; flex-wrap: wrap; gap: 6px 16px; }
 .ws-lobby-note > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ws-names { font-style: normal; }
 .host-mods legend { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
 .host-mods legend small { text-transform: none; letter-spacing: 0; }
 #host-mods-list { display: grid; gap: 8px; max-height: 240px; overflow-y: auto; }
