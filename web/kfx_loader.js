@@ -130,13 +130,15 @@ async function fetchOne(url) {
   }
 }
 
-// Drop cached files that are no longer in the current manifest.
-async function pruneCache(validUrls) {
+// Drop cached files that are no longer in the current manifest. dataOrigin:
+// also drop copies from any other origin (after site.json's dataUrl changed);
+// only given when the server itself said where the data is.
+async function pruneCache(validPaths, dataOrigin) {
   const cache = await openCache();
   if (!cache) return;
   for (const req of await cache.keys()) {
-    const path = new URL(req.url).pathname + new URL(req.url).search;
-    if (!validUrls.has(path)) cache.delete(req);
+    const url = new URL(req.url);
+    if (!validPaths.has(url.pathname + url.search) || (dataOrigin && url.origin !== dataOrigin)) cache.delete(req);
   }
 }
 
@@ -153,7 +155,8 @@ function exists(path) {
 
 // dataBase: where the data files are, e.g. gamedata/ next to the page or an
 // R2 bucket's public URL (site.json dataUrl). The manifest stays with the page.
-function createPlaceholders(manifest, dataBase) {
+// authoritative: dataBase comes from the server now (not remembered offline).
+function createPlaceholders(manifest, dataBase, authoritative) {
   const base = new URL(dataBase || 'gamedata/', location.href);
   const valid = new Set();
   let count = 0;
@@ -172,7 +175,7 @@ function createPlaceholders(manifest, dataBase) {
     count++;
   }
   Module.kfxLazyPending = count;
-  pruneCache(valid);
+  pruneCache(valid, authoritative ? base.origin : null);
 }
 
 // The game's own data files by path, for the workshop installer (it reads
@@ -595,7 +598,7 @@ async function boot() {
   const site = await Site.config;
   const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
   FS.mkdirTree(GAME_DIR);
-  createPlaceholders(manifest, site.dataUrl);
+  createPlaceholders(manifest, site.dataUrl, site.server);
   indexGameFiles(manifest, site.dataUrl);
   fsReady = true;
   prefetch(manifest.prefetch || []); // in the background
@@ -610,6 +613,9 @@ async function boot() {
   if (!haveDkFiles()) await waitForDkFiles();
   linkPlayerFiles();
   await writeConfig();
+  // The speech language, for the offline data groups (web/kfx_offline.js).
+  const lang = /^\s*LANGUAGE\s*=\s*(\w+)/m.exec(FS.readFile(`${GAME_DIR}/keeperfx.cfg`, { encoding: 'utf8' }));
+  KFX.language = lang ? lang[1].toLowerCase() : 'eng';
 
   await Account.ready;
   // A signed-in player's saves from their account (web/kfx_cloudsaves.js).
@@ -804,7 +810,12 @@ var Module = {
   locateFile: (path, prefix) => (BUILD && path.endsWith('.wasm') ? `${prefix}${path}?v=${BUILD}` : prefix + path),
   canvas: document.getElementById('canvas'),
   thisProgram: `${GAME_DIR}/keeperfx`,
-  kfxFetchData: fetchData,
+  // A file the game opens. Offline, web/kfx_offline.js says which download
+  // it belongs to.
+  kfxFetchData: (url) => fetchData(url).catch((e) => {
+    if (window.Offline) Offline.dataMissing(url, e);
+    throw e;
+  }),
   kfxOnHosting: onHosting,
   kfxOnJoining: (code) => Workshop.checkJoin(code),
   kfxOnLevelResult: (result) => document.dispatchEvent(new CustomEvent('kfx:result', { detail: result })),
@@ -812,7 +823,9 @@ var Module = {
   printErr: (text) => console.warn(text),
   onRuntimeInitialized: () => boot().catch((e) => {
     console.error(e);
-    setStatus(`Could not start: ${e.message}`);
+    setStatus(navigator.onLine ? `Could not start: ${e.message}`
+      : 'Could not start offline: the game data it needs is not on this device. Connect to the internet, '
+        + 'or next time you are online download it under Offline play.');
     showPanel('loading');
     setState('failed');
   }),

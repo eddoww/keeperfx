@@ -16,7 +16,8 @@
 //        [&qmseat=2|any&qmname=<n>]   ... a lobby that quick-match players may be sent to
 //   GET  /api/workshop/...            the KeeperFX Workshop, cached (workshop.js)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
-//   GET  /site.json                   page settings (dataUrl: where game data lives)
+//   GET  /site.json                   page settings (dataUrl: where game data lives,
+//                                     serviceWorker: false to switch the offline app off)
 //
 // Everything else is the static site (assets binding).
 
@@ -145,6 +146,8 @@ export default {
       // Page settings (web/kfx_loader.js loadSiteConfig).
       const site = {};
       if (env.DATA_URL) site.dataUrl = env.DATA_URL;
+      // Kill switch for the offline app: pages remove their service worker.
+      if (env.SERVICE_WORKER === 'off') site.serviceWorker = false;
       return json(site);
     }
     if (url.pathname.startsWith('/api/')) {

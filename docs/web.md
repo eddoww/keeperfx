@@ -26,6 +26,8 @@ player, saves, campaign progress and settings also go to their account (see
 - The game data downloads as the game needs it; the files a normal start uses
   are fetched in the background as soon as the page opens. Later visits load
   them from the browser cache.
+- The site can be installed as an app and played solo without a connection
+  once its data is downloaded (see "App and offline play").
 
 The site around the game is one document with a page per URL fragment:
 `#/` (home), `#/play`, `#/lobbies`, `#/workshop` (with `#/workshop/<category>`,
@@ -103,6 +105,12 @@ web/package-data.py build-web/site /path/to/keeperfx_complete pkg
 `web/package-data.py` never copies the original Dungeon Keeper files, even if
 the install it reads contains them.
 
+The site also gets the app files: `sw.js` (stamped with the build, see "App
+and offline play"), `manifest.webmanifest` and `icons/`. The icons are made
+from `res/keeperfx_icon512-24bpp.png` by `web/make-icons.py` (Pillow) and
+committed. `-DKFX_WEB_SERVICE_WORKER=OFF` builds the service worker's kill
+switch instead.
+
 To try it locally, serve the site and point `--dk` at your own DK folder:
 
 ```sh
@@ -118,6 +126,11 @@ needed (the build uses no threads, so no cross-origin isolation). Serve `.wasm`
 as `application/wasm`. Files under `gamedata/` are requested as
 `<path>?v=<content hash>`, so they can be cached for good; `web/_headers` says
 so for hosts that read it (Cloudflare Pages, Netlify).
+
+`sw.js` must not be cached for long (a new build reaches players through it),
+and `manifest.webmanifest` should be `application/manifest+json`; `web/_headers`
+says so for hosts that read it. The Worker's static assets read `_headers`
+too.
 
 Files over 24 MiB are stored as `<name>.part0`, `.part1`, ... and joined by the
 page, so hosts with a per-file limit (Cloudflare Pages: 25 MiB) take the site
@@ -156,7 +169,87 @@ before deploying a page whose manifest names it.
 
 Do not publish Dungeon Keeper's own files: each player supplies their own.
 
-## Online play
+## App and offline play
+
+The site is an installable web app. **Install** in the top bar (where the
+browser offers it, Chrome and Edge on the desktop and Android) puts KeeperFX
+on the desktop or home screen in its own window; the same dialog says how in
+Safari (iOS: Share → Add to Home Screen; macOS: File → Add to Dock) and
+Firefox (Android: menu → Install; the desktop Firefox has no app install).
+
+**Offline play** (the same dialog, the top bar chip, or the start screen)
+downloads game data for solo play without a connection. The player's
+Dungeon Keeper files, saves and settings are in IndexedDB already. The data is
+grouped by the game's folders (`web/kfx_offline.js`, from the manifest at
+run time):
+
+| Group | What | Size (current data) |
+|---|---|---|
+| Essentials | everything outside `campgns/`, `levels/`, `multiplayer/`; the original campaign (`campgns/keeporig*`, speech in the game's language); the manifest's `prefetch` list; every map's level info (`.lof`/`.lif`, which the menus read) | about 157 MB |
+| Each other campaign | `campgns/<name>.cfg`'s `campgns/<name>`, `_lnd`, `_crtr`, `_cfgs` and speech folders | 7 to 25 MB each |
+| Free play and multiplayer maps | the rest of `levels/` and `multiplayer/` | about 39 MB |
+| Speech in other languages | `sound/speech_*.dat` and campaign speech folders not in the game's language | about 175 MB |
+| Everything | all of it | about 532 MB |
+
+(MB here are MiB, as the page shows them.) A download can be paused and
+resumed, carries on after a reload, and tops itself up when a new release
+changes data files. It checks `navigator.storage.estimate()` first and asks
+for persistent storage (`navigator.storage.persist()`); installed apps get it
+without asking in Chromium. **Free the space** removes all downloaded data
+(saves and DK files stay), and each campaign can be removed on its own.
+
+Offline, the top bar shows **Offline**, the online pages (lobbies, Hall of
+Fame) and the host/join choices are hidden, and the start screen says whether
+the essentials are on the device. If the game opens a file that is not
+downloaded, the page says which download it belongs to (and the game carries
+on where it can; it stops only if the file is essential). A level won offline
+is kept, like a guest's, and sent to the Hall of Fame once the player is back
+online and signed in. When the connection comes back the page reconnects to
+the server without a reload, even during a game.
+
+### How it works
+
+- `web/sw.js` is the service worker. `web/stamp-version.py` writes into it
+  the build id and the list of files the page loads (taken from `index.html`:
+  scripts, stylesheets, icons, fonts, the manifest and its icons, `url()`s in
+  the stylesheets; plus `keeperfx.wasm`), each with its SHA-256. A page
+  script added to `index.html` is picked up by itself.
+- Install fetches all of them into `keeperfx-shell-<build>` and checks every
+  hash (the page by its `kfx-build` stamp). If any file is from another build
+  (a deploy in between, a stale CDN copy) the install fails and the current
+  build stays; the browser tries again on its next update check. So a page and
+  its engine always come from one build.
+- The page (`/`, any query) is served from that cache, so it starts without a
+  connection and never mixes builds. `/api/*` and `/site.json` are never
+  cached; offline they fail at once (503), and the site drops to solo play.
+  `gamedata/manifest.json` comes from the network, with the last good copy
+  kept (`keeperfx-meta`) for offline starts. Game data is not touched by the
+  worker: the loader keeps it in `keeperfx-gamedata` as before, and the
+  offline downloads go into the same cache.
+- **Updates**: a deploy changes `sw.js` (its build id), the browser installs
+  it in the background and it waits. The page then shows "A new version of
+  KeeperFX is ready": **Reload** switches over (`skipWaiting`, then the page
+  reloads). During a game the bar says the game is not interrupted and
+  **Reload now** asks first; a request from one tab is refused while another
+  tab is in a game (BroadcastChannel). An update found waiting when a page
+  opens, with no game in any tab, is applied at once. Activation deletes the
+  previous build's cache.
+- **Kill switch**, two ways: build with `-DKFX_WEB_SERVICE_WORKER=OFF`
+  (`stamp-version.py --no-sw`), which ships a `sw.js` that deletes its caches
+  and unregisters itself and a page that no longer registers one; or, without
+  a build, set `SERVICE_WORKER` to `"off"` in `web/server/wrangler.jsonc`:
+  `site.json` then says `"serviceWorker": false` and every page that loads
+  online unregisters it and reloads once from the network. Removing `sw.js`
+  from the site also makes browsers drop it (a 404 unregisters).
+- `site.json`'s `dataUrl` is remembered in the browser, so offline the page
+  still looks for data where it was downloaded from; the worker leaves other
+  origins alone, so a bucket only needs the CORS it already has. When the
+  server names a different data origin, copies from the old one are pruned.
+- Plain static hosting works the same (no `site.json`: no online features,
+  and nothing to queue). Service workers need HTTPS (or `localhost`).
+- Not tested: Safari (iOS/macOS) and Firefox. iOS keeps a home screen app's
+  storage separate from Safari's, so the data is downloaded again there.
+
 
 When the site runs on its Worker (`web/server`, below), it has:
 
@@ -260,7 +353,8 @@ How it fits together:
   tavern and records, `web/kfx_workshop.js` is the workshop, and
   `web/kfx_quickmatch.js` is Find a game; its server side is
   `web/server/src/quickmatch.js`, which runs inside the tavern. `web/kfx_cloudsaves.js` syncs the saves
-  with the account (`web/server/src/saves.js`).
+  with the account (`web/server/src/saves.js`). `web/kfx_offline.js` is the app part (service worker,
+  install, offline downloads).
 - In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
   (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
   `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's

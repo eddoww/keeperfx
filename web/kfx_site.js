@@ -78,15 +78,22 @@ const Site = (() => {
   //   includes them.
   // `server` is true when the site runs on its Worker, which answers
   // site.json; plain static hosting has no online play, lobbies or records.
-  const config = (async () => {
+  // Without an answer (offline), dataUrl is the last one the server gave, so
+  // game data downloaded for offline play is still found.
+  async function loadConfig() {
     try {
       const resp = await fetch('site.json', { cache: 'no-cache' });
       const json = resp.ok && resp.headers.get('Content-Type')?.includes('json');
-      return { ...(json ? await resp.json() : {}), server: !!json };
-    } catch (e) {
-      return { server: false };
-    }
-  })();
+      if (json) {
+        const conf = await resp.json();
+        store.set('kfx.dataUrl', conf.dataUrl || '');
+        return { ...conf, server: true };
+      }
+    } catch (e) { /* offline, or no server */ }
+    const dataUrl = store.get('kfx.dataUrl', '');
+    return dataUrl ? { dataUrl, server: false } : { server: false };
+  }
+  const config = loadConfig();
   let online = false; // the site has its server
 
   // ---- Toasts -----------------------------------------------------------------
@@ -775,15 +782,20 @@ const Site = (() => {
   }
 
   async function onLevelResult(result) {
-    if (!online) return;
+    // Without a connection (web/kfx_offline.js), a site that has its server
+    // keeps wins to send later, as for a guest.
+    const offline = (!online || !navigator.onLine) && (online || !!window.Offline?.serverKnown);
+    if (!online && !offline) return;
     result = { ...result, at: Date.now() };
     const levelName = result.levelName || `level ${result.level}`;
-    if (!Account.user) {
+    if (!Account.user || offline) {
       if (!result.won || result.cheats) return;
       const pending = store.get(PENDING_KEY, []);
       pending.push(result);
       store.set(PENDING_KEY, pending.slice(-20));
-      toast([h('b', {}, 'Victory!'), ` Sign in after the game to carve ${levelName} into the Hall of Fame.`], { stage: true, ms: 9000 });
+      toast([h('b', {}, 'Victory!'), offline
+        ? ` You are offline: ${levelName} goes into the Hall of Fame once you are back online and signed in.`
+        : ` Sign in after the game to carve ${levelName} into the Hall of Fame.`], { stage: true, ms: 9000 });
       return;
     }
     try {
@@ -833,15 +845,35 @@ const Site = (() => {
     renderKeeperName();
     Account.onChange(onAccountChange);
     route();
-    if (online) {
-      Tavern.connect();
-      flushPending();
-      refreshLobbies();
-      // A slow safety net; changes normally arrive through the tavern.
-      setInterval(() => { if (!document.hidden && current.view !== 'play') refreshLobbies(); }, 30000);
-    }
+    if (online) connectServer();
     const loginError = new URLSearchParams(location.search).get('login_error');
     if (loginError) toast(loginError, { bad: true, ms: 10000 });
+  }
+
+  let serverConnected = false;
+  function connectServer() {
+    if (serverConnected) return;
+    serverConnected = true;
+    Tavern.connect();
+    flushPending();
+    refreshLobbies();
+    // A slow safety net; changes normally arrive through the tavern.
+    setInterval(() => { if (!document.hidden && current.view !== 'play') refreshLobbies(); }, 30000);
+  }
+
+  // Back online after starting without a connection (web/kfx_offline.js):
+  // the server may answer now. The game keeps running either way.
+  async function recheck() {
+    if (online) { flushPending(); return; }
+    const conf = await loadConfig();
+    if (!conf.server) return;
+    await Account.refresh(); // before `online`, so this connects the tavern once
+    online = true;
+    renderOnline();
+    renderAccountChip();
+    renderKeeperName();
+    route();
+    connectServer();
   }
 
   addEventListener('hashchange', route);
@@ -891,7 +923,7 @@ const Site = (() => {
   init();
 
   return {
-    config, toast, start, join, openHost, openAccount, keeperName, codeOf, route, h, icon,
+    config, toast, start, join, openHost, openAccount, keeperName, codeOf, route, recheck, h, icon,
     tavernSend: (message) => Tavern.send(message),
     get online() { return online; },
     get view() { return current.view; },

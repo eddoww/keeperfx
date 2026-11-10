@@ -10,6 +10,7 @@ folder picker. Only for local testing: never publish your DK files.
 """
 import argparse
 import http.server
+import mimetypes
 import os
 import urllib.parse
 
@@ -43,6 +44,10 @@ def main():
 
         def end_headers(self):
             self.send_header("Cache-Control", "no-cache")
+            # So another local site can use this one's gamedata/ as its dataUrl
+            # (never the DK files under /dk/).
+            if self.path.startswith("/gamedata/"):
+                self.send_header("Access-Control-Allow-Origin", "*")
             super().end_headers()
 
         def translate_path(self, path):
@@ -54,6 +59,8 @@ def main():
                 return found or os.path.join(args.site, "__missing__")
             return super().translate_path(path)
 
+    mimetypes.add_type("application/manifest+json", ".webmanifest")
+    mimetypes.add_type("application/wasm", ".wasm")
     http.server.ThreadingHTTPServer.allow_reuse_address = True
     with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler) as srv:
         print(f"Serving {args.site} on http://localhost:{args.port}/")
