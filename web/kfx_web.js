@@ -24,18 +24,49 @@ addToLibrary({
   // Yield to the browser after each presented frame, so the canvas is shown
   // and input events arrive. Waits for the next animation frame (the display's
   // refresh, like vsync); in a hidden tab, where animation frames stop, it
-  // falls back to a short timeout so the game keeps running.
-  kfx_web_frame_yield__deps: ['$Asyncify'],
+  // wakes up from a worker instead (below), so the game keeps its pace.
+  kfx_web_frame_yield__deps: ['$Asyncify', '$kfxWakeAfter'],
   kfx_web_frame_yield__async: true,
   kfx_web_frame_yield: () => Asyncify.handleSleep((wakeUp) => {
     Module.kfxFrames = (Module.kfxFrames || 0) + 1;
     Module.kfxOnFrame?.();
     if (document.hidden) {
-      setTimeout(wakeUp, 0);
+      kfxWakeAfter(25, wakeUp); // at most 40 frames a second while hidden
     } else {
       requestAnimationFrame(() => wakeUp());
     }
   }),
+
+  // Sleeping (SDL_Delay, the network waits in NetWebSP.c) and the frames of a
+  // hidden tab. Browsers wake a hidden tab's timers at most once a second (and
+  // less after a few minutes), which slowed an online game to a turn or two a
+  // second for every player while one of them looked at another tab. A
+  // worker's timers are not throttled, and its messages are events, so a
+  // hidden tab sleeps on the worker's clock; a visible one uses setTimeout.
+  // While hidden the game keeps playing its turns (others are waiting for
+  // them) and draws a frame at most every 25 ms.
+  $kfxWake: { worker: null, next: 1, pending: new Map() },
+  $kfxWakeAfter__deps: ['$kfxWake'],
+  $kfxWakeAfter: (ms, fn) => {
+    if (typeof document === 'undefined' || !document.hidden || kfxWake.worker === false) { setTimeout(fn, ms); return; }
+    if (!kfxWake.worker) {
+      try {
+        const w = new Worker(URL.createObjectURL(new Blob(['onmessage = (e) => setTimeout(() => postMessage(e.data[0]), e.data[1]);'], { type: 'text/javascript' })));
+        w.onmessage = (e) => { const f = kfxWake.pending.get(e.data); kfxWake.pending.delete(e.data); if (f) f(); };
+        kfxWake.worker = w;
+      } catch (e) {
+        kfxWake.worker = false; // no workers here: throttled, but working
+        setTimeout(fn, ms);
+        return;
+      }
+    }
+    const id = kfxWake.next++;
+    kfxWake.pending.set(id, fn);
+    kfxWake.worker.postMessage([id, ms]);
+  },
+  emscripten_sleep__deps: ['$Asyncify', '$kfxWakeAfter'],
+  emscripten_sleep__async: true,
+  emscripten_sleep: (ms) => Asyncify.handleSleep((wakeUp) => kfxWakeAfter(ms, wakeUp)),
 
   $kfxLazyNode__deps: ['$FS', '$SYSCALLS', '$UTF8ToString'],
   $kfxLazyNode: (dirfd, pathPtr) => {
