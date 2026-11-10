@@ -43,6 +43,7 @@
 #include "bflib_datetm.h"
 
 #include <math.h>
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -454,6 +455,7 @@ void update_local_cameras(void)
             apply_local_camera_rotation();
             struct Camera *cam = &local_state.camera.destination[local_state.observer_camera_idx];
             process_local_camera_movement(cam);
+            KFX_WEB_CAMERA_INPUT(cam);
             MapCoord pivot_x = 0;
             MapCoord pivot_y = 0;
             const TbBool has_pivot = get_packet_rotation_pivot(&observer_camera_packet, &pivot_x, &pivot_y);
@@ -520,6 +522,7 @@ void update_local_cameras(void)
         if (pckt->action != PckA_ZoomFromMap) {
             if (!replay.load_enable && get_local_view_type() != PVT_MapScreen) {
                 process_local_camera_movement(cam);
+                KFX_WEB_CAMERA_INPUT(cam);
                 process_local_camera_rotation(cam, local_state.camera.has_rotation_pivot,
                     local_state.camera.rotation_pivot_x, local_state.camera.rotation_pivot_y, &rotation);
                 process_camera_view_controls(cam, pckt, get_local_user_state());

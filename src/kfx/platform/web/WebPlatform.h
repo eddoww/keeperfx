@@ -3,6 +3,7 @@
 /* Browser build hooks. Each is a no-op macro on desktop builds. */
 
 #ifdef __EMSCRIPTEN__
+#include "bflib_basics.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,14 +15,24 @@ void kfx_web_frame_yield(void);
  * and level statistics (WebReport.c). */
 struct PlayerInfo;
 void web_report_level_result(struct PlayerInfo *player, unsigned char won);
+/* Touch input from the page (WebInput.cpp): whether the cursor counts as in
+ * the window (with touch, only while a finger is down), and the two-finger
+ * pan and twist, applied to the local dungeon camera. */
+struct Camera;
+TbBool web_input_cursor_inside(TbBool host_inside);
+void web_input_apply_camera(struct Camera *cam);
 #ifdef __cplusplus
 }
 #endif
 #define KFX_WEB_FRAME_YIELD() kfx_web_frame_yield()
 #define KFX_WEB_LEVEL_RESULT(player, won) web_report_level_result(player, won)
+#define KFX_WEB_CURSOR_INSIDE(inside) web_input_cursor_inside(inside)
+#define KFX_WEB_CAMERA_INPUT(cam) web_input_apply_camera(cam)
 #else
 #define KFX_WEB_FRAME_YIELD() do {} while (0)
 #define KFX_WEB_LEVEL_RESULT(player, won) do {} while (0)
+#define KFX_WEB_CURSOR_INSIDE(inside) (inside)
+#define KFX_WEB_CAMERA_INPUT(cam) do {} while (0)
 #endif
 
 #endif

@@ -46,6 +46,45 @@ pages open in a new tab.
 It needs a browser with WebAssembly and WebGL 2 (current Chrome, Edge, Firefox
 and Safari have both; it has been tested in Chromium).
 
+### Touch screens and controllers
+
+Tablets and phones (held sideways) play by touch, and a controller works
+wherever the browser sees one. Mouse and keyboard play is unchanged; the page
+shows the hints for whichever was used last.
+
+**Touch** (`web/kfx_touch.js`): the game's cursor goes to the finger.
+
+| Gesture | Does |
+|---|---|
+| Tap | Left click |
+| Drag | Left button held (mark tiles to dig, paint rooms) |
+| Hold still (0.45 s) | Right click, held until the finger lifts (drop, slap, cancel) |
+| Two-finger tap | Right click under the first finger |
+| Two-finger drag / pinch / twist | Scroll / zoom / rotate the dungeon view |
+
+A bar on the right of the game has **Menu** (Esc), **Right** (taps become
+right clicks until pressed again), **Keys** (the device's keyboard, for save
+names, chat and the keeper name) and **More**: Space, Enter, map, pause,
+Shift and Ctrl (held until pressed again), turn and zoom keys, fullscreen and
+hiding the bar. In creature possession a drag turns, a hold keeps attacking, a
+stick on the left walks and **Leave** returns to the dungeon. Held upright, the
+page asks for the device to be turned. Where a page element can't go
+fullscreen (iPhone Safari), Fullscreen fills the tab instead; on a touch
+screen "fill the tab" also hides the bar above the game. Phones and tablets
+that can't pick a folder can choose the 16 Dungeon Keeper files themselves.
+
+**Controllers** use the desktop build's own controller scheme (SDL gamepad;
+the browser's Gamepad API underneath): right stick moves the hand, left stick
+scrolls, RT and LT are left and right click, the D-pad jumps between buttons,
+Start is the menu. The Guide page lists all buttons. A browser shows a
+controller to the page only after one of its buttons is pressed; the game
+takes it then, and when it is plugged in or out during play.
+
+**Resolution**: on a touch-only device the game renders in landscape at most
+about 1.2 megapixels (0.8 when the browser reports 2 GB of memory or less), for
+example 1612x744 on a 2532x1170 phone and 1314x914 on a 1180x820 iPad.
+`?cfg=INGAME_RES=...` still overrides it.
+
 ### Differences from the desktop build
 
 - **Online play is between browsers only**, through the site's own lobby
@@ -64,6 +103,7 @@ and Safari have both; it has been tested in Chromium).
   cursor to the screen centre at some points (starting a level, the land
   view) and expects the system pointer to follow, which a web page cannot do,
   so the two drift apart until the pointer leaves the page and comes back.
+  Touch doesn't have this problem: every touch places the cursor itself.
 
 ## URL options
 
@@ -855,6 +895,23 @@ the redirect `https://<your site>/api/auth/discord/callback`, set
   filesystem; `save/`, `replays/`, `scrshots/` and `music/` link into it.
 - **Audio**: Emscripten's OpenAL (effects) and SDL audio (music, speech,
   movies) on Web Audio. The page resumes them on the first click or key.
+- **Touch input**: `web/kfx_touch.js` follows the fingers with touch events
+  (they keep their coordinates under pointer lock, pointer events don't) and
+  keeps them from SDL (capture listeners on `#stage` stop the touch pointer
+  events before SDL's canvas listeners). It calls into
+  `src/kfx/platform/web/WebInput.cpp`: `kfx_web_touch_point` sets the game
+  cursor from canvas coordinates (`WindowSystemSDL::WindowToGame`), or moves it
+  relatively in possession, where the game steers by the cursor's offset from
+  the centre; `kfx_web_touch_button`/`_wheel` are mouse buttons and wheel steps;
+  `kfx_web_touch_pan`/`_rotate` are applied to the local dungeon camera
+  (`KFX_WEB_CAMERA_INPUT` in `local_camera.c`) at 65536 / zoom map units per
+  screen pixel across, stretched by the camera's pitch up and down. While touch
+  is in use the cursor counts as inside the window only while a finger is down
+  (`KFX_WEB_CURSOR_INSIDE`), so a tap near the edge doesn't keep scrolling.
+  The game finds the tile under the cursor while it draws, so the page waits
+  two drawn frames after moving the cursor before it presses a button, and
+  holds keys for at least three frames. `kfx_web_input_context` tells the page
+  whether a level, possession, a text field or a menu is up.
 - **Network**: `net_matchmaking.c` and `net_portforward.cpp` (curl, UPnP) are
   replaced by `src/kfx/platform/web/NetMatchmakingWeb.c`, which also refuses
   socket creation, so Emscripten never tries to reach game or STUN hosts over

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="kfx-build" content="">
 <meta name="kfx-sw" content="">
 <meta name="kfx-engine" content="">
@@ -204,6 +204,10 @@
             <label class="btn primary" for="dk-folder">Choose Dungeon Keeper folder</label>
             <input type="file" id="dk-folder" webkitdirectory multiple>
             <p>or drop the folder here</p>
+            <p class="fine">On a phone or tablet that can't pick a folder:
+              <label class="linklike" for="dk-files">choose the files themselves</label>
+              (from <code>data/</code> and <code>sound/</code>, plus <code>keeper*.ogg</code> for music).</p>
+            <input type="file" id="dk-files" multiple>
           </div>
           <p id="setup-error" class="error" hidden></p>
           <p class="fine">The files stay in this browser's storage and are never uploaded.</p>
@@ -264,11 +268,19 @@
     </div>
 
     <div class="stage-foot" id="stage-foot">
-      <span><kbd>Click</kbd> the game to capture the mouse</span>
-      <span><kbd>Esc</kbd> releases it</span>
-      <span><kbd>F11</kbd> fullscreen</span>
-      <span><kbd>Shift</kbd>+<kbd>C</kbd> screenshot</span>
-      <span class="touch-note">A mouse and keyboard are needed to play.</span>
+      <span class="hint-mouse"><kbd>Click</kbd> the game to capture the mouse</span>
+      <span class="hint-mouse"><kbd>Esc</kbd> releases it</span>
+      <span class="hint-mouse"><kbd>F11</kbd> fullscreen</span>
+      <span class="hint-mouse"><kbd>Shift</kbd>+<kbd>C</kbd> screenshot</span>
+      <span class="hint-touch"><kbd>Tap</kbd> click</span>
+      <span class="hint-touch"><kbd>Hold</kbd> or two-finger tap: right click</span>
+      <span class="hint-touch"><kbd>Two fingers</kbd> scroll, pinch, twist</span>
+      <span class="hint-touch">Turn the device sideways; Fullscreen helps on a phone</span>
+      <span class="hint-pad"><kbd>R stick</kbd> hand</span>
+      <span class="hint-pad"><kbd>L stick</kbd> scroll</span>
+      <span class="hint-pad"><kbd>RT</kbd> click <kbd>LT</kbd> slap, drop</span>
+      <span class="hint-pad"><kbd>Start</kbd> menu</span>
+      <span class="hint-pad"><a href="#/guide">All buttons</a></span>
     </div>
   </div>
 </section>
@@ -395,6 +407,39 @@
         <dt><kbd>Shift</kbd>+<kbd>C</kbd></dt><dd>Takes a screenshot; it is also saved to your downloads.</dd>
       </dl>
     </section>
+
+    <section class="slab pad" id="touch">
+      <h2>Touch screens</h2>
+      <p class="fine">Tablets, and phones held sideways. The game's cursor jumps to your finger.</p>
+      <dl class="keys">
+        <dt><kbd>Tap</kbd></dt><dd>Left click: dig, build, pick up, press the game's buttons.</dd>
+        <dt><kbd>Drag</kbd></dt><dd>Left button held: mark a stretch of tiles to dig, or paint a room.</dd>
+        <dt><kbd>Hold</kbd></dt><dd>Right click, after a moment with the finger still: drop what the hand carries, slap, cancel.
+          A quick tap with two fingers does the same, and <strong>Right</strong> on the side bar turns every tap into a right click until you press it again.</dd>
+        <dt><kbd>Two fingers</kbd></dt><dd>Drag to scroll the dungeon, pinch to zoom, twist to turn the view.</dd>
+        <dt>Side bar</dt><dd><strong>Menu</strong> (Esc), <strong>Right</strong>, <strong>Keys</strong> (the keyboard, for save names and chat)
+          and <strong>More</strong>: Space, chat, map, pause, Shift and Ctrl (held until pressed again), turn and zoom buttons,
+          fullscreen, and hiding the bar.</dd>
+        <dt>Possession</dt><dd>Drag to look around, tap to attack (hold to keep attacking), the stick on the left to walk,
+          and <strong>Leave</strong> to return to your dungeon.</dd>
+      </dl>
+    </section>
+
+    <section class="slab pad" id="controller">
+      <h2>Controllers</h2>
+      <p class="fine">Any controller the browser knows (Xbox, PlayStation, Switch Pro, Steam Deck). Press a button once so the browser shows it to the page.</p>
+      <dl class="keys">
+        <dt><kbd>R stick</kbd></dt><dd>Moves the hand.</dd>
+        <dt><kbd>L stick</kbd></dt><dd>Scrolls the dungeon; walks in possession.</dd>
+        <dt><kbd>RT</kbd> / <kbd>LT</kbd></dt><dd>Left and right click.</dd>
+        <dt><kbd>D-pad</kbd></dt><dd>Jumps the hand between buttons in menus and the side panel.</dd>
+        <dt><kbd>A</kbd> + <kbd>D-pad</kbd></dt><dd>Zoom (up, down) and turn the view (left, right). <kbd>A</kbd> alone is Shift; <kbd>B</kbd> is Ctrl.</dd>
+        <dt><kbd>X</kbd> / <kbd>Y</kbd></dt><dd>Go to the fight; go to your Dungeon Heart.</dd>
+        <dt><kbd>LB</kbd> / <kbd>RB</kbd></dt><dd>In possession: previous and next ability.</dd>
+        <dt><kbd>L3</kbd></dt><dd>The map.</dd>
+        <dt><kbd>Start</kbd></dt><dd>The game menu. <kbd>Back</kbd> ends a won level (like Space); <kbd>Start</kbd>+<kbd>Back</kbd> quits.</dd>
+      </dl>
+    </section>
   </div>
 
   <section class="slab pad" id="online">
@@ -491,8 +536,10 @@
     </details>
     <details>
       <summary>Which browsers work?</summary>
-      <p>A current browser on a computer, with WebGL 2: Chrome and Edge are tested; Firefox and Safari should
-        work. A mouse and keyboard are needed, so phones and tablets aren't supported.</p>
+      <p>A current browser with WebGL 2: Chrome and Edge are tested; Firefox and Safari should work. On a
+        computer, play with a mouse and keyboard or a controller. Tablets and phones (held sideways) work by
+        touch; a phone's screen is small for Dungeon Keeper, so a tablet is nicer. You still need your Dungeon
+        Keeper files on the device, or served to it (see <code>?dk=</code> in the docs).</p>
     </details>
     <details>
       <summary>Something went wrong. How do I report it?</summary>
@@ -570,5 +617,6 @@
 <script src="kfx_versions.js"></script>
 <script src="kfx_loader.js"></script>
 <script src="kfx_rejoin.js"></script>
+<script src="kfx_touch.js"></script>
 </body>
 </html>

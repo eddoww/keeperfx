@@ -520,6 +520,13 @@ static void process_event(const SDL_Event *ev)
         LbSetMouseGrab(lbMouseGrabbed);
         break;
 
+    case SDL_EVENT_GAMEPAD_ADDED:
+    case SDL_EVENT_GAMEPAD_REMOVED:
+        // Plugged in or out while the game runs. In a browser every pad
+        // arrives this way: the page only sees one after a button press.
+        JEvent(ev);
+        break;
+
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
