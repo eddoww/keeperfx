@@ -434,6 +434,11 @@ int frontend_menu_state;
 /** Menu the player was in when they started loading a saved game. */
 static FrontendMenuState load_game_menu_state = FeSt_FELOAD_GAME;
 static TbBool load_game_failed = false;
+/** The slot FeSt_LOAD_GAME loads. game.save_game_slot only says that a save is being loaded: it is a byte of
+ *  struct Game, too small for slot numbers past 127 and for the autosaves. */
+static long load_game_slot = -1;
+/** A save named on the command line (-loadgame), loaded instead of showing the main menu. */
+static char startup_load_game[SAVE_FILENAME_MAX];
 /** Scroll offset (px) for the in-game error box's message, when it's too tall
  *  for the box; see gui_area_error_message. */
 static int32_t error_box_scroll_y = 0;
@@ -1787,10 +1792,11 @@ short frontend_save_continue_game(short allow_lvnum_grow)
 
 void frontend_load_continue_game(struct GuiButton *gbtn)
 {
-    switch (SaveManager_LoadContinue())
+    int slot = -1;
+    switch (SaveManager_LoadContinue(&slot))
     {
     case CntT_SavedGame:
-        frontend_set_state(FeSt_LOAD_GAME);
+        frontend_start_load_game(slot);
         break;
     case CntT_CampaignProgress:
         frontend_set_state(FeSt_LAND_VIEW);
@@ -3908,6 +3914,17 @@ FrontendMenuState get_startup_menu_state(void)
           }
       }
   }
+  else if (((game.mode_flags & MFlg_DemoMode) != 0) && (startup_load_game[0] != '\0'))
+  { // A save named on the command line: straight into it, back to the main menu if it can't be loaded
+    int slot = SaveManager_SlotFromName(startup_load_game);
+    SYNCLOG("Loading \"%s\" (slot %d) at startup", startup_load_game, slot);
+    startup_load_game[0] = '\0';
+    SaveManager_LoadCatalogue();
+    load_game_slot = slot;
+    game.save_game_slot = 0;
+    load_game_menu_state = FeSt_MAIN_MENU;
+    return FeSt_LOAD_GAME;
+  }
   else if ((game.mode_flags & MFlg_DemoMode) != 0)
   { // If starting up the game after intro
     if (is_full_moon)
@@ -4001,9 +4018,20 @@ FrontendMenuState get_startup_menu_state(void)
 
 void frontend_start_load_game(long slot_num)
 {
-    game.save_game_slot = slot_num;
+    load_game_slot = slot_num;
+    game.save_game_slot = 0;
     load_game_menu_state = frontend_menu_state;
     frontend_set_state(FeSt_LOAD_GAME);
+}
+
+long frontend_load_game_slot(void)
+{
+    return load_game_slot;
+}
+
+void frontend_load_game_at_startup(const char *name)
+{
+    snprintf(startup_load_game, sizeof(startup_load_game), "%s", name);
 }
 
 /**

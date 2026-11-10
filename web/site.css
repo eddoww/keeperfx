@@ -261,6 +261,15 @@ button.mini-row { width: 100%; border: 0; background: none; font: inherit; text-
 .code { font: 700 15px/1 ui-monospace, Menlo, monospace; letter-spacing: .14em; color: var(--gold-hi); }
 .downloads { font-size: 12.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .stage-tools { display: flex; gap: 4px; margin-left: auto; }
+/* The last autosave, next to the cloud saves indicator (web/kfx_loader.js, "Autosave"). */
+.autosave-note { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--faint); white-space: nowrap; }
+.autosave-note .icon { width: 14px; height: 14px; }
+.autosave-note:not([hidden]) ~ .cloud-status, .autosave-note:not([hidden]) ~ .stage-tools { margin-left: 0; }
+.autosave-note:not([hidden]) ~ .cloud-status { margin-left: 4px; }
+.autosave-note.fresh { animation: autosave-flash 2.5s ease-out; }
+@keyframes autosave-flash { 0%, 30% { color: var(--gold-hi); } 100% { color: var(--faint); } }
+@media (prefers-reduced-motion: reduce) { .autosave-note.fresh { animation: none; } }
+@media (max-width: 720px) { .autosave-note span { display: none; } }
 .tool {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: 600 13px/1 var(--body);
   padding: 8px 10px; border-radius: 7px; color: var(--muted); background: transparent; border: 1px solid transparent; white-space: nowrap;
@@ -348,6 +357,10 @@ form.choice { cursor: default; }
 .joinrow { display: flex; gap: 6px; width: 100%; margin-top: 4px; }
 .joinrow input { flex: 1; width: auto; }
 .start-foot { margin: 16px 0 0; }
+.continue { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: -6px 0 18px; padding: 12px 14px; border-radius: 10px; background: rgba(227, 171, 69, .1); border: 1px solid var(--gold-lo); }
+.continue-info { display: block; font-size: 13px; color: var(--faint); }
+.autosave-pick { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; }
+.autosave-pick label { letter-spacing: .1em; text-transform: uppercase; }
 
 /* Fullscreen and "fill the tab" */
 .hud { display: none; }

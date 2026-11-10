@@ -1809,6 +1809,13 @@ static short process_command_line(unsigned short argc, char *argv[])
         autostart_multiplayer_level = atoi(pr2str);
         narg++;
       } else
+      if (strcasecmp(parstr, "loadgame") == 0)
+      {
+        // A save file (fx1g0003.sav, fx1auto1.sav) or slot number, loaded instead of the main menu
+        frontend_load_game_at_startup(pr2str);
+        start_params.no_intro = true;
+        narg++;
+      } else
       if ( strcasecmp(parstr,"campaign") == 0 )
       {
         strcpy(start_params.selected_campaign, pr2str);

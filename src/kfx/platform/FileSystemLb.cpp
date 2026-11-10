@@ -95,6 +95,14 @@ FsStatus FileSystemLb::WriteAll(const char* path, const void* data, size_t len)
     return ok ? FsStatus::Ok : FsStatus::Failed;
 }
 
+int64_t FileSystemLb::ModifiedTime(const char* path)
+{
+    struct stat info;
+    if ((stat(path, &info) != 0) || !S_ISREG(info.st_mode))
+        return -1;
+    return (int64_t)info.st_mtime;
+}
+
 bool FileSystemLb::Delete(const char* path) { return LbFileDelete(path) >= 0; }
 
 bool FileSystemLb::Rename(const char* from, const char* to) { return LbFileRename(from, to) >= 0; }

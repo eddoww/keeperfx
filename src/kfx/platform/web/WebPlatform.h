@@ -35,6 +35,8 @@ int web_lobby_max_players(int configured);
  * asked for, and a level switches to it between frames. */
 TbScreenMode web_video_mode(int kind, TbScreenMode configured);
 void web_video_update(void);
+/* An autosave was written to fx1auto<number>.sav (WebAutosave.c). */
+void web_report_autosave(int number, const char *title, const char *reason);
 #ifdef __cplusplus
 }
 #endif
@@ -47,6 +49,7 @@ void web_video_update(void);
 #define KFX_WEB_LOBBY_MAX_PLAYERS(configured) web_lobby_max_players(configured)
 #define KFX_WEB_VIDEO_MODE(kind, configured) web_video_mode(kind, configured)
 #define KFX_WEB_VIDEO_UPDATE() web_video_update()
+#define KFX_WEB_AUTOSAVED(number, title, reason) web_report_autosave(number, title, reason)
 #else
 #define KFX_WEB_FRAME_YIELD() do {} while (0)
 #define KFX_WEB_LEVEL_RESULT(player, won) do {} while (0)
@@ -57,6 +60,7 @@ void web_video_update(void);
 #define KFX_WEB_LOBBY_MAX_PLAYERS(configured) (configured)
 #define KFX_WEB_VIDEO_MODE(kind, configured) (configured)
 #define KFX_WEB_VIDEO_UPDATE() do {} while (0)
+#define KFX_WEB_AUTOSAVED(number, title, reason) do {} while (0)
 #endif
 
 #endif

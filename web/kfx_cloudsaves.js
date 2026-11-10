@@ -2,7 +2,7 @@
 // follow their account to other browsers. Server side: web/server/src/saves.js.
 //
 // What syncs: the files the game writes to save/ (/persist/save, IndexedDB):
-// save slots (fx1gNNNN.sav), the continue link (fx1lastf.sav), campaign
+// save slots (fx1gNNNN.sav), autosaves (fx1autoN.sav), the continue link (fx1lastf.sav), campaign
 // progress (<campaign>.cid), campaign high scores (*.dat) and settings.toml
 // (without the lines that belong to one machine, see MACHINE_RE). Never the
 // player's Dungeon Keeper files or music (/persist/dk, /persist/music), and
@@ -18,8 +18,10 @@
 //   - changed only in the account: download (what it replaces is backed up
 //     in /persist/cloudbackup);
 //   - changed in both: a save slot keeps both (one moves to a free slot);
-//     campaign progress asks the player; the continue link, high scores and
-//     settings take the newest, keeping a backup.
+//     campaign progress asks the player; autosaves, the continue link, high
+//     scores and settings take the newest, keeping a backup (an autosave is
+//     replaced every few minutes anyway, and must never fill the player's
+//     slots).
 // A browser with saves that were never in this account (a guest who signs
 // in, or someone else's account before) asks before adding them, and
 // changes nothing until the player answers; the account's continue link,
@@ -39,8 +41,9 @@ const CloudSaves = (() => {
   const BACKUP_DIR = '/persist/cloudbackup';
   const BACKUPS_KEPT = 30;
   // Same as NAME_RE in web/server/src/saves.js.
-  const NAME_RE = /^(?:fx1g\d{4}\.sav|fx1lastf\.sav|[A-Za-z0-9_-]{1,48}\.cid|[A-Za-z0-9_-][A-Za-z0-9_.-]{0,47}\.dat|settings\.toml)$/;
+  const NAME_RE = /^(?:fx1g\d{4}\.sav|fx1auto[1-9]\.sav|fx1lastf\.sav|[A-Za-z0-9_-]{1,48}\.cid|[A-Za-z0-9_-][A-Za-z0-9_.-]{0,47}\.dat|settings\.toml)$/;
   const SLOT_RE = /^fx1g(\d{4})\.sav$/;
+  const AUTO_RE = /^fx1auto([1-9])\.sav$/;
   const LINK = 'fx1lastf.sav';
   const SETTINGS = 'settings.toml';
   // settings.toml lines that belong to this machine or are set by the page.
@@ -110,6 +113,8 @@ const CloudSaves = (() => {
   const userKey = () => (Account.user ? Account.user.username.toLowerCase() : null);
   const owned = () => !!userKey() && state.user === userKey();
   const slotOf = (name) => { const m = name.match(SLOT_RE); return m ? Number(m[1]) : -1; };
+  const autoOf = (name) => { const m = name.match(AUTO_RE); return m ? Number(m[1]) : -1; };
+  const isSave = (name) => slotOf(name) >= 0 || autoOf(name) >= 0;
   const slotName = (n) => `fx1g${String(n).padStart(4, '0')}.sav`;
   const path = (name) => `${SAVE_DIR}/${name}`;
 
@@ -179,6 +184,11 @@ const CloudSaves = (() => {
   }
 
   function describe(name, info = {}) {
+    const auto = autoOf(name);
+    if (auto >= 0) {
+      return { title: info.title || `Autosave ${auto}`,
+        sub: [`Autosave ${auto}`, info.campaign, info.level > 0 ? `level ${info.level}` : ''].filter(Boolean).join(' · ') };
+    }
     const slot = slotOf(name);
     if (slot >= 0) {
       return { title: info.title || `Slot ${slot}`,
@@ -378,7 +388,7 @@ const CloudSaves = (() => {
     const local = await readLocal(name);
     if (!local) return null;
     if (refused.get(name) === local.sha) return null;
-    const info = slotOf(name) >= 0 ? readSaveInfo(local.bytes)
+    const info = isSave(name) ? readSaveInfo(local.bytes)
       : name.endsWith('.cid') ? { campaign: name.replace(/\.cid$/, '') } : {};
     const q = new URLSearchParams({ base, sha: local.sha, mtime: local.mtime, device: deviceName(), build: BUILD,
       info: JSON.stringify(info) });
@@ -423,7 +433,7 @@ const CloudSaves = (() => {
       const L = local.has(name) ? { ...local.get(name), sha: await localSha(name) } : null;
       const C = cloud.get(name) || null;
       const B = mine ? state.files[name] : null;
-      const holds = running && slotOf(name) < 0; // the game may hold it in memory: not replaced during a game
+      const holds = running && !isSave(name); // the game may hold it in memory: not replaced during a game
       if (L && C && L.sha === C.sha) { p.same.push(C); continue; }
       if (!L && C) {
         if (B && B.rev === C.rev && name === LINK) p.dropCloud.push(C); // the game removed its continue link
@@ -712,14 +722,14 @@ const CloudSaves = (() => {
       form.append(h('h2', {}, 'Your saves'));
       if (p.add.length) {
         const from = new Map(moved.map((m) => [m.to, m.file.name])); // still under its old name
-        const listed = p.add.filter((name) => slotOf(name) >= 0 || name.endsWith('.cid'));
+        const listed = p.add.filter((name) => isSave(name) || name.endsWith('.cid'));
         const others = p.add.filter((name) => !listed.includes(name)).map((name) => describe(name).title.replace(/:.*/, '').toLowerCase());
         form.append(...[
           h('p', {}, listed.length ? 'This browser has saves that are not in your account yet:' : 'This browser has files that are not in your account yet:'),
           h('ul', { class: 'cs-files' }, listed.map((name) => {
             const src = from.get(name) || name;
             const st = localFiles().get(src);
-            const d = describe(name, slotOf(src) >= 0 && st ? readSaveInfo(FS.readFile(path(src))) : {});
+            const d = describe(name, isSave(src) && st ? readSaveInfo(FS.readFile(path(src))) : {});
             return h('li', {}, h('b', {}, d.title), h('small', {}, [d.sub, st ? ago(st.mtime) : '',
               from.has(name) ? `was slot ${slotOf(src)}: your account has another save there` : ''].filter(Boolean).join(' · ')));
           })),
@@ -787,14 +797,18 @@ const CloudSaves = (() => {
     }
   }
 
+  /** Autosaves first, then the player's saves, then the rest. */
+  const rank = (name) => (autoOf(name) >= 0 ? 0 : slotOf(name) >= 0 ? 1 : 2);
+
   function renderDialog() {
     const dialog = $('saves-dialog');
     if (!dialog) return;
     const box = dialog.querySelector('.cs-body');
     const local = localFiles();
     const signed = !!userKey() && !disabled;
+    const savedAt = (name) => (local.get(name) || (signed && cloud && cloud.get(name)) || { mtime: 0 }).mtime;
     const names = [...new Set([...local.keys(), ...(signed && cloud ? cloud.keys() : [])])]
-      .sort((a, b) => (slotOf(a) < 0) - (slotOf(b) < 0) || a.localeCompare(b));
+      .sort((a, b) => rank(a) - rank(b) || (rank(a) === 0 && savedAt(b) - savedAt(a)) || a.localeCompare(b));
     const s = STATUS[status];
     const head = h('div', { class: 'cs-head' },
       s ? h('span', { class: 'cs-state' }, h('i', { class: `dot ${s[0]}` }), s[1]) : null,
@@ -803,7 +817,7 @@ const CloudSaves = (() => {
     const rows = names.map((name) => {
       const L = local.get(name);
       const C = signed && cloud ? cloud.get(name) : null;
-      const info = C ? C.info : (slotOf(name) >= 0 && L ? readSaveInfo(FS.readFile(path(name))) : {});
+      const info = C ? C.info : (isSave(name) && L ? readSaveInfo(FS.readFile(path(name))) : {});
       const d = describe(name, info);
       const synced = L && C && hashes.get(name) && hashes.get(name).sha === C.sha;
       const where = !signed ? '' : synced ? 'In your account' : C && L ? 'Different here' : C ? 'Account only' : 'This browser only';
@@ -822,7 +836,7 @@ const CloudSaves = (() => {
       ...(signed ? cloudPrevious.map((f) => ({ label: describe(f.name, f.info).title, sub: `${f.name} · replaced ${ago(f.replacedAt)} · from ${f.device}`,
         size: f.size, get: async () => (await download(f.name, true)).bytes, file: f.name })) : []),
       ...listBackups().map((b) => ({
-        label: describe(b.name, slotOf(b.name) >= 0 ? readSaveInfo(FS.readFile(`${BACKUP_DIR}/${b.file}`)) : {}).title, sub: `${b.name} · replaced in this browser ${ago(b.at)}`,
+        label: describe(b.name, isSave(b.name) ? readSaveInfo(FS.readFile(`${BACKUP_DIR}/${b.file}`)) : {}).title, sub: `${b.name} · replaced in this browser ${ago(b.at)}`,
         size: b.size, get: async () => FS.readFile(`${BACKUP_DIR}/${b.file}`), file: b.name })),
     ];
     box.replaceChildren(...[
@@ -833,11 +847,15 @@ const CloudSaves = (() => {
           h('button', { class: 'linklike', type: 'button', onclick: () => { dialog.close(); Site.openAccount(); } }, 'Sign in'),
           ' to keep them in your account and continue on another device.') : null,
       statusDetail && status !== 'synced' ? h('p', { class: 'fine' }, statusDetail) : null,
+      typeof autosaveSelect === 'function'
+        ? h('p', { class: 'fine cs-autosave' }, h('label', {}, 'Autosave ', autosaveSelect()),
+          ' The game saves itself into three autosaves of its own, the oldest replaced each time; your own saves are never touched. '
+          + 'Online games, replays and watching are not autosaved.') : null,
       names.length
         ? h('div', { class: 'cs-table' }, h('table', { class: 'board cs-board' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Save'), h('th', { class: 'num' }, 'Size'), h('th', {}, 'Saved'), h('th', {}, ''))),
           h('tbody', {}, rows)))
-        : h('p', { class: 'fine' }, 'No saves yet. Save in the game (Esc → Save) and it shows here.'),
+        : h('p', { class: 'fine' }, 'No saves yet. Save in the game (Esc → Save), or play a few minutes for an autosave, and it shows here.'),
       older.length
         ? h('details', { class: 'cs-older' }, h('summary', {}, `Replaced versions (${older.length})`),
           h('ul', { class: 'cs-files' }, older.map((o) => h('li', {},
@@ -891,6 +909,7 @@ const CloudSaves = (() => {
       const isSave = readSaveInfo(bytes).title !== undefined;
       if (!NAME_RE.test(name) && isSave) name = slotName(0); // a renamed save: give it a slot below
       if (!NAME_RE.test(name)) { toast(`${file.name}: not a KeeperFX save file.`, { bad: true }); continue; }
+      if (autoOf(name) >= 0) name = slotName(0); // an imported autosave gets a slot of its own: the game would replace it
       if (slotOf(name) < 0 && live()) {
         toast(`${file.name}: leave the game first; it may still overwrite this file.`, { bad: true });
         continue;
@@ -955,5 +974,5 @@ const CloudSaves = (() => {
 
   Account.onChange(onAccount);
 
-  return { beforeStart, idle, open, get status() { return status; } };
+  return { beforeStart, idle, open, saveInfo: readSaveInfo, get status() { return status; } };
 })();

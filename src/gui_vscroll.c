@@ -129,11 +129,13 @@ long gui_vscroll_total(void)
     /* The Save menu reveals one free slot past the used ones (so a new game can be
      * saved there); the Load menu must not. Both keep at least the 8 on-screen rows and
      * never exceed the number of slots the catalogue currently holds. */
-    long total = last_used + (menu_is_active(GMnu_SAVE) ? 2 : 1);
+    /* The Load menu also lists the autosaves, above the player's slots. */
+    long autosaves = menu_is_active(GMnu_SAVE) ? 0 : SaveManager_AutosaveCount();
+    long total = last_used + (menu_is_active(GMnu_SAVE) ? 2 : 1) + autosaves;
     if (total < GUI_VSCROLL_VISIBLE)
         total = GUI_VSCROLL_VISIBLE;
-    if (total > SaveManager_SlotCount())
-        total = SaveManager_SlotCount();
+    if (total > SaveManager_SlotCount() + autosaves)
+        total = SaveManager_SlotCount() + autosaves;
     return total;
 }
 

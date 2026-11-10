@@ -331,6 +331,9 @@ enum SaveCheckResult CheckFile(IFileSystem &filesystem, const char *fname, Catal
 
 int SlotFromFilename(const char *fname)
 {
+    if ((strncasecmp(fname, "fx1auto", 7) == 0) && (fname[7] >= '1') && (fname[7] < '1' + AUTOSAVE_SLOTS)
+      && (strcasecmp(fname + 8, ".sav") == 0))
+        return AUTOSAVE_SLOT_FIRST + (fname[7] - '1');
     if (strncasecmp(fname, "fx1g", 4) != 0)
         return -1;
     const char *text = fname + 4;
@@ -344,6 +347,17 @@ int SlotFromFilename(const char *fname)
     if ((index < 0) || (index >= SAVE_SLOTS_LIMIT))
         return -1;
     return (int)index;
+}
+
+bool SlotFilename(int slot, char *out, size_t outlen)
+{
+    if ((slot >= 0) && (slot < SAVE_SLOTS_LIMIT))
+        snprintf(out, outlen, SAVED_GAME_FILENAME, slot);
+    else if ((slot >= AUTOSAVE_SLOT_FIRST) && (slot < AUTOSAVE_SLOT_FIRST + AUTOSAVE_SLOTS))
+        snprintf(out, outlen, AUTOSAVE_FILENAME, slot - AUTOSAVE_SLOT_FIRST + 1);
+    else
+        return false;
+    return true;
 }
 
 } // namespace savegame

@@ -463,6 +463,14 @@ static void update_multiplayer_clock_adjust(void)
     }
 }
 
+static TbBool gameplay_loop_running = false;
+static TbBool gameplay_turn_busy = false;
+
+TbBool gameplay_between_turns(void)
+{
+    return gameplay_loop_running && !gameplay_turn_busy;
+}
+
 // this one isn't static for now, because it's used in the network code
 // if networking had its own thread, it wouldn't need the yield that calls this function, but for now it does
 void gameplay_loop_draw()
@@ -605,11 +613,14 @@ static void gameplay_loop_logic()
         do_draw = true;
         return;
     }
+    gameplay_turn_busy = true;
     input_eastegg();
     input();
     if (exchange_packets() == PExR_Wait) {
+        gameplay_turn_busy = false;
         return;
     }
+    gameplay_turn_busy = false;
     frametime_start_measurement(Frametime_Logic);
     if (frametime_enabled()) {
         framerate_measurement_capture(Framerate_Logic);
@@ -661,9 +672,12 @@ static void gameplay_loop_logic()
     }
     local_state.process_turn_time -= 1.0;
 
+    gameplay_turn_busy = true;
     update();
+    gameplay_turn_busy = false;
 
     frametime_end_measurement(Frametime_Logic);
+    SaveManager_AutosaveTick();
 
     if(game.frame_step)
     {
@@ -746,6 +760,8 @@ static void keeper_gameplay_loop(void)
 
     initial_time_point();
     LbSleepExtInit();
+    SaveManager_AutosaveReset();
+    gameplay_loop_running = true;
 
     //the main gameplay loop starts
     while ((!quit_game) && (!exit_keeper))
@@ -761,6 +777,7 @@ static void keeper_gameplay_loop(void)
 
         frametime_end_measurement(Frametime_FullFrame);
     } // end while
+    gameplay_loop_running = false;
     SYNCDBG(0,"Gameplay loop finished after %lu turns",(unsigned long)get_gameturn());
 
     // Reset the game kind because we are not in a game anymore at this point
@@ -1056,7 +1073,7 @@ static TbBool wait_at_frontend(void)
           level_load_time_phase(LevelLoadTime_Data);
           {
               enum SaveCheckResult why;
-              if (SaveManager_Load(game.save_game_slot, &why) != SvLoad_Done)
+              if (SaveManager_Load((int)frontend_load_game_slot(), &why) != SvLoad_Done)
               {
                   frontend_load_game_failed(SaveManager_CheckMessage(why));
                   game.save_game_slot = flgmem;

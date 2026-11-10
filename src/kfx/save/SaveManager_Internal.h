@@ -23,6 +23,7 @@
 #define SAVEERR(format, ...) LbErrorLog("[save-manager] " format "\n", ##__VA_ARGS__)
 
 #define SAVED_GAME_FILENAME "fx1g%04d.sav"
+#define AUTOSAVE_FILENAME "fx1auto%d.sav"
 
 struct Game;
 struct IntralevelData;
@@ -150,8 +151,11 @@ enum SaveCheckResult Classify(enum SaveResult result);
 enum SaveCheckResult CheckFile(IFileSystem &filesystem, const char *fname, CatalogueEntry *centry, int *title_ok,
     char *detail, size_t detail_len);
 
-/** Slot number of a file named fx1gNNNN.sav, or -1. */
+/** Slot number of a file named fx1gNNNN.sav, or of an autosave (fx1autoN.sav), or -1. */
 int SlotFromFilename(const char *fname);
+
+/** The file name (no directory) of a slot, a player's or an autosave, into out; false for no such slot. */
+bool SlotFilename(int slot, char *out, size_t outlen);
 
 /** Reads the title of a savegame written before the KFXS container, into *centry. */
 bool ReadLegacyTitle(IFileSystem &filesystem, const char *fname, CatalogueEntry *centry);

@@ -23,6 +23,11 @@ extern "C" {
 #define SAVE_TEXTNAME_LEN        30
 #define PLAYER_NAME_LENGTH       64
 #define SAVE_FILENAME_MAX        64
+/* Autosaves are files of their own, fx1auto1.sav ... fx1auto3.sav, written in turn so the one before can be
+ * gone back to. They never take a player's slot: they are slots AUTOSAVE_SLOT_FIRST and up, past every
+ * fx1gNNNN.sav, and the menus list them before the player's own saves. */
+#define AUTOSAVE_SLOTS           3
+#define AUTOSAVE_SLOT_FIRST      SAVE_SLOTS_LIMIT
 
 #define MAKE_CHUNK_ID(char1, char2, char3, char4) \
     ((uint32_t)(unsigned char)(char1)         | ((uint32_t)(unsigned char)(char2) << 8) \

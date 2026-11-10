@@ -27,6 +27,15 @@
 extern "C" {
 #endif
 /******************************************************************************/
+/* Autosave (src/kfx/save/SaveAutosave.cpp) is off unless chosen in settings.toml, except in the browser,
+ * where a closed tab or a crashed page loses a game far more easily than a desktop program does. */
+#ifdef __EMSCRIPTEN__
+#define DEFAULT_AUTOSAVE_MINUTES 5
+#else
+#define DEFAULT_AUTOSAVE_MINUTES 0
+#endif
+#define AUTOSAVE_MINUTES_MAX     60
+/******************************************************************************/
 #pragma pack(1)
 
 struct GameKey {
@@ -59,6 +68,7 @@ struct GameSettings {
     TbBool highlight_mode;
     uint8_t computer_assistant_kind;
     uint64_t reconnect_token;
+    uint8_t autosave_minutes; /**< Minutes of play between two autosaves; 0 is off. */
     };
 #pragma pack()
 /******************************************************************************/

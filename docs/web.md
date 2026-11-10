@@ -35,6 +35,9 @@ player, saves, campaign progress and settings also go to their account (see
   locked all the time instead, as `CAPTURE_CURSOR` does on the desktop (click
   to capture, Esc releases it, so the menu takes a second press); the choice
   is kept in the browser.
+- The game saves itself every 5 minutes of play, and when the tab is hidden or
+  closed and on **Leave**; the start screen offers **Continue where you left
+  off** (see "Autosave").
 - Screenshots (Shift+C) are saved in the browser and also handed to the
   browser as downloads.
 - The game data downloads as the game needs it; the files a normal start uses
@@ -131,6 +134,10 @@ the game keeps that size.
 | `?join=CODE` | An invite: the start screen offers to join that lobby (`&spectate` to watch); without `?build` the page picks the lobby's version |
 | `?autostart` | Skip the start screen; with `?join=CODE` or `?host` (`&unlisted`) go straight online |
 | `?debug` | Log each game data download to the console |
+
+The game's own `-loadgame <file or slot>` (in `?args=`, or a start choice's
+`args`) loads that save instead of showing the main menu, e.g.
+`-loadgame fx1auto2.sav` or `-loadgame 3`; Continue on the start screen uses it.
 
 A player can keep their own config by storing it as `/persist/keeperfx.cfg`.
 
@@ -230,6 +237,79 @@ The page reads `dataUrl` from `/site.json` (answered by the Worker from
 before deploying a page whose manifest names it.
 
 Do not publish Dungeon Keeper's own files: each player supplies their own.
+
+## Autosave
+
+A browser tab is a fragile place for a long level: closed by accident, a
+crash, a browser restart, a dropped connection. So the game saves itself.
+
+- **What the player sees**: every 5 minutes of play the game writes an
+  autosave, and the bar above the game says "Autosaved 14:32" next to the
+  cloud saves indicator (it lights up briefly; hovering says more, a click
+  opens the saves). Nothing stops or asks. Autosaves are at the top of the
+  game's Load Game lists (main menu and in game), named after the time and the
+  level ("Autosave 14:32 Eversmile"), and in the site's Saves dialog. The
+  start screen offers **Continue where you left off** with the newest save,
+  an autosave or the player's own, saying which level and how long ago; it
+  starts the game straight into it. The game's own Continue Game button does
+  the same, since an autosave moves the continue link like any save.
+- **Slots**: three files of their own, `fx1auto1.sav` ... `fx1auto3.sav`,
+  the oldest (by file time) replaced each time, so one or two steps back
+  are there after an unlucky one. They never take or touch a player's slot
+  (`fx1gNNNN.sav`).
+- **When**: after the set minutes of play (paused time, and time the tab
+  stood still, don't count); a save that falls due while the keeper's
+  creatures fight waits for the fight to end, up to a minute. Also when the
+  tab is hidden (switching tabs, minimising, and the first thing that happens
+  when a tab or the browser is closed), if there has been a minute of play
+  since the last one, and on **Leave**. Pagehide alone is not relied on: the
+  browser gives no time there, and the regular saves cover a tab that dies
+  without warning.
+- **Where not**: online games (the engine has no save for a network game; its
+  Save button is off there too), replays, watching (a spectator is in a
+  network game), a finished level, and outside a level (menus, the land view,
+  level loading, movies, the statistics screen). While paused nothing is
+  counted; a hide or Leave still saves if anything happened since.
+- **The setting**: `autosave_minutes` in the `[gameplay]` section of
+  `save/settings.toml` (0 is off, at most 60), 5 by default in the browser
+  and **off by default on the desktop**, where nothing changes unless a
+  player sets it. The page offers off, 2, 5, 10, 15 and 30 minutes on the
+  start screen and in the Saves dialog; during a game it changes the running
+  game's setting (`kfx_web_autosave_set`), otherwise it edits the file. Cloud
+  saves carry `settings.toml`, so a signed-in player's choice follows them.
+- **Safety**: the game writes every save to `<name>.tmp` and renames it over
+  the old file (`FileSystemLb::WriteAll`), so a failed write leaves the old
+  one. In the browser the file then reaches IndexedDB in one
+  `FS.syncfs` transaction, which the page starts right after the autosave;
+  a tab killed before it commits keeps the previous state whole (tested:
+  SIGKILL right after an autosave leaves the one before, loadable).
+- **Cloud saves**: an autosave writes two files (the autosave and the
+  continue link), so with the default it costs 24 uploads an hour, 60 at the
+  shortest choice (2 minutes), and at most about 120 with hide saves (one per
+  minute of play at most), against the limit of 240. A refused upload (409)
+  is not counted. Autosaves changed in two browsers take the newest (with a
+  backup), like the continue link: they are never kept both into a player's
+  slot, and they don't produce a "saved to your account" toast. An imported
+  autosave file gets a player slot of its own.
+- **Cost**: a save encodes the whole game state, about 18.5 MB before
+  compression (things, creature controls, the map), whatever the level, to
+  250-300 KB. In the headless test browser on a busy machine an autosave took
+  110-165 ms (level 1 and level 20 alike), one dropped frame or a few; before
+  the encoder work below it took 180-260 ms. The save code now copies runs of
+  fields whose memory layout is their stored layout in one go (same bytes,
+  checked against the field-by-field encoder and by `tests/save`), and the
+  config overlay skips fields that did not change (63 ms to 3 ms). What is
+  left is roughly half the encoding of things and creature controls (their
+  unions are still walked field by field) and half zlib.
+
+How it fits together: `src/kfx/save/SaveAutosave.cpp` (when, which file, the
+title), `gameplay_between_turns()` in `game_loop.c` (the game is whole between
+two turns, also while it waits for the next frame, so the page may call in
+then), the autosave slots in the save manager (slots `AUTOSAVE_SLOT_FIRST` and
+up, past every `fx1gNNNN.sav`), and `-loadgame`. Browser only:
+`src/kfx/platform/web/WebAutosave.c` (`kfx_web_autosave_now`, `_state`,
+`_set`, and `Module.kfxOnAutosave` after each one) and "Autosave" and
+"Continue where you left off" in `web/kfx_loader.js`.
 
 ## App and offline play
 
@@ -554,7 +634,8 @@ saves from another game version are offered too, and the game says if it
 can't load one.
 
 - **What syncs**: the files the game writes to `save/`: save slots
-  (`fx1gNNNN.sav`), the continue link (`fx1lastf.sav`), campaign progress
+  (`fx1gNNNN.sav`), autosaves (`fx1auto1.sav` ... `fx1auto3.sav`), the
+  continue link (`fx1lastf.sav`), campaign progress
   (`<campaign>.cid`), campaign high scores (`*.dat`) and `settings.toml`
   without the lines that belong to one machine or are set by the page
   (`player_name`, `lobby_name`, `reconnect_token`,

@@ -67,6 +67,9 @@ static int diff_struct(const struct SaveStructDesc *desc, const uint8_t *current
         const struct SaveFieldDesc *field = &desc->fields[field_index];
         if (field->stored_type == SV_UNION)
             continue;
+        // Nearly all of the config is as it was loaded: an unchanged field has nothing to write.
+        if (memcmp(current_bytes + field->offset, base + field->offset, field->mem_size) == 0)
+            continue;
         path[base_len] = 0;
         path_append(path, pathcap, field->name);
         const uint32_t count = save_field_count(field);
@@ -92,6 +95,8 @@ static int diff_struct(const struct SaveStructDesc *desc, const uint8_t *current
             const uint8_t *baseline_element = base + field->offset + (static_cast<size_t>(index) * elem);
             if (field->stored_type == SV_STRUCT)
             {
+                if (memcmp(current_element, baseline_element, elem) == 0)
+                    continue;
                 path[field_len] = 0;
                 if (count > 1)
                     path_append_index(path, pathcap, index);
