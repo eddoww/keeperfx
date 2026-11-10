@@ -403,6 +403,9 @@ body.in-play .footer { display: none; }
   box-shadow: var(--shadow); animation: toast-in .25s ease-out;
 }
 .toast b { color: var(--gold-hi); }
+.toast { position: relative; padding-right: 34px; }
+.toast-close { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; pointer-events: auto; }
+.toast-close:hover, .toast-close:focus-visible { color: var(--gold-hi); background: rgba(255,255,255,.08); }
 .toast.bad { border-left-color: var(--ember); }
 .toast.out { opacity: 0; transition: opacity .4s; }
 .toast a { margin-left: 6px; }

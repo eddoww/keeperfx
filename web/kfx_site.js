@@ -101,8 +101,10 @@ const Site = (() => {
   /** kids: text or nodes. `stage`: show over the game (also seen in fullscreen). */
   function toast(kids, { bad = false, stage = false, ms = 6000 } = {}) {
     const node = h('div', { class: `toast${bad ? ' bad' : ''}` }, kids);
+    const close = () => { node.classList.add('out'); setTimeout(() => node.remove(), 450); };
+    node.append(h('button', { type: 'button', class: 'toast-close', 'aria-label': 'Dismiss', title: 'Dismiss', onclick: close }, '×'));
     (stage ? $('stage-toasts') : $('toasts')).append(node);
-    setTimeout(() => { node.classList.add('out'); setTimeout(() => node.remove(), 450); }, ms);
+    setTimeout(close, ms);
     return node;
   }
 
