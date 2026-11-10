@@ -35,6 +35,7 @@
 #include "game_heap.h"
 #include "game_legacy.h"
 #include "replay.h"
+#include "net_compat.h"
 #include "game_merge.h"
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
@@ -353,7 +354,13 @@ TbBool startup_saved_packet_game(void)
     SYNCMSG("Packet file prepared on KeeperFX %d.%d.%d.%d",(int)replay.head.game_ver_major,(int)replay.head.game_ver_minor,
         (int)replay.head.game_ver_release,(int)replay.head.game_ver_build);
 #endif
-    if ((replay.head.game_ver_major != VER_MAJOR) || (replay.head.game_ver_minor != VER_MINOR)
+    if (replay.head.net_sim_version != 0) {
+        // Builds with the same simulation version play each other's replays (net_compat.h).
+        if (replay.head.net_sim_version != NET_SIM_VERSION) {
+            WARNLOG("Packet file was created with a version of the game with different game rules (%u, this one has %u); it will not play the same",
+                (unsigned)replay.head.net_sim_version, (unsigned)NET_SIM_VERSION);
+        }
+    } else if ((replay.head.game_ver_major != VER_MAJOR) || (replay.head.game_ver_minor != VER_MINOR)
         || (replay.head.game_ver_release != VER_RELEASE) || (replay.head.game_ver_build != VER_BUILD)) {
         WARNLOG("Packet file was created with different version of the game; this rarely works");
     }

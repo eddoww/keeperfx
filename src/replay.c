@@ -18,6 +18,7 @@
 #include "pre_inc.h"
 #include "net_spectator.h"
 #include "replay.h"
+#include "net_compat.h"
 #include "packets.h"
 #include "net_game.h"
 #include "net_exchange_gameplay.h"
@@ -1534,6 +1535,7 @@ TbBool open_new_packet_file_for_save(void)
     replay.head.game_ver_minor = VER_MINOR;
     replay.head.game_ver_release = VER_RELEASE;
     replay.head.game_ver_build = VER_BUILD;
+    replay.head.net_sim_version = NET_SIM_VERSION;
     replay.head.level_num = get_loaded_level_number();
     replay.head.players_exist = 0;
     replay.head.players_comp = 0;
