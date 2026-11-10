@@ -45,6 +45,7 @@
 #include "lvl_script_commands.h"
 #include "lvl_script.h"
 #include "sounds.h"
+#include "sprites.h"
 #include "post_inc.h"
 
 #include <SDL3_mixer/SDL_mixer.h>
@@ -364,6 +365,70 @@ void frontend_draw_invert_mouse(struct GuiButton *gbtn)
         text = get_string(GUIStr_Off);
     }
     LbTextDrawResized(0, 0, tx_units_per_px, text);
+}
+
+/** What the autosave button of the in-game Options menu offers: minutes of play between two autosaves, 0 is off.
+ *  settings.toml may hold any other value up to AUTOSAVE_MINUTES_MAX; the button goes on from there. */
+static const uint8_t autosave_interval_choices[] = {0, 1, 2, 5, 10, 15, 30};
+
+void gui_next_autosave_interval(struct GuiButton *gbtn)
+{
+    const int count = (int)(sizeof(autosave_interval_choices) / sizeof(autosave_interval_choices[0]));
+    uint8_t minutes = autosave_interval_choices[0];
+    for (int i = 0; i < count; i++)
+    {
+        if (autosave_interval_choices[i] > settings.autosave_minutes)
+        {
+            minutes = autosave_interval_choices[i];
+            break;
+        }
+    }
+    settings.autosave_minutes = minutes;
+    save_settings();
+}
+
+void gui_previous_autosave_interval(struct GuiButton *gbtn)
+{
+    const int count = (int)(sizeof(autosave_interval_choices) / sizeof(autosave_interval_choices[0]));
+    uint8_t minutes = autosave_interval_choices[count - 1];
+    for (int i = count - 1; i >= 0; i--)
+    {
+        if (autosave_interval_choices[i] < settings.autosave_minutes)
+        {
+            minutes = autosave_interval_choices[i];
+            break;
+        }
+    }
+    settings.autosave_minutes = minutes;
+    save_settings();
+}
+
+/** A text bar like gui_area_text's, saying how often the game autosaves. */
+void gui_area_autosave_button(struct GuiButton *gbtn)
+{
+    if ((gbtn->flags & LbBtnF_Enabled) == 0) {
+        return;
+    }
+    int bs_units_per_px = simple_button_sprite_height_units_per_px(gbtn, GBS_frontend_button_std_c, 94);
+    int width = gbtn->width;
+    int lit_width = gbtn->width + 6 * units_per_pixel / 16;
+    if (MyScreenHeight < 400)
+    {
+        width += 32;
+        lit_width += 32;
+    }
+    draw_bar64k(gbtn->scr_pos_x, gbtn->scr_pos_y, bs_units_per_px, width);
+    if (gbtn->button_state_left_pressed || gbtn->button_state_right_pressed)
+    {
+        draw_lit_bar64k(gbtn->scr_pos_x - 6 * units_per_pixel / 16, gbtn->scr_pos_y - 6 * units_per_pixel / 16, bs_units_per_px, lit_width);
+    }
+    char text[TEXT_BUFFER_LENGTH];
+    if (settings.autosave_minutes == 0) {
+        snprintf(text, sizeof(text), "%s", get_string(GUIStr_OptionAutosaveOff));
+    } else {
+        snprintf(text, sizeof(text), get_string(GUIStr_OptionAutosaveMinutes), (int)settings.autosave_minutes);
+    }
+    draw_button_string(gbtn, (gbtn->width * 32 + 16) / gbtn->height, text);
 }
 
 /**

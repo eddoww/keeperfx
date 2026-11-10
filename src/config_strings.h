@@ -521,6 +521,12 @@ enum GUIStrings {
     GUIStr_NetConnectionUnstable,
     GUIStr_NetFilesDiffer,
     GUIStr_NetLevelPacks,
+    GUIStr_Autosaved,
+    GUIStr_AutosaveTitle,
+    GUIStr_AutosaveLevelNumber,
+    GUIStr_OptionAutosaveOff,
+    GUIStr_OptionAutosaveMinutes,
+    GUIStr_OptionAutosaveDesc,
     GuiStrEnd
 };
 

@@ -57,6 +57,7 @@ struct GuiButtonInit options_menu_buttons[] = {
   {LbBtnT_NormalBtn,  BID_DEFAULT, 0, 1, no_op,               NULL,        NULL,              0, 156,  36, 156,  36, 46, 64, gui_area_no_anim_button, GBS_options_button_sound, GUIStr_SoundMenuDesc,    &sound_menu,{0},          0, NULL },
   {LbBtnT_NormalBtn,  BID_DEFAULT, 0, 1, no_op,               NULL,        NULL,              0, 204,  36, 204,  36, 46, 64, gui_area_compsetting_button, GPS_options_cassist_btn_black_a, GUIStr_ComputerAssistDesc,&autopilot_menu,{0},     0, NULL },
   {LbBtnT_NormalBtn,  BID_DEFAULT, 0, 1, no_op,               NULL,        NULL,              0, 252,  36, 252,  36, 46, 64, gui_area_no_anim_button, GBS_options_button_exit, GUIStr_QuitGameDesc,     &quit_menu, {0},          0, NULL },
+  {LbBtnT_NormalBtn,  BID_DEFAULT, 0, 0, gui_next_autosave_interval, gui_previous_autosave_interval, NULL, 0, 999, 106, 999, 106,260, 32, gui_area_autosave_button,    1, GUIStr_OptionAutosaveDesc,  0,       {0},          0, NULL },
   {              -1,  BID_DEFAULT, 0, 0, NULL,               NULL,        NULL,               0,   0,   0,   0,   0,  0,  0, NULL,                              0, 0,                       0,          {0},          0, NULL },
 };
 
@@ -129,7 +130,7 @@ struct GuiButtonInit message_box_buttons[] = {
 };
 
 struct GuiMenu options_menu =
- { GMnu_OPTIONS,      0, 1, options_menu_buttons,       POS_GAMECTR,POS_GAMECTR,308, 120, gui_pretty_background,       0, NULL,    NULL,                    0, 1, 0,};
+ { GMnu_OPTIONS,      0, 1, options_menu_buttons,       POS_GAMECTR,POS_GAMECTR,308, 148, gui_pretty_background,       0, NULL,    NULL,                    0, 1, 0,};
 struct GuiMenu instance_menu =
  { GMnu_INSTANCE,     0, 1, instance_menu_buttons,      POS_GAMECTR,POS_GAMECTR,318, 120, gui_pretty_background,       0, NULL,    NULL,                    0, 1, 0,};
 struct GuiMenu quit_menu =

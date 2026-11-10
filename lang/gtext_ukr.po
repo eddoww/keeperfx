@@ -7698,3 +7698,39 @@ msgstr "Файли у %s та хоста відрізняються"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Одиночні мапи (кооператив)..."
+
+#. Shown when the game has saved itself
+#: guitext:1172
+msgctxt "On-screen message"
+msgid "Autosaved"
+msgstr ""
+
+#. Start of the name of a game the game saved by itself, followed by the time and the level name
+#: guitext:1173
+msgctxt "In-game interface item"
+msgid "Autosave"
+msgstr ""
+
+#. Name of a level in an autosave name, when the level has no name of its own
+#: guitext:1174
+#, c-format
+msgctxt "In-game interface item"
+msgid "Level %d"
+msgstr ""
+
+#: guitext:1175
+msgctxt "In-game interface item"
+msgid "Autosave: off"
+msgstr ""
+
+#. How many minutes of play between two automatic saves
+#: guitext:1176
+#, c-format
+msgctxt "In-game interface item"
+msgid "Autosave: every %d min"
+msgstr ""
+
+#: guitext:1177
+msgctxt "In-game interface description"
+msgid "Autosave: How often the game saves itself while you play. LMB toggle."
+msgstr ""
