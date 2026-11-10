@@ -40,14 +40,30 @@ static void open_controller(SDL_JoystickID id)
     if (controller)
         return;
     controller = SDL_OpenGamepad(id);
+    if (controller == NULL) {
+        WARNLOG("Could not open gamepad: %s", SDL_GetError());
+        return;
+    }
+    const char* name = SDL_GetGamepadName(controller);
+    SYNCLOG("Gamepad connected: %s", name ? name : "Unknown");
 }
 
-static void close_controller()
+static void close_controller(SDL_JoystickID id)
 {
-    if (controller) {
-        SDL_CloseGamepad(controller);
-        controller = NULL;
-    }
+    if (controller == NULL || SDL_GetGamepadID(controller) != id)
+        return;
+    SDL_CloseGamepad(controller);
+    controller = NULL;
+    controller_button_state = 0;
+    internal_button_state = 0;
+    SYNCLOG("Gamepad disconnected");
+    // Carry on with another pad, if one is still there.
+    int count = 0;
+    SDL_JoystickID* gamepads = SDL_GetGamepads(&count);
+    if (gamepads && count > 0)
+        open_controller(gamepads[0]);
+    if (gamepads)
+        SDL_free(gamepads);
 }
 
 static TbControllerButtons SDL_gamepadbutton_to_controllerbutton(SDL_GamepadButton button)
@@ -126,7 +142,7 @@ void JEvent(const SDL_Event *ev)
         open_controller(ev->gdevice.which);
         break;
     case SDL_EVENT_GAMEPAD_REMOVED:
-        close_controller();
+        close_controller(ev->gdevice.which);
         break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
         {
