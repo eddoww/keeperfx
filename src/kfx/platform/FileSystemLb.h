@@ -14,6 +14,7 @@ public:
     bool Rename(const char* from, const char* to) override;
     std::unique_ptr<IFileReader> OpenReader(const char* path) override;
     std::vector<std::string> Find(const char* filespec) override;
+    int64_t ModifiedTime(const char* path) override;
 };
 
 #endif // KFX_FILESYSTEMLB_H

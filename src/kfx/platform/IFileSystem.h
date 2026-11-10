@@ -41,6 +41,8 @@ public:
     virtual std::unique_ptr<IFileReader> OpenReader(const char* path) = 0;
     /** File names (no directory) matching a wildcard spec such as ".../fx1g*.sav". */
     virtual std::vector<std::string> Find(const char* filespec) = 0;
+    /** When the file was last written, in seconds since 1970; -1 when there is no file or it can't be told. */
+    virtual int64_t ModifiedTime(const char* path) { (void)path; return -1; }
 };
 
 #endif // KFX_IFILESYSTEM_H

@@ -11,7 +11,8 @@
 // the page only offers builds whose number it supports). The contract is what
 // the page and an engine expect of each other: the Module hooks used here and
 // in the loader (kfxFetchData, kfxLazyPending and node.kfxLazy, kfxHostQuery,
-// kfxOnHosting, kfxOnLevelResult, kfxOnFrame, kfxOnLobby), the command line the loader
+// kfxOnHosting, kfxOnLevelResult, kfxOnFrame, kfxOnLobby, kfxOnAutosave; the
+// exports _kfx_web_autosave_now/_state are optional), the command line the loader
 // passes (-server, -connect CODE, -spectate), the /persist layout and the /api
 // routes the engine calls. Raise the number when a change here or in the
 // engine needs a page that knows about it, and add it to SUPPORTED_API in
@@ -459,6 +460,15 @@ addToLibrary({
   },
 
   // The local player won or lost a level (src/kfx/platform/web/WebReport.c).
+  // An autosave was written (src/kfx/platform/web/WebAutosave.c): the page shows
+  // it and takes it to browser storage at once. reason: interval, hidden, leave.
+  kfx_web_autosaved__deps: ['$UTF8ToString'],
+  kfx_web_autosaved: (number, titlePtr, reasonPtr) => {
+    try {
+      Module.kfxOnAutosave?.({ file: `fx1auto${number}.sav`, title: UTF8ToString(titlePtr), reason: UTF8ToString(reasonPtr) });
+    } catch (e) { err(`KeeperFX: autosave: ${e}`); }
+  },
+
   kfx_web_level_result__deps: ['$UTF8ToString'],
   kfx_web_level_result: (jsonPtr) => {
     try { Module.kfxOnLevelResult?.(JSON.parse(UTF8ToString(jsonPtr))); } catch (e) { err(`KeeperFX: level result: ${e}`); }

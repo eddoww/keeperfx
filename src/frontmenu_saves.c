@@ -46,19 +46,19 @@
 int frontend_load_game_button_to_index(struct GuiButton *gbtn)
 {
     long gbidx = gbtn->content.lval;
-    int k = -1;
-    for (int i = gbidx + load_game_scroll_offset - 45; i >= 0; i--)
-    {
-        struct CatalogueEntry* centry;
-        do
-        {
-            k++;
-            if (k >= SaveManager_SlotCount())
-                return -1;
-            centry = SaveManager_Entry(k);
-        } while ((centry->flags & CEF_InUse) == 0);
-  }
-  return k;
+    // The autosaves first, then the player's saves
+    return SaveManager_LoadListSlot(gbidx + load_game_scroll_offset - 45, true);
+}
+
+/** Whether the in-game list is the Load menu's, which shows the autosaves above the player's slots. */
+static TbBool loadsave_lists_autosaves = false;
+
+/** Savegame slot of a row of the in-game Load or Save list (scroll offset included). */
+long loadsave_list_slot(long row)
+{
+    if (loadsave_lists_autosaves)
+        return SaveManager_LoadListSlot((int)row, false);
+    return row;
 }
 
 /** Actual savegame slot shown in on-screen row btype_value (0..7), taking the
@@ -66,7 +66,7 @@ int frontend_load_game_button_to_index(struct GuiButton *gbtn)
 static long loadsave_row_slot(const struct GuiButton *gbtn)
 {
     long row = (gbtn != NULL) ? (gbtn->btype_value & LbBFeF_IntValueMask) : 0;
-    return gui_vscroll_offset + row;
+    return loadsave_list_slot(gui_vscroll_offset + row);
 }
 
 void gui_load_game_maintain(struct GuiButton *gbtn)
@@ -168,7 +168,7 @@ void update_loadsave_input_strings(void)
     // Fill the 8 on-screen rows from the current scroll window [offset, offset+8).
     for (long row = 0; row < GUI_VSCROLL_VISIBLE; row++)
     {
-        long slot_num = gui_vscroll_offset + row;
+        long slot_num = loadsave_list_slot(gui_vscroll_offset + row);
         const char* text;
         const struct CatalogueEntry* centry = SaveManager_Entry((int)slot_num);
         if ((centry != NULL) && ((centry->flags & CEF_InUse) != 0))
@@ -286,6 +286,7 @@ void init_load_menu(struct GuiMenu *gmnu)
   struct PlayerInfo* player = get_my_player();
   set_players_packet_action(player, PckA_UpdatePause, 1, 1, 0, 0);
   SaveManager_LoadCatalogue();
+  loadsave_lists_autosaves = true;
   gui_vscroll_offset = 0;   // load list starts at the top
   update_loadsave_input_strings();
 }
@@ -297,6 +298,7 @@ void init_save_menu(struct GuiMenu *gmnu)
   local_state.paused_state_restore = flag_is_set(game.operation_flags, GOF_Paused);
   set_players_packet_action(player, PckA_UpdatePause, 1, 1, 0, 0);
   SaveManager_LoadCatalogue();
+  loadsave_lists_autosaves = false;
   gui_vscroll_offset = 0;
   update_loadsave_input_strings();
 }

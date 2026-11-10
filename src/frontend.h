@@ -481,6 +481,8 @@ void gui_set_autopilot(struct GuiButton *gbtn);
 FrontendMenuState frontend_set_state(FrontendMenuState nstate);
 FrontendMenuState get_startup_menu_state(void);
 void frontend_start_load_game(long slot_num);
+long frontend_load_game_slot(void);
+void frontend_load_game_at_startup(const char *name);
 void frontend_load_game_failed(TextStringId msg_idx);
 FrontendMenuState get_menu_state_when_back_from_substate(FrontendMenuState substate);
 void frontend_input(void);

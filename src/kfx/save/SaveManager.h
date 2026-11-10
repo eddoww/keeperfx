@@ -42,11 +42,31 @@ int SaveManager_KeepUnreadableFile(const char *fname);
 int SaveManager_LoadCatalogue(void);
 /** Loads the catalogue and counts the used entries; true when there are any. */
 int SaveManager_InitialiseSlots(void);
-/** Used entries, as counted by SaveManager_InitialiseSlots. */
+/** Used entries, as counted by SaveManager_InitialiseSlots, autosaves included. */
 int SaveManager_SavedGamesCount(void);
+/** The player's slots the menus range over (autosaves are not counted). */
 int SaveManager_SlotCount(void);
-/** NULL when slot is out of range. Not valid across a reload of the catalogue. */
+/** NULL when slot is out of range; autosave slots (AUTOSAVE_SLOT_FIRST...) have entries too. Not valid across
+ *  a reload of the catalogue. */
 struct CatalogueEntry *SaveManager_Entry(int slot);
+/** How many autosaves there are (used autosave entries). */
+int SaveManager_AutosaveCount(void);
+/** What row of a load list shows: the autosaves first, newest first, then the player's slots. With used_only
+ *  the player's free slots are skipped too (the main menu's list). -1 past the end. */
+int SaveManager_LoadListSlot(int row, TbBool used_only);
+/** The slot of the newest save that can be loaded, an autosave or the player's, or -1. */
+int SaveManager_NewestSave(void);
+
+/** Autosave (SaveAutosave.cpp). Called once per game turn of a level: saves when the interval of play set in
+ *  settings.toml has passed and saving makes sense (a single player level, not paused, not a replay). */
+void SaveManager_AutosaveTick(void);
+/** Saves now, if saving makes sense and anything happened since the last autosave. Also safe from outside the
+ *  game loop while it waits between frames (the browser page, when the tab is hidden or the game is left). */
+int SaveManager_AutosaveNow(const char *reason);
+/** Whether autosave is on and the game as it is now could be autosaved. */
+int SaveManager_AutosaveAvailable(void);
+/** Forget the interval counted so far: a level started or a save was loaded. */
+void SaveManager_AutosaveReset(void);
 /** Fills a slot's entry from the running game, and a free entry of any kind. */
 int SaveManager_FillSlot(int slot, const char *textname);
 int SaveManager_FillEntry(struct CatalogueEntry *centry, const char *textname);
@@ -54,7 +74,10 @@ int SaveManager_DisableSlot(int slot);
 
 /** The continue link (the last save or campaign played) and per-campaign progress. */
 int SaveManager_ContinueAvailable(void);
-enum ContinueTargets SaveManager_LoadContinue(void);
+/** Finds what Continue resumes. For a saved game, *slot is set to the slot to load (FeSt_LOAD_GAME). */
+enum ContinueTargets SaveManager_LoadContinue(int *slot);
+/** The slot of a save file named fx1gNNNN.sav or fx1autoN.sav, or of a slot number as text; -1 if neither. */
+int SaveManager_SlotFromName(const char *name);
 int SaveManager_SaveLevelProgress(LevelNumber lvnum, unsigned char victory_state);
 int SaveManager_ResumeCampaign(const char *campaign_fname);
 int SaveManager_CampaignHasProgress(const struct GameCampaign *campgn);
@@ -102,12 +125,16 @@ public:
     int SavedGamesCount() const { return saved_games_; }
     int SlotCount() const { return (int)slot_count_; }
     CatalogueEntry *Entry(int slot);
+    int AutosaveCount() const;
+    int LoadListSlot(int row, bool used_only) const;
+    int NewestSave();
+    bool Autosave(const char *reason);
     bool FillSlot(int slot, const char *textname);
     static bool FillEntry(CatalogueEntry *centry, const char *textname);
     bool DisableSlot(unsigned int slot);
 
     bool ContinueAvailable();
-    enum ContinueTargets LoadContinue();
+    enum ContinueTargets LoadContinue(int *slot);
     bool SaveLevelProgress(LevelNumber lvnum, unsigned char victory_state);
     bool ResumeCampaign(const char *campaign_fname);
     bool CampaignHasProgress(const GameCampaign *campgn);
@@ -126,12 +153,18 @@ public:
 
 private:
     bool EnsureSlot(long slot);
+    /** The path of a slot's file (a static buffer, see prepare_file_path), or NULL for no such slot. */
+    static const char *SlotPath(int slot);
+    void LoadAutosaves();
+    int AutosaveSlotToWrite();
     int CountSavedGames();
     void UpdateLastFileAfterSave(int slot);
     enum ContinueTargets FindContinueTarget(int *slot, char *campaign_fname, size_t fname_len);
     bool LoadCampaignProgress(const GameCampaign *campgn, IntralevelData *ilvl, LevelNumber *continue_lvnum, std::vector<uint8_t> *custom = nullptr);
 
     std::vector<CatalogueEntry> catalogue_;
+    CatalogueEntry autosaves_[AUTOSAVE_SLOTS] = {};
+    int64_t autosave_times_[AUTOSAVE_SLOTS] = {};  // file times, newest is greatest; 0 when there is none
     long slot_count_ = 0;      // logical length: the slots the menus range over
     int saved_games_ = 0;
 };

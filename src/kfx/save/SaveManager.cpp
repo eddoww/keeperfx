@@ -89,10 +89,11 @@ bool SaveManager::Save(int slot)
         SAVEERR("can't save: slot index %d is out of range", slot);
         return false;
     }
-    const char *fname = prepare_file_fmtpath(FGrp_Save, SAVED_GAME_FILENAME, slot);
+    char fname[DISKPATH_SIZE];
+    snprintf(fname, sizeof(fname), "%s", SlotPath(slot));
     // Some game data lives outside the saved structs; make sure it's current first.
     light_export_system_state(&game.lightst);
-    if (!savegame::Write(Fs(), fname, &catalogue_[slot]))
+    if (!savegame::Write(Fs(), fname, Entry(slot)))
     {
         SAVEWARN("can't write save file \"%s\"", fname);
         return false;
@@ -104,12 +105,14 @@ bool SaveManager::Save(int slot)
 
 enum SaveCheckResult SaveManager::Check(int slot, char *detail, size_t detail_len)
 {
-    if ((slot < 0) || (slot >= SAVE_SLOTS_LIMIT))
+    const char *path = SlotPath(slot);
+    if (path == nullptr)
         return SvChk_Missing;
+    char fname[DISKPATH_SIZE];
+    snprintf(fname, sizeof(fname), "%s", path);
     char reason[256];
     int title_ok;
-    enum SaveCheckResult result = savegame::CheckFile(Fs(), prepare_file_fmtpath(FGrp_Save, SAVED_GAME_FILENAME, slot),
-        nullptr, &title_ok, reason, sizeof(reason));
+    enum SaveCheckResult result = savegame::CheckFile(Fs(), fname, nullptr, &title_ok, reason, sizeof(reason));
     if (result != SvChk_Loadable)
         SAVEWARN("slot %d can't be loaded: %s", slot, reason);
     set_detail(detail, detail_len, reason);
@@ -122,7 +125,7 @@ enum SaveCheckResult SaveManager::Verify(int slot, char *detail, size_t detail_l
     if (result != SvChk_Loadable)
         return result;
     SaveError err;
-    enum SaveResult file_result = savegame::Verify(Fs(), prepare_file_fmtpath(FGrp_Save, SAVED_GAME_FILENAME, slot), &err);
+    enum SaveResult file_result = savegame::Verify(Fs(), SlotPath(slot), &err);
     if (file_result != SVR_Ok)
         set_detail(detail, detail_len, err.message);
     return savegame::Classify(file_result);
@@ -279,7 +282,7 @@ enum SaveLoadOutcome SaveManager::Load(int slot_num, enum SaveCheckResult *why)
     // apply_game_kfxs() below triggers several (change_campaign, load_stats_files...),
     // so take a stable copy now.
     char fname[DISKPATH_SIZE];
-    snprintf(fname, sizeof(fname), "%s", prepare_file_fmtpath(FGrp_Save, SAVED_GAME_FILENAME, slot_num));
+    snprintf(fname, sizeof(fname), "%s", SlotPath(slot_num));
     if (!Fs().Exists(fname))
     {
         SAVEWARN("can't open saved game file \"%s\"", fname);
@@ -292,7 +295,7 @@ enum SaveLoadOutcome SaveManager::Load(int slot_num, enum SaveCheckResult *why)
     if (*why != SvChk_Loadable)
         return SvLoad_Refused;
     reset_eye_lenses();
-    struct CatalogueEntry* centry = &catalogue_[slot_num];
+    struct CatalogueEntry* centry = Entry(slot_num);
 
         // Check if the game version is compatible
     if ((centry->game_ver_major != VER_MAJOR) || (centry->game_ver_minor != VER_MINOR) ||
@@ -366,6 +369,7 @@ enum SaveLoadOutcome SaveManager::Load(int slot_num, enum SaveCheckResult *why)
     }
     game.loaded_swipe_idx = -1;
     SAVELOG("loaded level %d of %s", game.continue_level_number, campaign.name);
+    SaveManager_AutosaveReset();
 
     api_event("GAME_LOADED");
 
@@ -420,12 +424,26 @@ int SaveManager_InitialiseSlots(void) { return GetSaveManager().InitialiseSlots(
 int SaveManager_SavedGamesCount(void) { return GetSaveManager().SavedGamesCount(); }
 int SaveManager_SlotCount(void) { return GetSaveManager().SlotCount(); }
 struct CatalogueEntry *SaveManager_Entry(int slot) { return GetSaveManager().Entry(slot); }
+int SaveManager_AutosaveCount(void) { return GetSaveManager().AutosaveCount(); }
+int SaveManager_LoadListSlot(int row, TbBool used_only) { return GetSaveManager().LoadListSlot(row, used_only); }
+int SaveManager_NewestSave(void) { return GetSaveManager().NewestSave(); }
 int SaveManager_FillSlot(int slot, const char *textname) { return GetSaveManager().FillSlot(slot, textname); }
 int SaveManager_FillEntry(struct CatalogueEntry *centry, const char *textname) { return SaveManager::FillEntry(centry, textname); }
 int SaveManager_DisableSlot(int slot) { return GetSaveManager().DisableSlot(slot); }
 
 int SaveManager_ContinueAvailable(void) { return GetSaveManager().ContinueAvailable(); }
-enum ContinueTargets SaveManager_LoadContinue(void) { return GetSaveManager().LoadContinue(); }
+enum ContinueTargets SaveManager_LoadContinue(int *slot) { return GetSaveManager().LoadContinue(slot); }
+int SaveManager_SlotFromName(const char *name)
+{
+    int slot = savegame::SlotFromFilename(name);
+    if ((slot < 0) && (name[0] >= '0') && (name[0] <= '9') && (strspn(name, "0123456789") == strlen(name)))
+    {
+        long number = atol(name);
+        if (number < SAVE_SLOTS_LIMIT)
+            slot = (int)number;
+    }
+    return slot;
+}
 int SaveManager_SaveLevelProgress(LevelNumber lvnum, unsigned char victory_state) { return GetSaveManager().SaveLevelProgress(lvnum, victory_state); }
 int SaveManager_ResumeCampaign(const char *campaign_fname) { return GetSaveManager().ResumeCampaign(campaign_fname); }
 int SaveManager_CampaignHasProgress(const struct GameCampaign *campgn) { return GetSaveManager().CampaignHasProgress(campgn); }

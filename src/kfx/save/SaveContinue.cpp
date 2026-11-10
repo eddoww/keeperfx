@@ -275,7 +275,8 @@ void SaveManager::UpdateLastFileAfterSave(int slot)
             humans++;
     }
     char link[SAVE_FILENAME_MAX];
-    snprintf(link, sizeof(link), SAVED_GAME_FILENAME, slot);
+    if (!savegame::SlotFilename(slot, link, sizeof(link)))
+        return;
     if (humans == 1)
     {
         write_last_file_link(link);
@@ -305,7 +306,7 @@ enum ContinueTargets SaveManager::FindContinueTarget(int *slot_num, char *cmpgn_
             // only a save this build can load is offered; the rest of the checks are the load's
             CatalogueEntry centry;
             int title_ok;
-            if (savegame::CheckFile(Fs(), prepare_file_fmtpath(FGrp_Save, SAVED_GAME_FILENAME, slot), &centry, &title_ok,
+            if (savegame::CheckFile(Fs(), prepare_file_path(FGrp_Save, link), &centry, &title_ok,
                     nullptr, 0) == SvChk_Loadable)
             {
                 *slot_num = slot;
@@ -342,7 +343,7 @@ bool SaveManager::ContinueAvailable()
     return (FindContinueTarget(&slot_num, cmpgn_fname, sizeof(cmpgn_fname)) != CntT_None);
 }
 
-enum ContinueTargets SaveManager::LoadContinue()
+enum ContinueTargets SaveManager::LoadContinue(int *slot)
 {
     int slot_num = -1;
     char cmpgn_fname[DISKPATH_SIZE];
@@ -350,9 +351,9 @@ enum ContinueTargets SaveManager::LoadContinue()
     {
     case CntT_SavedGame:
         LoadCatalogue();
-        if ((slot_num >= slot_count_) || ((catalogue_[slot_num].flags & CEF_InUse) == 0))
+        if ((Entry(slot_num) == nullptr) || ((Entry(slot_num)->flags & CEF_InUse) == 0))
             break;
-        game.save_game_slot = slot_num;
+        *slot = slot_num;
         return CntT_SavedGame;
     case CntT_CampaignProgress:
         if (ResumeCampaign(cmpgn_fname))

@@ -24,6 +24,10 @@ extern "C" {
 /******************************************************************************/
 void process_dungeon_destroy(struct Thing* heartng);
 void initialise_devastate_dungeon_from_heart(PlayerNumber plyr_idx);
+/** True while a level is being played and the game is between two turns: not reading input, not running a
+ *  turn's logic. The state of the game is whole then, so it can be saved, also from code that runs while the
+ *  game waits (the browser build calls in while it waits for the next frame). */
+TbBool gameplay_between_turns(void);
 /******************************************************************************/
 #ifdef __cplusplus
 }

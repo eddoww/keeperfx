@@ -29,6 +29,8 @@ void web_input_apply_camera(struct Camera *cam);
  * replaces the lobby's own maximum while set. */
 void web_lobby_update(void);
 int web_lobby_max_players(int configured);
+/* An autosave was written to fx1auto<number>.sav (WebAutosave.c). */
+void web_report_autosave(int number, const char *title, const char *reason);
 #ifdef __cplusplus
 }
 #endif
@@ -39,6 +41,7 @@ int web_lobby_max_players(int configured);
 #define KFX_WEB_CAMERA_INPUT(cam) web_input_apply_camera(cam)
 #define KFX_WEB_LOBBY_UPDATE() web_lobby_update()
 #define KFX_WEB_LOBBY_MAX_PLAYERS(configured) web_lobby_max_players(configured)
+#define KFX_WEB_AUTOSAVED(number, title, reason) web_report_autosave(number, title, reason)
 #else
 #define KFX_WEB_FRAME_YIELD() do {} while (0)
 #define KFX_WEB_LEVEL_RESULT(player, won) do {} while (0)
@@ -47,6 +50,7 @@ int web_lobby_max_players(int configured);
 #define KFX_WEB_CAMERA_INPUT(cam) do {} while (0)
 #define KFX_WEB_LOBBY_UPDATE() do {} while (0)
 #define KFX_WEB_LOBBY_MAX_PLAYERS(configured) (configured)
+#define KFX_WEB_AUTOSAVED(number, title, reason) do {} while (0)
 #endif
 
 #endif

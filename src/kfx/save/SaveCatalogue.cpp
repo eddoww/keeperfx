@@ -21,6 +21,8 @@
 
 bool SaveManager::EnsureSlot(long slot)
 {
+    if ((slot >= AUTOSAVE_SLOT_FIRST) && (slot < AUTOSAVE_SLOT_FIRST + AUTOSAVE_SLOTS))
+        return true;
     if ((slot < 0) || (slot >= SAVE_SLOTS_LIMIT))
         return false;
     if (slot >= static_cast<long>(catalogue_.size()))
@@ -30,16 +32,121 @@ bool SaveManager::EnsureSlot(long slot)
     return true;
 }
 
+const char *SaveManager::SlotPath(int slot)
+{
+    char name[SAVE_FILENAME_MAX];
+    if (!savegame::SlotFilename(slot, name, sizeof(name)))
+        return nullptr;
+    return prepare_file_path(FGrp_Save, name);
+}
+
 CatalogueEntry *SaveManager::Entry(int slot)
 {
+    if ((slot >= AUTOSAVE_SLOT_FIRST) && (slot < AUTOSAVE_SLOT_FIRST + AUTOSAVE_SLOTS))
+        return &autosaves_[slot - AUTOSAVE_SLOT_FIRST];
     if ((slot < 0) || (slot >= slot_count_))
         return nullptr;
     return &catalogue_[slot];
 }
 
-int SaveManager::CountSavedGames()
+int SaveManager::AutosaveCount() const
 {
     int count = 0;
+    for (int i = 0; i < AUTOSAVE_SLOTS; i++)
+    {
+        if ((autosaves_[i].flags & CEF_InUse) != 0)
+            count++;
+    }
+    return count;
+}
+
+int SaveManager::LoadListSlot(int row, bool used_only) const
+{
+    if (row < 0)
+        return -1;
+    // The autosaves, newest first
+    int order[AUTOSAVE_SLOTS];
+    int autos = 0;
+    for (int i = 0; i < AUTOSAVE_SLOTS; i++)
+    {
+        if ((autosaves_[i].flags & CEF_InUse) == 0)
+            continue;
+        int at = autos++;
+        while ((at > 0) && (autosave_times_[order[at - 1]] < autosave_times_[i]))
+        {
+            order[at] = order[at - 1];
+            at--;
+        }
+        order[at] = i;
+    }
+    if (row < autos)
+        return AUTOSAVE_SLOT_FIRST + order[row];
+    row -= autos;
+    if (!used_only)
+        return (row < slot_count_) ? row : -1;
+    for (long slot = 0; slot < slot_count_; slot++)
+    {
+        if ((catalogue_[slot].flags & CEF_InUse) == 0)
+            continue;
+        if (row-- == 0)
+            return (int)slot;
+    }
+    return -1;
+}
+
+int SaveManager::NewestSave()
+{
+    IFileSystem &filesystem = *GetPlatform()->GetFileSystem();
+    int newest = -1;
+    int64_t newest_time = -1;
+    auto consider = [&](int slot, const CatalogueEntry &centry) {
+        if (((centry.flags & CEF_InUse) == 0) || ((centry.flags & CEF_Unloadable) != 0))
+            return;
+        const char *fname = SlotPath(slot);
+        int64_t time = (fname != nullptr) ? filesystem.ModifiedTime(fname) : -1;
+        if (time > newest_time)
+        {
+            newest_time = time;
+            newest = slot;
+        }
+    };
+    for (int i = 0; i < AUTOSAVE_SLOTS; i++)
+        consider(AUTOSAVE_SLOT_FIRST + i, autosaves_[i]);
+    for (long slot = 0; slot < slot_count_; slot++)
+        consider((int)slot, catalogue_[slot]);
+    return newest;
+}
+
+void SaveManager::LoadAutosaves()
+{
+    IFileSystem &filesystem = *GetPlatform()->GetFileSystem();
+    for (int i = 0; i < AUTOSAVE_SLOTS; i++)
+    {
+        CatalogueEntry *centry = &autosaves_[i];
+        memset(centry, 0, sizeof(CatalogueEntry));
+        autosave_times_[i] = 0;
+        char fname[DISKPATH_SIZE];
+        snprintf(fname, sizeof(fname), "%s", SlotPath(AUTOSAVE_SLOT_FIRST + i));
+        int title_ok;
+        const enum SaveCheckResult check_result = savegame::CheckFile(filesystem, fname, centry, &title_ok, nullptr, 0);
+        if (check_result == SvChk_Missing)
+            continue;
+        autosave_times_[i] = filesystem.ModifiedTime(fname);
+        if (!title_ok)
+        {
+            memset(centry, 0, sizeof(CatalogueEntry));
+            snprintf(centry->textname, SAVE_TEXTNAME_LEN, AUTOSAVE_FILENAME, i + 1);
+        }
+        set_flag(centry->flags, CEF_InUse);
+        clear_flag(centry->flags, CEF_Unloadable);
+        if (check_result != SvChk_Loadable)
+            set_flag(centry->flags, CEF_Unloadable);
+    }
+}
+
+int SaveManager::CountSavedGames()
+{
+    int count = AutosaveCount();
     for (long index = 0; index < slot_count_; index++)
     {
         if ((catalogue_[index].flags & CEF_InUse) != 0)
@@ -78,14 +185,15 @@ bool SaveManager::FillSlot(int slot, const char *textname)
         SAVEERR("can't name slot %d: slot index is out of range", slot);
         return false;
     }
-    return FillEntry(&catalogue_[slot], textname);
+    return FillEntry(Entry(slot), textname);
 }
 
 bool SaveManager::DisableSlot(unsigned int slot)
 {
-    if (slot >= static_cast<unsigned long>(slot_count_))
+    CatalogueEntry *centry = Entry((int)slot);
+    if (centry == nullptr)
         return false;
-    clear_flag(catalogue_[slot].flags, CEF_InUse);
+    clear_flag(centry->flags, CEF_InUse);
     return true;
 }
 
@@ -98,7 +206,8 @@ bool SaveManager::LoadCatalogue()
     for (const std::string &name : filesystem.Find(prepare_file_path(FGrp_Save, "fx1g*.sav")))
     {
         const int idx = savegame::SlotFromFilename(name.c_str());
-        highest = std::max<long>(idx, highest);
+        if (idx < SAVE_SLOTS_LIMIT)
+            highest = std::max<long>(idx, highest);
     }
     long needed = highest + 2;               // used slots + one free slot to save into
     if (needed < SAVE_SLOTS_MIN)
@@ -110,7 +219,8 @@ bool SaveManager::LoadCatalogue()
     slot_count_ = needed;                    // logical length the menus range over
 
     // (Re)load the title and loadability of every slot in range; missing files leave a zeroed (free) entry.
-    long saves_found = 0;
+    LoadAutosaves();
+    long saves_found = AutosaveCount();
     for (long slot_num = 0; slot_num < slot_count_; slot_num++)
     {
         CatalogueEntry *centry = &catalogue_[slot_num];

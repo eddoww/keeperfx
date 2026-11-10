@@ -405,6 +405,7 @@ void setup_default_settings(void)
     settings.highlight_mode                = false;
     settings.computer_assistant_kind       = DEFAULT_COMPUTER_ASSIST;
     settings.reconnect_token               = 0;
+    settings.autosave_minutes              = DEFAULT_AUTOSAVE_MINUTES;
     net_config_info                        = default_net_config_info;
     skirmish_config_info                   = default_skirmish_config_info;
 
@@ -499,6 +500,8 @@ TbBool load_settings(void)
         if (val && value_type(val) == VALUE_INT32) settings.first_person_move_sensitivity = (unsigned char)value_int32(val);
         val = value_dict_get(vsec, "computer_assistant_kind");
         if (val && value_type(val) == VALUE_INT32) settings.computer_assistant_kind = (uint8_t)clamp(value_int32(val), 0, COMPUTER_ASSIST_TYPES_COUNT);
+        val = value_dict_get(vsec, "autosave_minutes");
+        if (val && value_type(val) == VALUE_INT32) settings.autosave_minutes = (uint8_t)clamp(value_int32(val), 0, AUTOSAVE_MINUTES_MAX);
     }
 
     /* [keys] */
@@ -621,6 +624,7 @@ short save_settings(void)
     TOSAVE("first_person_move_invert = %d\n", (int)settings.first_person_move_invert);
     TOSAVE("first_person_move_sensitivity = %d\n", (int)settings.first_person_move_sensitivity);
     TOSAVE("computer_assistant_kind = %d\n", (int)settings.computer_assistant_kind);
+    TOSAVE("autosave_minutes = %d\n", (int)settings.autosave_minutes);
     TOSAVE("\n[keys]\n");
     for (int i = 0; i < GAME_KEYS_COUNT; i++)
     {
