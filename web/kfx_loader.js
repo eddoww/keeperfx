@@ -465,11 +465,84 @@ window.addEventListener('keydown', (ev) => {
   }
   // The page can scroll now that the game sits in a frame: keep the keys the
   // game uses for its own camera from scrolling it.
-  if (KFX.state === 'running' && !ev.target.closest('input, textarea, select, dialog')
+  if (KFX.state === 'running' && !pageKeeps(ev.target)
       && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Tab'].includes(ev.key)) {
     ev.preventDefault();
   }
 }, { capture: true });
+
+// ---- Keyboard: the game owns it while it runs --------------------------------
+
+// SDL reads keys from the window, whatever has focus, and cancels their default
+// action, except while the game itself takes text (chat, a save's name, the
+// high score name): then it leaves keydown alone so the browser makes the
+// keypress the typed text comes from. If a link or button outside the game
+// still has focus then (the Hall of Fame link the player clicked, which opened
+// in a new tab, the sign-in button after its dialog closed), Enter there opens
+// that link or presses that button. The rule while a game runs:
+//   - the page keeps the keys only in an open dialog and in a text field
+//     (the player clicked into it, or a dialog put them there); the game
+//     doesn't see those keys;
+//   - every other key is the game's: on any other page control it does
+//     nothing there (its default action is cancelled) and the keyboard focus
+//     goes back to the game.
+// The touch keyboard's stand-in field (web/kfx_touch.js) is a text field and
+// passes its keys to the game itself.
+const TEXT_INPUTS = ['text', 'search', 'email', 'url', 'tel', 'password', 'number'];
+function pageKeeps(el) {
+  if (!el || !el.closest) return false;
+  if (el.closest('dialog[open]') || el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+  return el.tagName === 'INPUT' && TEXT_INPUTS.includes(el.type);
+}
+// A page control that would act on a game key: anything focusable other than
+// the game, the page itself and what pageKeeps() allows.
+function strayFocus(el) {
+  return !!el && el !== $('canvas') && el !== document.body && el !== document.documentElement && !pageKeeps(el);
+}
+function focusGame() {
+  if (strayFocus(document.activeElement) || document.activeElement === document.body) {
+    $('canvas').focus({ preventScroll: true });
+  }
+}
+for (const type of ['keydown', 'keypress', 'keyup']) {
+  window.addEventListener(type, (ev) => {
+    if (KFX.state !== 'running' || !ev.isTrusted || !strayFocus(ev.target)) return;
+    ev.preventDefault(); // SDL still gets the key: it listens further on
+    if (type !== 'keydown') return;
+    $('canvas').focus({ preventScroll: true });
+    // Cancelling keydown also cancels the keypress SDL types text from: send
+    // the character on (SDL ignores it unless the game is taking text).
+    if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      const ch = ev.key;
+      setTimeout(() => $('canvas').dispatchEvent(new KeyboardEvent('keypress', {
+        key: ch, code: ev.code, charCode: ch.codePointAt(0), bubbles: true, cancelable: true,
+      })));
+    }
+  }, { capture: true });
+}
+// Keys typed into the page's own fields and dialogs stay out of the game. This
+// runs before SDL's listener on the window.
+for (const type of ['keydown', 'keypress', 'keyup']) {
+  document.addEventListener(type, (ev) => {
+    if (KFX.state === 'running' && pageKeeps(ev.target)) ev.stopPropagation();
+  });
+}
+// Focus goes back to the game when a game starts, after a click on a page
+// control (a toast's button, the bar above the game) has done its work, and
+// when something else puts it on one (a dialog closing gives focus back to
+// the button that opened it).
+let pointerAt = 0;
+window.addEventListener('pointerdown', () => { pointerAt = performance.now(); }, { capture: true });
+document.addEventListener('click', () => {
+  if (KFX.state === 'running') setTimeout(() => { if (strayFocus(document.activeElement)) focusGame(); });
+});
+document.addEventListener('focusin', (ev) => {
+  if (KFX.state === 'running' && strayFocus(ev.target) && performance.now() - pointerAt > 1000) {
+    setTimeout(() => { if (document.activeElement === ev.target) focusGame(); });
+  }
+});
+document.addEventListener('kfx:state', (ev) => { if (ev.detail === 'running') focusGame(); });
 
 // ---- Mouse focus ------------------------------------------------------------
 

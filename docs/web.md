@@ -895,6 +895,21 @@ the redirect `https://<your site>/api/auth/discord/callback`, set
   filesystem; `save/`, `replays/`, `scrshots/` and `music/` link into it.
 - **Audio**: Emscripten's OpenAL (effects) and SDL audio (music, speech,
   movies) on Web Audio. The page resumes them on the first click or key.
+- **Keyboard**: SDL reads keys from the window, whatever has focus, and
+  cancels their default action, except keydown while the game takes text (chat,
+  a save's name, the high score name), so the browser still makes the keypress
+  the text comes from. A page link or button that kept the focus (the Hall of
+  Fame link a player clicked during a game, which opened in a new tab) was
+  then pressed by Enter: winning a level, Space, then Enter on the high score
+  name opened the Hall of Fame again. The rule now (`web/kfx_loader.js`,
+  "the game owns it while it runs"): while a game runs, the page keeps the
+  keys only in an open dialog and in a text field (the touch keyboard's
+  stand-in, the sign-in fields); the game doesn't see those. Any other key is
+  the game's: on any other page control its default action is cancelled (the
+  typed character is passed to SDL as a keypress) and the focus goes back to
+  the canvas. Focus also goes back to the canvas when a game starts, after a
+  click on a page control, and when something else moves it to one (a dialog
+  closing).
 - **Touch input**: `web/kfx_touch.js` follows the fingers with touch events
   (they keep their coordinates under pointer lock, pointer events don't) and
   keeps them from SDL (capture listeners on `#stage` stop the touch pointer
