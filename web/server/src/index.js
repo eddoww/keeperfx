@@ -10,7 +10,9 @@
 //   POST /api/scores, GET /api/scores/..., /api/keepers/<name>   Hall of Fame (scores.js)
 //   GET  /api/rooms/host[?unlisted=1] WebSocket: host a new lobby (relay creates the code)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
-//   GET  /site.json                   page settings (dataUrl: where game data lives)
+//   GET  /site.json                   page settings (dataUrl, buildsUrl: where game data and engine builds live)
+//   GET  /builds/*, /data/*           engine builds and their shared game data (builds.js), from R2
+//                                     when BUILDS_FROM is "r2", else from the static site
 //
 // Everything else is the static site (assets binding).
 
@@ -19,6 +21,7 @@ import { handleScores } from './scores.js';
 import { Room } from './room.js';
 import { Directory } from './directory.js';
 import { Tavern } from './tavern.js';
+import { serveBuilds } from './builds.js';
 
 export { Room, Directory, Tavern };
 
@@ -42,11 +45,14 @@ async function hostRoom(request, env) {
     const code = newCode();
     const url = new URL(request.url);
     const unlisted = url.searchParams.get('unlisted') === '1';
+    const build = url.searchParams.get('build') || '';
     url.search = '';
     url.searchParams.set('role', 'host');
     url.searchParams.set('code', code);
     if (user) url.searchParams.set('user', user.username);
     if (unlisted) url.searchParams.set('unlisted', '1');
+    // The engine build the host runs (web/kfx_versions.js): listed, so joiners switch to it.
+    if (/^[A-Za-z0-9._-]{1,64}$/.test(build)) url.searchParams.set('build', build);
     const resp = await roomStub(env, code).fetch(new Request(url, request));
     if (resp.status !== 409) return resp; // 409: code already in use, pick another
   }
@@ -115,7 +121,11 @@ export default {
       // Page settings (web/kfx_loader.js loadSiteConfig).
       const site = {};
       if (env.DATA_URL) site.dataUrl = env.DATA_URL;
+      if (env.BUILDS_URL) site.buildsUrl = env.BUILDS_URL;
       return json(site);
+    }
+    if (url.pathname.startsWith('/builds/') || url.pathname.startsWith('/data/')) {
+      return serveBuilds(request, env, url);
     }
     if (url.pathname.startsWith('/api/')) {
       try {

@@ -8,8 +8,13 @@ copy of one with a fresh copy of another fails ("LinkError ... function import
 requires a callable", or an old loader that lacks newer page features). This
 hashes them and makes index.html request every script and stylesheet as
 <name>?v=<hash>;
-the loader asks for keeperfx.wasm?v=<hash> too (the kfx-build meta tag), so
-browser and CDN caches can never mix two builds.
+the loader asks for keeperfx.js and keeperfx.wasm with ?v=<hash> too (the
+kfx-build meta tag), so browser and CDN caches can never mix two builds.
+
+A site with several engine builds (web/publish-build.py, builds/<id>/) has no
+keeperfx.wasm next to the page: each build's files have their own immutable
+URL, and the page speaks to all of them through one contract (KFX_WEB_API in
+web/kfx_web.js), so only the page's own files are hashed.
 """
 import hashlib
 import os
@@ -28,7 +33,8 @@ def main():
     scripts = sorted(set(re.findall(r'<script src="([A-Za-z0-9_.-]+\.js)(?:\?v=[0-9a-f]*)?"', html)))
     styles = sorted(set(re.findall(r'<link rel="stylesheet" href="([A-Za-z0-9_.-]+\.css)(?:\?v=[0-9a-f]*)?"', html)))
     h = hashlib.sha1()
-    for name in scripts + styles + ["keeperfx.wasm"]:
+    engine = ["keeperfx.wasm"] if os.path.exists(os.path.join(site, "keeperfx.wasm")) else []
+    for name in scripts + styles + engine:
         with open(os.path.join(site, name), "rb") as f:
             h.update(f.read())
     build = h.hexdigest()[:12]
