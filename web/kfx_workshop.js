@@ -412,13 +412,15 @@ const Workshop = (() => {
     for (const rel of [...files.keys()]) {
       if (game.has(rel)) { files.delete(rel); skipped++; }
     }
-    // The browser build has Lua 5.1 (with LuaJIT's bit module), not LuaJIT.
+    // The browser's Lua is Lua 5.1 patched to run what LuaJIT runs for KeeperFX
+    // (goto, bit, math.random's numbers...: web/lua51-luajit-compat.patch). Not there:
     const lua = [...files].filter(([rel]) => /\.lua$/i.test(rel)).map(([, data]) => text(data));
-    if (lua.some((src) => /\brequire\s*\(?\s*["'](ffi|jit)["']|\bffi\.(cdef|new|C)\b/.test(src))) {
-      warnings.push('Its Lua scripts use LuaJIT\'s ffi, which the browser version does not have; parts of it may not work.');
+    const uses = (re) => lua.some((src) => re.test(src));
+    if (uses(/\brequire\s*\(?\s*["'](ffi|jit(\.\w+)?)["']|\bffi\.(cdef|new|C|cast|typeof)\b/)) {
+      warnings.push('Its Lua scripts use LuaJIT\'s ffi or jit modules, which KeeperFX does not give scripts (desktop KeeperFX does not either); those parts will not work.');
     }
-    if (lua.some((src) => /^[^-\n]*\bgoto\s+[A-Za-z_]\w*|^\s*::[A-Za-z_]\w*::/m.test(src))) {
-      warnings.push('Its Lua scripts use goto, which the browser version\'s Lua 5.1 cannot run (desktop KeeperFX uses LuaJIT); its scripted parts will not work here.');
+    if (uses(/\brequire\s*\(?\s*["']string\.buffer["']/)) {
+      warnings.push('Its Lua scripts use LuaJIT\'s string.buffer, which the browser version does not have; its scripted parts may not work here.');
     }
     return { files, packs: packs.filter((p) => p.levels.length || p.top === 'campgns'), skipped, warnings };
   }

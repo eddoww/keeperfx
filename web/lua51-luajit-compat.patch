@@ -1,6 +1,32 @@
-diff -ru a/src/lauxlib.c b/src/lauxlib.c
---- a/src/lauxlib.c	2026-11-09 12:44:50.710365781 +0100
-+++ b/src/lauxlib.c	2026-11-09 12:45:08.450806884 +0100
+Lua 5.1.5 patched to behave like LuaJIT 2.1 for KeeperFX's scripts, for the
+WebAssembly build (LuaJIT has no WebAssembly backend). Applied by
+web/build-deps.sh with `patch -p1` in the Lua source tree; everything here is
+something stock LuaJIT 2.1 (as KeeperFX's releases link it) also has:
+
+  - goto and ::labels:: with LuaJIT's rules (lparser.c, llex.c, ldo.c): 'goto'
+    is only a statement when a name follows it; a jump out of the scope of
+    captured locals closes their upvalues through OP_JMP's A field, as in
+    Lua 5.2 (lcode.c, lvm.c, ldebug.c's bytecode check).
+  - math.random/randomseed: LuaJIT's Tausworthe generator and range mapping,
+    so a seed gives the same numbers as desktop KeeperFX, kept per Lua state
+    instead of the C library's rand() shared with the engine (lmathlib.c).
+  - Lua 5.2/5.3 additions LuaJIT has: load(chunk, name, mode, env) and
+    loadfile(name, mode, env), xpcall(f, msgh, ...), package.searchpath,
+    table.move, coroutine.isyieldable, math.log(x, base), string.rep(s, n, sep),
+    string.format %a and %s through __tostring, the %g pattern class, \x \z
+    \u{...} escapes, hexadecimal fractions/exponents (0x.8p1), UTF-8 in names.
+  - LuaJIT's require "table.new" and "table.clear" modules.
+  - "nan" for every NaN, %c keeps a NUL byte, as LuaJIT prints them.
+  - C API used by KeeperFX: LUA_OK, luaL_setfuncs, luaL_newlib(table),
+    luaopen_bit (LuaBitOp, linked in by build-deps.sh).
+
+Not here: LuaJIT's ffi and jit modules (KeeperFX does not open them on the
+desktop either), string.buffer, and 64-bit integer literals (1LL, which need
+ffi). Lua 5.1 bytecode is not LuaJIT bytecode.
+
+diff -ruN a/src/lauxlib.c b/src/lauxlib.c
+--- a/src/lauxlib.c
++++ b/src/lauxlib.c
 @@ -239,6 +239,20 @@
  }
  
@@ -22,9 +48,9 @@ diff -ru a/src/lauxlib.c b/src/lauxlib.c
  LUALIB_API void luaI_openlib (lua_State *L, const char *libname,
                                const luaL_Reg *l, int nup) {
    if (libname) {
-diff -ru a/src/lauxlib.h b/src/lauxlib.h
---- a/src/lauxlib.h	2026-11-09 12:44:50.710687727 +0100
-+++ b/src/lauxlib.h	2026-11-09 12:45:08.450727464 +0100
+diff -ruN a/src/lauxlib.h b/src/lauxlib.h
+--- a/src/lauxlib.h
++++ b/src/lauxlib.h
 @@ -43,6 +43,7 @@
                                  const luaL_Reg *l, int nup);
  LUALIB_API void (luaL_register) (lua_State *L, const char *libname,
@@ -44,10 +70,42 @@ diff -ru a/src/lauxlib.h b/src/lauxlib.h
  #define luaL_getmetatable(L,n)	(lua_getfield(L, LUA_REGISTRYINDEX, (n)))
  
  #define luaL_opt(L,f,n,d)	(lua_isnoneornil(L,(n)) ? (d) : f(L,(n)))
-diff -ru a/src/lbaselib.c b/src/lbaselib.c
---- a/src/lbaselib.c	2026-11-09 12:44:50.710330725 +0100
-+++ b/src/lbaselib.c	2026-11-09 12:45:18.846920289 +0100
-@@ -312,12 +312,38 @@
+diff -ruN a/src/lbaselib.c b/src/lbaselib.c
+--- a/src/lbaselib.c
++++ b/src/lbaselib.c
+@@ -282,9 +282,30 @@
+ }
+ 
+ 
++/* LuaJIT / Lua 5.2: loadfile([filename [, mode [, env]]]) */
+ static int luaB_loadfile (lua_State *L) {
+   const char *fname = luaL_optstring(L, 1, NULL);
+-  return load_aux(L, luaL_loadfile(L, fname));
++  const char *mode = luaL_optstring(L, 2, "bt");
++  int status;
++  if (fname != NULL && strcmp(mode, "bt") != 0) {
++    FILE *f = fopen(fname, "rb");
++    if (f != NULL) {
++      int binary = (getc(f) == LUA_SIGNATURE[0]);
++      fclose(f);
++      if (strchr(mode, binary ? 'b' : 't') == NULL) {
++        lua_pushnil(L);
++        lua_pushfstring(L, "attempt to load a %s chunk (mode is '%s')",
++                        binary ? "binary" : "text", mode);
++        return 2;
++      }
++    }
++  }
++  status = luaL_loadfile(L, fname);
++  if (status == 0 && !lua_isnone(L, 3)) {
++    lua_pushvalue(L, 3);
++    lua_setfenv(L, -2);
++  }
++  return load_aux(L, status);
+ }
+ 
+ 
+@@ -312,12 +333,38 @@
  }
  
  
@@ -90,9 +148,453 @@ diff -ru a/src/lbaselib.c b/src/lbaselib.c
    return load_aux(L, status);
  }
  
-diff -ru a/src/loadlib.c b/src/loadlib.c
---- a/src/loadlib.c	2026-11-09 12:44:50.710113546 +0100
-+++ b/src/loadlib.c	2026-11-09 13:08:31.344799861 +0100
+@@ -381,12 +428,16 @@
+ }
+ 
+ 
++/* LuaJIT / Lua 5.2: xpcall(f, msgh, ...) passes the extra arguments to f */
+ static int luaB_xpcall (lua_State *L) {
+   int status;
++  int n = lua_gettop(L);
+   luaL_checkany(L, 2);
+-  lua_settop(L, 2);
+-  lua_insert(L, 1);  /* put error function under function to be called */
+-  status = lua_pcall(L, 0, LUA_MULTRET, 1);
++  lua_pushvalue(L, 1);  /* f */
++  lua_pushvalue(L, 2);  /* msgh */
++  lua_replace(L, 1);  /* msgh at 1 */
++  lua_replace(L, 2);  /* f at 2, arguments from 3 */
++  status = lua_pcall(L, n - 2, LUA_MULTRET, 1);
+   lua_pushboolean(L, (status == 0));
+   lua_replace(L, 1);
+   return lua_gettop(L);  /* return status + all results */
+@@ -602,10 +653,19 @@
+ }
+ 
+ 
++/* LuaJIT / Lua 5.3: true inside a coroutine (5.1 cannot tell whether a
++** C call boundary is in the way, so that case is not detected) */
++static int luaB_coisyieldable (lua_State *L) {
++  lua_pushboolean(L, !lua_pushthread(L));
++  return 1;
++}
++
++
+ static const luaL_Reg co_funcs[] = {
+   {"create", luaB_cocreate},
+   {"resume", luaB_coresume},
+   {"running", luaB_corunning},
++  {"isyieldable", luaB_coisyieldable},
+   {"status", luaB_costatus},
+   {"wrap", luaB_cowrap},
+   {"yield", luaB_yield},
+diff -ruN a/src/lcode.c b/src/lcode.c
+--- a/src/lcode.c
++++ b/src/lcode.c
+@@ -176,6 +176,23 @@
+ }
+ 
+ 
++/*
++** close upvalues from 'level' up when the jumps in 'list' are taken: the
++** A field of OP_JMP holds level+1 (0 = close nothing), as in Lua 5.2
++*/
++void luaK_patchclose (FuncState *fs, int list, int level) {
++  level++;  /* argument is +1 to reserve 0 as non-op */
++  while (list != NO_JUMP) {
++    int next = getjump(fs, list);
++    lua_assert(GET_OPCODE(fs->f->code[list]) == OP_JMP &&
++                (GETARG_A(fs->f->code[list]) == 0 ||
++                 GETARG_A(fs->f->code[list]) >= level));
++    SETARG_A(fs->f->code[list], level);
++    list = next;
++  }
++}
++
++
+ void luaK_patchtohere (FuncState *fs, int list) {
+   luaK_getlabel(fs);
+   luaK_concat(fs, &fs->jpc, list);
+diff -ruN a/src/lcode.h b/src/lcode.h
+--- a/src/lcode.h
++++ b/src/lcode.h
+@@ -65,6 +65,7 @@
+ LUAI_FUNC void luaK_ret (FuncState *fs, int first, int nret);
+ LUAI_FUNC void luaK_patchlist (FuncState *fs, int list, int target);
+ LUAI_FUNC void luaK_patchtohere (FuncState *fs, int list);
++LUAI_FUNC void luaK_patchclose (FuncState *fs, int list, int level);
+ LUAI_FUNC void luaK_concat (FuncState *fs, int *l1, int l2);
+ LUAI_FUNC int luaK_getlabel (FuncState *fs);
+ LUAI_FUNC void luaK_prefix (FuncState *fs, UnOpr op, expdesc *v);
+diff -ruN a/src/ldebug.c b/src/ldebug.c
+--- a/src/ldebug.c
++++ b/src/ldebug.c
+@@ -326,7 +326,12 @@
+     int b = 0;
+     int c = 0;
+     check(op < NUM_OPCODES);
+-    checkreg(pt, a);
++    if (op == OP_JMP) {  /* A is 0 or an upvalue level + 1 (goto) */
++      check(a <= pt->maxstacksize);
++    }
++    else {
++      checkreg(pt, a);
++    }
+     switch (getOpMode(op)) {
+       case iABC: {
+         b = GETARG_B(i);
+diff -ruN a/src/ldo.c b/src/ldo.c
+--- a/src/ldo.c
++++ b/src/ldo.c
+@@ -485,6 +485,7 @@
+ struct SParser {  /* data to `f_parser' */
+   ZIO *z;
+   Mbuffer buff;  /* buffer to be used by the scanner */
++  Dyndata dyd;  /* labels and gotos, used by the parser */
+   const char *name;
+ };
+ 
+@@ -495,8 +496,8 @@
+   struct SParser *p = cast(struct SParser *, ud);
+   int c = luaZ_lookahead(p->z);
+   luaC_checkGC(L);
+-  tf = ((c == LUA_SIGNATURE[0]) ? luaU_undump : luaY_parser)(L, p->z,
+-                                                             &p->buff, p->name);
++  tf = (c == LUA_SIGNATURE[0]) ? luaU_undump(L, p->z, &p->buff, p->name)
++                               : luaY_parser(L, p->z, &p->buff, &p->dyd, p->name);
+   cl = luaF_newLclosure(L, tf->nups, hvalue(gt(L)));
+   cl->l.p = tf;
+   for (i = 0; i < tf->nups; i++)  /* initialize eventual upvalues */
+@@ -510,9 +511,13 @@
+   struct SParser p;
+   int status;
+   p.z = z; p.name = name;
++  p.dyd.gt.arr = NULL; p.dyd.gt.size = 0;
++  p.dyd.label.arr = NULL; p.dyd.label.size = 0;
+   luaZ_initbuffer(L, &p.buff);
+   status = luaD_pcall(L, f_parser, &p, savestack(L, L->top), L->errfunc);
+   luaZ_freebuffer(L, &p.buff);
++  luaM_freearray(L, p.dyd.gt.arr, p.dyd.gt.size, Labeldesc);
++  luaM_freearray(L, p.dyd.label.arr, p.dyd.label.size, Labeldesc);
+   return status;
+ }
+ 
+diff -ruN a/src/llex.c b/src/llex.c
+--- a/src/llex.c
++++ b/src/llex.c
+@@ -39,7 +39,7 @@
+     "end", "false", "for", "function", "if",
+     "in", "local", "nil", "not", "or", "repeat",
+     "return", "then", "true", "until", "while",
+-    "..", "...", "==", ">=", "<=", "~=",
++    "..", "...", "==", ">=", "<=", "~=", "::",
+     "<number>", "<name>", "<string>", "<eof>",
+     NULL
+ };
+@@ -191,15 +191,19 @@
+ 
+ 
+ /* LUA_NUMBER */
++/* as LuaJIT scans numbers: also hexadecimal fractions and 'p' exponents
++** (0x.8, 0x1p-4); the conversion itself is strtod's */
+ static void read_numeral (LexState *ls, SemInfo *seminfo) {
++  int c = ls->current, xp = 'e';
+   lua_assert(isdigit(ls->current));
+-  do {
+-    save_and_next(ls);
+-  } while (isdigit(ls->current) || ls->current == '.');
+-  if (check_next(ls, "Ee"))  /* `E'? */
+-    check_next(ls, "+-");  /* optional exponent sign */
+-  while (isalnum(ls->current) || ls->current == '_')
++  save_and_next(ls);
++  if (c == '0' && (ls->current | 0x20) == 'x')
++    xp = 'p';
++  while (isalnum(ls->current) || ls->current == '_' || ls->current == '.' ||
++         ((ls->current == '-' || ls->current == '+') && (c | 0x20) == xp)) {
++    c = ls->current;
+     save_and_next(ls);
++  }
+   save(ls, '\0');
+   buffreplace(ls, '.', ls->decpoint);  /* follow locale for decimal point */
+   if (!luaO_str2d(luaZ_buffer(ls->buff), &seminfo->r))  /* format error? */
+@@ -275,6 +279,58 @@
+ }
+ 
+ 
++static int gethexa (LexState *ls) {
++  next(ls);
++  if (!isxdigit(ls->current))
++    luaX_lexerror(ls, "hexadecimal digit expected", TK_STRING);
++  return isdigit(ls->current) ? ls->current - '0'
++                              : (tolower(ls->current) - 'a') + 10;
++}
++
++
++/* \xXX: exactly two hexadecimal digits (LuaJIT / Lua 5.2) */
++static int readhexaesc (LexState *ls) {
++  int r = gethexa(ls);
++  return (r << 4) + gethexa(ls);
++}
++
++
++/* \u{XXX}: a code point written as UTF-8, up to 0x10FFFF (LuaJIT / Lua 5.3) */
++static void utf8esc (LexState *ls) {
++  unsigned long r;
++  int i = 0;
++  next(ls);  /* skip 'u' */
++  if (ls->current != '{')
++    luaX_lexerror(ls, "missing '{' in \\u{xxxx}", TK_STRING);
++  r = gethexa(ls);
++  next(ls);
++  while (isxdigit(ls->current)) {
++    r = (r << 4) + (isdigit(ls->current) ? ls->current - '0'
++                                        : (tolower(ls->current) - 'a') + 10);
++    if (r >= 0x110000UL)
++      luaX_lexerror(ls, "UTF-8 value too large", TK_STRING);
++    next(ls);
++  }
++  if (ls->current != '}')
++    luaX_lexerror(ls, "missing '}' in \\u{xxxx}", TK_STRING);
++  next(ls);  /* skip '}' */
++  if (r < 0x80)
++    save(ls, (int)r);
++  else {
++    char buff[8];
++    unsigned long mfb = 0x3f;  /* maximum that fits in first byte */
++    do {
++      buff[7 - i++] = (char)(0x80 | (r & 0x3f));
++      r >>= 6;
++      mfb >>= 1;
++    } while (r > mfb);
++    buff[7 - i] = (char)((~mfb << 1) | r);  /* first byte */
++    for (; i >= 0; i--)
++      save(ls, (unsigned char)buff[7 - i]);
++  }
++}
++
++
+ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
+   save_and_next(ls);
+   while (ls->current != del) {
+@@ -297,6 +353,16 @@
+           case 'r': c = '\r'; break;
+           case 't': c = '\t'; break;
+           case 'v': c = '\v'; break;
++          case 'x': c = readhexaesc(ls); break;  /* LuaJIT / Lua 5.2 */
++          case 'u': utf8esc(ls); continue;  /* LuaJIT / Lua 5.3 */
++          case 'z': {  /* LuaJIT / Lua 5.2: skip following white space */
++            next(ls);
++            while (isspace(ls->current)) {
++              if (currIsNewline(ls)) inclinenumber(ls);
++              else next(ls);
++            }
++            continue;
++          }
+           case '\n':  /* go through */
+           case '\r': save(ls, '\n'); inclinenumber(ls); continue;
+           case EOZ: continue;  /* will raise an error next loop */
+@@ -388,6 +454,11 @@
+         if (ls->current != '=') return '~';
+         else { next(ls); return TK_NE; }
+       }
++      case ':': {  /* '::' marks a label (LuaJIT / Lua 5.2 goto) */
++        next(ls);
++        if (ls->current != ':') return ':';
++        else { next(ls); return TK_DBCOLON; }
++      }
+       case '"':
+       case '\'': {
+         read_string(ls, ls->current, seminfo);
+@@ -419,12 +490,14 @@
+           read_numeral(ls, seminfo);
+           return TK_NUMBER;
+         }
+-        else if (isalpha(ls->current) || ls->current == '_') {
++        else if (isalpha(ls->current) || ls->current == '_' ||
++                 ls->current >= 0x80) {  /* LuaJIT: UTF-8 in names */
+           /* identifier or reserved word */
+           TString *ts;
+           do {
+             save_and_next(ls);
+-          } while (isalnum(ls->current) || ls->current == '_');
++          } while (isalnum(ls->current) || ls->current == '_' ||
++                   ls->current >= 0x80);
+           ts = luaX_newstring(ls, luaZ_buffer(ls->buff),
+                                   luaZ_bufflen(ls->buff));
+           if (ts->tsv.reserved > 0)  /* reserved word? */
+diff -ruN a/src/llex.h b/src/llex.h
+--- a/src/llex.h
++++ b/src/llex.h
+@@ -28,7 +28,7 @@
+   TK_IF, TK_IN, TK_LOCAL, TK_NIL, TK_NOT, TK_OR, TK_REPEAT,
+   TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_WHILE,
+   /* other terminal symbols */
+-  TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE, TK_NUMBER,
++  TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE, TK_DBCOLON, TK_NUMBER,
+   TK_NAME, TK_STRING, TK_EOS
+ };
+ 
+@@ -64,6 +64,7 @@
+   Mbuffer *buff;  /* buffer for tokens */
+   TString *source;  /* current source name */
+   char decpoint;  /* locale decimal point */
++  struct Dyndata *dyd;  /* labels and pending gotos (used by the parser) */
+ } LexState;
+ 
+ 
+diff -ruN a/src/lmathlib.c b/src/lmathlib.c
+--- a/src/lmathlib.c
++++ b/src/lmathlib.c
+@@ -7,6 +7,7 @@
+ 
+ #include <stdlib.h>
+ #include <math.h>
++#include <stdint.h>
+ 
+ #define lmathlib_c
+ #define LUA_LIB
+@@ -112,7 +113,14 @@
+ }
+ 
+ static int math_log (lua_State *L) {
+-  lua_pushnumber(L, log(luaL_checknumber(L, 1)));
++  lua_Number x = luaL_checknumber(L, 1);
++  if (!lua_isnoneornil(L, 2)) {  /* LuaJIT / Lua 5.2: math.log(x, base) */
++    lua_Number y = luaL_checknumber(L, 2);
++    x = log2(x); y = 1.0 / log2(y);  /* as LuaJIT computes it */
++    lua_pushnumber(L, x*y);
++  }
++  else
++    lua_pushnumber(L, log(x));
+   return 1;
+ }
+ 
+@@ -178,36 +186,74 @@
+ }
+ 
+ 
++/*
++** LuaJIT's math.random: a Tausworthe PRNG with period 2^223 (L'Ecuyer 1991,
++** table 3, 1st entry), with LuaJIT's seeding and range mapping, so a seed
++** gives the same sequence as desktop KeeperFX. Each Lua state has its own
++** generator (an upvalue), not C rand() shared with the rest of the program.
++*/
++typedef struct PRNGState { uint64_t u[4]; } PRNGState;
++typedef union { uint64_t u64; double d; } U64double;
++
++#define TW223_GEN(rs, z, r, i, k, q, s) \
++  z = rs->u[i]; \
++  z = (((z<<q)^z) >> (k-s)) ^ ((z&((uint64_t)(int64_t)-1 << (64-k)))<<s); \
++  r ^= z; rs->u[i] = z;
++
++#define TW223_STEP(rs, z, r) \
++  TW223_GEN(rs, z, r, 0, 63, 31, 18) \
++  TW223_GEN(rs, z, r, 1, 58, 19, 28) \
++  TW223_GEN(rs, z, r, 2, 55, 24,  7) \
++  TW223_GEN(rs, z, r, 3, 47, 21,  8)
++
++static uint64_t prng_u64 (PRNGState *rs) {
++  uint64_t z, r = 0;
++  TW223_STEP(rs, z, r)
++  return r;
++}
++
++static void random_seed (PRNGState *rs, double d) {
++  uint32_t r = 0x11090601;  /* 64-k[i] as four 8 bit constants. */
++  int i;
++  for (i = 0; i < 4; i++) {
++    U64double u;
++    uint32_t m = 1u << (r&255);
++    r >>= 8;
++    u.d = d = d * 3.14159265358979323846 + 2.7182818284590452354;
++    if (u.u64 < m) u.u64 += m;  /* Ensure k[i] MSB of u[i] are non-zero. */
++    rs->u[i] = u.u64;
++  }
++  for (i = 0; i < 10; i++)
++    (void)prng_u64(rs);
++}
++
+ static int math_random (lua_State *L) {
+-  /* the `%' avoids the (rare) case of r==1, and is needed also because on
+-     some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
+-  lua_Number r = (lua_Number)(rand()%RAND_MAX) / (lua_Number)RAND_MAX;
+-  switch (lua_gettop(L)) {  /* check number of arguments */
+-    case 0: {  /* no arguments */
+-      lua_pushnumber(L, r);  /* Number between 0 and 1 */
+-      break;
++  PRNGState *rs = (PRNGState *)lua_touserdata(L, lua_upvalueindex(1));
++  int n = lua_gettop(L);
++  U64double u;
++  double d;
++  /* a double bit pattern in the range 1.0 <= d < 2.0 */
++  u.u64 = (prng_u64(rs) & 0x000fffffffffffffULL) | 0x3ff0000000000000ULL;
++  d = u.d - 1.0;
++  if (n > 0) {
++    double r1 = luaL_checknumber(L, 1);
++    if (n == 1)
++      d = floor(d*r1) + 1.0;  /* d is an int in range [1, r1] */
++    else {
++      double r2 = luaL_checknumber(L, 2);
++      d = floor(d*(r2-r1+1.0)) + r1;  /* d is an int in range [r1, r2] */
+     }
+-    case 1: {  /* only upper limit */
+-      int u = luaL_checkint(L, 1);
+-      luaL_argcheck(L, 1<=u, 1, "interval is empty");
+-      lua_pushnumber(L, floor(r*u)+1);  /* int between 1 and `u' */
+-      break;
+-    }
+-    case 2: {  /* lower and upper limits */
+-      int l = luaL_checkint(L, 1);
+-      int u = luaL_checkint(L, 2);
+-      luaL_argcheck(L, l<=u, 2, "interval is empty");
+-      lua_pushnumber(L, floor(r*(u-l+1))+l);  /* int between `l' and `u' */
+-      break;
+-    }
+-    default: return luaL_error(L, "wrong number of arguments");
+-  }
++  }  /* else: d is a double in range [0, 1] */
++  lua_pushnumber(L, d);
+   return 1;
+ }
+ 
+ 
+ static int math_randomseed (lua_State *L) {
+-  srand(luaL_checkint(L, 1));
++  PRNGState *rs = (PRNGState *)lua_touserdata(L, lua_upvalueindex(1));
++  /* LuaJIT seeds from the OS without an argument; this stays
++  ** deterministic (multiplayer and replays) and uses 0 */
++  random_seed(rs, lua_isnoneornil(L, 1) ? 0.0 : luaL_checknumber(L, 1));
+   return 0;
+ }
+ 
+@@ -234,8 +280,6 @@
+   {"modf",   math_modf},
+   {"pow",   math_pow},
+   {"rad",   math_rad},
+-  {"random",     math_random},
+-  {"randomseed", math_randomseed},
+   {"sinh",   math_sinh},
+   {"sin",   math_sin},
+   {"sqrt",  math_sqrt},
+@@ -249,7 +293,15 @@
+ ** Open math library
+ */
+ LUALIB_API int luaopen_math (lua_State *L) {
++  PRNGState *rs;
+   luaL_register(L, LUA_MATHLIBNAME, mathlib);
++  rs = (PRNGState *)lua_newuserdata(L, sizeof(PRNGState));
++  random_seed(rs, 0.0);  /* LuaJIT's initial state */
++  lua_pushvalue(L, -1);
++  lua_pushcclosure(L, math_random, 1);
++  lua_setfield(L, -3, "random");
++  lua_pushcclosure(L, math_randomseed, 1);
++  lua_setfield(L, -2, "randomseed");
+   lua_pushnumber(L, PI);
+   lua_setfield(L, -2, "pi");
+   lua_pushnumber(L, HUGE_VAL);
+diff -ruN a/src/loadlib.c b/src/loadlib.c
+--- a/src/loadlib.c
++++ b/src/loadlib.c
 @@ -606,8 +606,33 @@
  }
  
@@ -127,9 +629,493 @@ diff -ru a/src/loadlib.c b/src/loadlib.c
    {"seeall", ll_seeall},
    {NULL, NULL}
  };
-diff -ru a/src/lua.h b/src/lua.h
---- a/src/lua.h	2026-11-09 12:44:50.710509532 +0100
-+++ b/src/lua.h	2026-11-09 12:48:45.562722119 +0100
+@@ -655,8 +680,12 @@
+   /* set field `loaded' */
+   luaL_findtable(L, LUA_REGISTRYINDEX, "_LOADED", 2);
+   lua_setfield(L, -2, "loaded");
+-  /* set field `preload' */
++  /* set field `preload', with LuaJIT's table.new and table.clear modules */
+   lua_newtable(L);
++  lua_pushcfunction(L, luaopen_table_new);
++  lua_setfield(L, -2, LUA_TABLIBNAME ".new");
++  lua_pushcfunction(L, luaopen_table_clear);
++  lua_setfield(L, -2, LUA_TABLIBNAME ".clear");
+   lua_setfield(L, -2, "preload");
+   lua_pushvalue(L, LUA_GLOBALSINDEX);
+   luaL_register(L, NULL, ll_funcs);  /* open lib into global table */
+diff -ruN a/src/lparser.c b/src/lparser.c
+--- a/src/lparser.c
++++ b/src/lparser.c
+@@ -43,6 +43,8 @@
+   lu_byte nactvar;  /* # active locals outside the breakable structure */
+   lu_byte upval;  /* true if some variable in the block is an upvalue */
+   lu_byte isbreakable;  /* true if `block' is a loop */
++  int firstlabel;  /* index of first label in this block */
++  int firstgoto;  /* index of first pending goto in this block */
+ } BlockCnt;
+ 
+ 
+@@ -287,12 +289,129 @@
+   bl->isbreakable = isbreakable;
+   bl->nactvar = fs->nactvar;
+   bl->upval = 0;
++  bl->firstlabel = fs->ls->dyd->label.n;
++  bl->firstgoto = fs->ls->dyd->gt.n;
+   bl->previous = fs->bl;
+   fs->bl = bl;
+   lua_assert(fs->freereg == fs->nactvar);
+ }
+ 
+ 
++/*
++** {======================================================================
++** goto and labels, backported from Lua 5.2.4 with LuaJIT's rules: 'goto'
++** is a statement only when a name follows it (so it stays usable as a
++** variable name), and a jump that leaves the scope of captured locals
++** closes their upvalues through the A field of OP_JMP, as in Lua 5.2.
++** =======================================================================
++*/
++
++/* first label/pending goto visible in the innermost block */
++#define blockfirstlabel(fs)	((fs)->bl ? (fs)->bl->firstlabel : (fs)->firstlabel)
++#define blockfirstgoto(fs)	((fs)->bl ? (fs)->bl->firstgoto : (fs)->firstgoto)
++
++
++static void semerror (LexState *ls, const char *msg) {
++  ls->t.token = 0;  /* remove "near to" from final message */
++  luaX_syntaxerror(ls, msg);
++}
++
++
++static void closegoto (LexState *ls, int g, Labeldesc *label) {
++  int i;
++  FuncState *fs = ls->fs;
++  Labellist *gl = &ls->dyd->gt;
++  Labeldesc *gt = &gl->arr[g];
++  lua_assert(gt->name == label->name);
++  if (gt->nactvar < label->nactvar) {
++    TString *vname = getlocvar(fs, gt->nactvar).varname;
++    const char *msg = luaO_pushfstring(ls->L,
++      "<goto %s> at line %d jumps into the scope of local " LUA_QS,
++      getstr(gt->name), gt->line, getstr(vname));
++    semerror(ls, msg);
++  }
++  if (gt->nactvar > label->nactvar)
++    luaK_patchclose(fs, gt->pc, label->nactvar);
++  luaK_patchlist(fs, gt->pc, label->pc);
++  /* remove goto from pending list */
++  for (i = g; i < gl->n - 1; i++)
++    gl->arr[i] = gl->arr[i + 1];
++  gl->n--;
++}
++
++
++/* try to close goto 'g' with a label visible in the current block */
++static int findlabel (LexState *ls, int g) {
++  int i;
++  FuncState *fs = ls->fs;
++  Dyndata *dyd = ls->dyd;
++  for (i = blockfirstlabel(fs); i < dyd->label.n; i++) {
++    Labeldesc *lb = &dyd->label.arr[i];
++    if (lb->name == dyd->gt.arr[g].name) {  /* strings are interned */
++      closegoto(ls, g, lb);
++      return 1;
++    }
++  }
++  return 0;
++}
++
++
++static int newlabelentry (LexState *ls, Labellist *l, TString *name,
++                          int line, int pc) {
++  int n = l->n;
++  luaM_growvector(ls->L, l->arr, n, l->size, Labeldesc, MAX_INT, "labels/gotos");
++  l->arr[n].name = name;
++  l->arr[n].line = line;
++  l->arr[n].nactvar = ls->fs->nactvar;
++  l->arr[n].pc = pc;
++  l->n++;
++  return n;
++}
++
++
++/* solve pending gotos in the current block that jump to the new label */
++static void findgotos (LexState *ls, Labeldesc *lb) {
++  Labellist *gl = &ls->dyd->gt;
++  int i = blockfirstgoto(ls->fs);
++  while (i < gl->n) {
++    if (gl->arr[i].name == lb->name)
++      closegoto(ls, i, lb);
++    else
++      i++;
++  }
++}
++
++
++/*
++** export pending gotos of a block that is being left to the enclosing
++** block (now fs->bl), closing upvalues of the block's locals on the way
++*/
++static void movegotosout (FuncState *fs, BlockCnt *bl) {
++  int i = bl->firstgoto;
++  Labellist *gl = &fs->ls->dyd->gt;
++  while (i < gl->n) {
++    Labeldesc *gt = &gl->arr[i];
++    if (gt->nactvar > bl->nactvar) {
++      if (bl->upval)
++        luaK_patchclose(fs, gt->pc, bl->nactvar);
++      gt->nactvar = bl->nactvar;
++    }
++    if (!findlabel(fs->ls, i))
++      i++;  /* move to next one */
++  }
++}
++
++
++static void undefgoto (LexState *ls, Labeldesc *gt) {
++  const char *msg = luaO_pushfstring(ls->L,
++      "no visible label " LUA_QS " for <goto> at line %d",
++      getstr(gt->name), gt->line);
++  semerror(ls, msg);
++}
++
++/* }====================================================================== */
++
++
+ static void leaveblock (FuncState *fs) {
+   BlockCnt *bl = fs->bl;
+   fs->bl = bl->previous;
+@@ -304,6 +423,8 @@
+   lua_assert(bl->nactvar == fs->nactvar);
+   fs->freereg = fs->nactvar;  /* free registers */
+   luaK_patchtohere(fs, bl->breaklist);
++  fs->ls->dyd->label.n = bl->firstlabel;  /* remove local labels */
++  movegotosout(fs, bl);
+ }
+ 
+ 
+@@ -341,6 +462,8 @@
+   fs->np = 0;
+   fs->nlocvars = 0;
+   fs->nactvar = 0;
++  fs->firstlabel = ls->dyd->label.n;
++  fs->firstgoto = ls->dyd->gt.n;
+   fs->bl = NULL;
+   f->source = ls->source;
+   f->maxstacksize = 2;  /* registers 0/1 are always valid */
+@@ -357,6 +480,9 @@
+   lua_State *L = ls->L;
+   FuncState *fs = ls->fs;
+   Proto *f = fs->f;
++  if (fs->firstgoto < ls->dyd->gt.n)  /* goto with no matching label? */
++    undefgoto(ls, &ls->dyd->gt.arr[fs->firstgoto]);
++  ls->dyd->label.n = fs->firstlabel;  /* remove the function's labels */
+   removevars(ls, 0);
+   luaK_ret(fs, 0, 0);  /* final return */
+   luaM_reallocvector(L, f->code, f->sizecode, fs->pc, Instruction);
+@@ -380,10 +506,13 @@
+ }
+ 
+ 
+-Proto *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff, const char *name) {
++Proto *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff, Dyndata *dyd,
++                    const char *name) {
+   struct LexState lexstate;
+   struct FuncState funcstate;
+   lexstate.buff = buff;
++  lexstate.dyd = dyd;
++  dyd->gt.n = dyd->label.n = 0;
+   luaX_setinput(L, &lexstate, z, luaS_new(L, name));
+   open_func(&lexstate, &funcstate);
+   funcstate.f->is_vararg = VARARG_ISVARARG;  /* main func. is always vararg */
+@@ -988,6 +1117,53 @@
+ }
+ 
+ 
++static void gotostat (LexState *ls, int line) {
++  TString *label;
++  int g;
++  luaX_next(ls);  /* skip 'goto' */
++  label = str_checkname(ls);
++  g = newlabelentry(ls, &ls->dyd->gt, label, line, luaK_jump(ls->fs));
++  findlabel(ls, g);  /* close it if label already defined */
++}
++
++
++static void labelstat (LexState *ls, TString *label, int line) {
++  /* label -> '::' NAME '::' */
++  FuncState *fs = ls->fs;
++  Labellist *ll = &ls->dyd->label;
++  int i, l;
++  for (i = blockfirstlabel(fs); i < ll->n; i++) {
++    if (ll->arr[i].name == label) {
++      const char *msg = luaO_pushfstring(fs->L,
++          "label " LUA_QS " already defined on line %d",
++          getstr(label), ll->arr[i].line);
++      semerror(ls, msg);
++    }
++  }
++  checknext(ls, TK_DBCOLON);
++  l = newlabelentry(ls, ll, label, line, luaK_getlabel(fs));
++  /* skip other labels (as LuaJIT does) */
++  while (ls->t.token == TK_DBCOLON) {
++    int line2 = ls->linenumber;
++    luaX_next(ls);
++    labelstat(ls, str_checkname(ls), line2);
++  }
++  /* a label that ends its block is outside the scope of the block's locals */
++  if (block_follow(ls->t.token) && ls->t.token != TK_UNTIL)
++    ll->arr[l].nactvar = fs->bl ? fs->bl->nactvar : 0;
++  findgotos(ls, &ll->arr[l]);
++}
++
++
++/* 'goto' is a statement only when a name follows it */
++static int isgotostat (LexState *ls) {
++  if (ls->t.token != TK_NAME || strcmp(getstr(ls->t.seminfo.ts), "goto") != 0)
++    return 0;
++  luaX_lookahead(ls);
++  return ls->lookahead.token == TK_NAME;
++}
++
++
+ static void whilestat (LexState *ls, int line) {
+   /* whilestat -> WHILE cond DO block END */
+   FuncState *fs = ls->fs;
+@@ -1314,8 +1490,16 @@
+       breakstat(ls);
+       return 1;  /* must be last statement */
+     }
++    case TK_DBCOLON: {  /* stat -> label */
++      luaX_next(ls);  /* skip '::' */
++      labelstat(ls, str_checkname(ls), line);
++      return 0;
++    }
+     default: {
+-      exprstat(ls);
++      if (isgotostat(ls))  /* stat -> 'goto' NAME */
++        gotostat(ls, line);
++      else
++        exprstat(ls);
+       return 0;  /* to avoid warnings */
+     }
+   }
+diff -ruN a/src/lparser.h b/src/lparser.h
+--- a/src/lparser.h
++++ b/src/lparser.h
+@@ -54,6 +54,27 @@
+ struct BlockCnt;  /* defined in lparser.c */
+ 
+ 
++/* goto statements and labels (LuaJIT / Lua 5.2 goto, backported) */
++typedef struct Labeldesc {
++  TString *name;  /* label identifier */
++  int pc;  /* position in code */
++  int line;  /* line where it appeared */
++  lu_byte nactvar;  /* local level where it appears in current block */
++} Labeldesc;
++
++typedef struct Labellist {
++  Labeldesc *arr;  /* array */
++  int n;  /* number of entries in use */
++  int size;  /* array size */
++} Labellist;
++
++/* dynamic structures used by the parser */
++typedef struct Dyndata {
++  Labellist gt;  /* list of pending gotos */
++  Labellist label;  /* list of active labels */
++} Dyndata;
++
++
+ /* state needed to generate code for a given function */
+ typedef struct FuncState {
+   Proto *f;  /* current function header */
+@@ -70,13 +91,15 @@
+   int np;  /* number of elements in `p' */
+   short nlocvars;  /* number of elements in `locvars' */
+   lu_byte nactvar;  /* number of active local variables */
++  int firstlabel;  /* index of first label of this function in 'dyd' */
++  int firstgoto;  /* index of first pending goto of this function in 'dyd' */
+   upvaldesc upvalues[LUAI_MAXUPVALUES];  /* upvalues */
+   unsigned short actvar[LUAI_MAXVARS];  /* declared-variable stack */
+ } FuncState;
+ 
+ 
+ LUAI_FUNC Proto *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff,
+-                                            const char *name);
++                                            Dyndata *dyd, const char *name);
+ 
+ 
+ #endif
+diff -ruN a/src/lstrlib.c b/src/lstrlib.c
+--- a/src/lstrlib.c
++++ b/src/lstrlib.c
+@@ -91,13 +91,17 @@
+ }
+ 
+ static int str_rep (lua_State *L) {
+-  size_t l;
++  size_t l, lsep;
+   luaL_Buffer b;
+   const char *s = luaL_checklstring(L, 1, &l);
+   int n = luaL_checkint(L, 2);
++  const char *sep = luaL_optlstring(L, 3, "", &lsep);  /* LuaJIT / Lua 5.2 */
+   luaL_buffinit(L, &b);
+-  while (n-- > 0)
++  while (n-- > 0) {
+     luaL_addlstring(&b, s, l);
++    if (n > 0 && lsep > 0)
++      luaL_addlstring(&b, sep, lsep);
++  }
+   luaL_pushresult(&b);
+   return 1;
+ }
+@@ -233,6 +237,7 @@
+     case 'p' : res = ispunct(c); break;
+     case 's' : res = isspace(c); break;
+     case 'u' : res = isupper(c); break;
++    case 'g' : res = isgraph(c); break;  /* LuaJIT / Lua 5.2 */
+     case 'w' : res = isalnum(c); break;
+     case 'x' : res = isxdigit(c); break;
+     case 'z' : res = (c == 0); break;
+@@ -773,9 +778,10 @@
+         luaL_argerror(L, arg, "no value");
+       strfrmt = scanformat(L, strfrmt, form);
+       switch (*strfrmt++) {
+-        case 'c': {
+-          sprintf(buff, form, (int)luaL_checknumber(L, arg));
+-          break;
++        case 'c': {  /* keeps a NUL character, as LuaJIT does */
++          int len = sprintf(buff, form, (int)luaL_checknumber(L, arg));
++          luaL_addlstring(&b, buff, len);
++          continue;  /* skip the 'addsize' at the end */
+         }
+         case 'd':  case 'i': {
+           addintlen(form);
+@@ -788,6 +794,7 @@
+           break;
+         }
+         case 'e':  case 'E': case 'f':
++        case 'a':  case 'A':  /* LuaJIT / Lua 5.2 */
+         case 'g': case 'G': {
+           sprintf(buff, form, (double)luaL_checknumber(L, arg));
+           break;
+@@ -796,9 +803,25 @@
+           addquoted(L, &b, arg);
+           continue;  /* skip the 'addsize' at the end */
+         }
+-        case 's': {
++        case 's': {  /* any value, through __tostring (LuaJIT / Lua 5.2) */
+           size_t l;
+-          const char *s = luaL_checklstring(L, arg, &l);
++          const char *s;
++          if (!lua_isstring(L, arg)) {
++            if (luaL_callmeta(L, arg, "__tostring")) {
++              if (!lua_isstring(L, -1))
++                return luaL_error(L, LUA_QL("tostring") " must return a string to "
++                                     LUA_QL("format"));
++            }
++            else if (lua_isnoneornil(L, arg))
++              lua_pushliteral(L, "nil");
++            else if (lua_isboolean(L, arg))
++              lua_pushstring(L, lua_toboolean(L, arg) ? "true" : "false");
++            else
++              lua_pushfstring(L, "%s: %p", luaL_typename(L, arg),
++                              lua_topointer(L, arg));
++            lua_replace(L, arg);
++          }
++          s = luaL_checklstring(L, arg, &l);
+           if (!strchr(form, '.') && l >= 100) {
+             /* no precision and string is too long to be formatted;
+                keep original string */
+diff -ruN a/src/ltablib.c b/src/ltablib.c
+--- a/src/ltablib.c
++++ b/src/ltablib.c
+@@ -266,8 +266,80 @@
+ /* }====================================================== */
+ 
+ 
++/* LuaJIT / Lua 5.3: table.move(a1, f, e, t [, a2]), as LuaJIT defines it */
++static int tmove (lua_State *L) {
++  int f, e, t, tt;
++  luaL_checktype(L, 1, LUA_TTABLE);
++  f = luaL_checkint(L, 2);
++  e = luaL_checkint(L, 3);
++  t = luaL_checkint(L, 4);
++  tt = lua_isnoneornil(L, 5) ? 1 : 5;
++  luaL_checktype(L, tt, LUA_TTABLE);
++  if (e >= f) {
++    int i, d = t - f;
++    if (t > e || t <= f || !lua_rawequal(L, 1, tt)) {
++      for (i = f; i <= e; i++) {
++        lua_pushinteger(L, i);
++        lua_gettable(L, 1);
++        lua_pushinteger(L, i + d);
++        lua_insert(L, -2);
++        lua_settable(L, tt);
++      }
++    }
++    else {
++      for (i = e; i >= f; i--) {
++        lua_pushinteger(L, i);
++        lua_gettable(L, 1);
++        lua_pushinteger(L, i + d);
++        lua_insert(L, -2);
++        lua_settable(L, tt);
++      }
++    }
++  }
++  lua_pushvalue(L, tt);
++  return 1;
++}
++
++
++/* LuaJIT's table.new(narray, nhash), from require "table.new" */
++static int tnew (lua_State *L) {
++  int narr = luaL_checkint(L, 1);
++  int nhash = luaL_checkint(L, 2);
++  lua_createtable(L, narr > 0 ? narr : 0, nhash > 0 ? nhash : 0);
++  return 1;
++}
++
++
++/* LuaJIT's table.clear(t), from require "table.clear" */
++static int tclear (lua_State *L) {
++  luaL_checktype(L, 1, LUA_TTABLE);
++  lua_settop(L, 1);
++  lua_pushnil(L);
++  while (lua_next(L, 1)) {
++    lua_pop(L, 1);  /* value */
++    lua_pushvalue(L, -1);
++    lua_pushnil(L);
++    lua_rawset(L, 1);  /* clearing an existing field keeps 'next' valid */
++  }
++  return 0;
++}
++
++
++LUALIB_API int luaopen_table_new (lua_State *L) {
++  lua_pushcfunction(L, tnew);
++  return 1;
++}
++
++
++LUALIB_API int luaopen_table_clear (lua_State *L) {
++  lua_pushcfunction(L, tclear);
++  return 1;
++}
++
++
+ static const luaL_Reg tab_funcs[] = {
+   {"concat", tconcat},
++  {"move", tmove},
+   {"foreach", foreach},
+   {"foreachi", foreachi},
+   {"getn", getn},
+diff -ruN a/src/lua.h b/src/lua.h
+--- a/src/lua.h
++++ b/src/lua.h
 @@ -40,6 +40,7 @@
  
  
@@ -138,10 +1124,34 @@ diff -ru a/src/lua.h b/src/lua.h
  #define LUA_YIELD	1
  #define LUA_ERRRUN	2
  #define LUA_ERRSYNTAX	3
-diff -ru a/src/lualib.h b/src/lualib.h
---- a/src/lualib.h	2026-11-09 12:44:50.710869730 +0100
-+++ b/src/lualib.h	2026-11-09 12:48:53.369938864 +0100
-@@ -39,6 +39,10 @@
+diff -ruN a/src/luaconf.h b/src/luaconf.h
+--- a/src/luaconf.h
++++ b/src/luaconf.h
+@@ -520,7 +520,9 @@
+ */
+ #define LUA_NUMBER_SCAN		"%lf"
+ #define LUA_NUMBER_FMT		"%.14g"
+-#define lua_number2str(s,n)	sprintf((s), LUA_NUMBER_FMT, (n))
++/* NaN prints as "nan" whatever its sign bit, as in LuaJIT */
++#define lua_number2str(s,n)	((n) != (n) ? sprintf((s), "nan") : \
++				sprintf((s), LUA_NUMBER_FMT, (n)))
+ #define LUAI_MAXNUMBER2STR	32 /* 16 digits, sign, point, and \0 */
+ #define lua_str2number(s,p)	strtod((s), (p))
+ 
+diff -ruN a/src/lualib.h b/src/lualib.h
+--- a/src/lualib.h
++++ b/src/lualib.h
+@@ -20,6 +20,9 @@
+ 
+ #define LUA_TABLIBNAME	"table"
+ LUALIB_API int (luaopen_table) (lua_State *L);
++/* LuaJIT's require "table.new" / "table.clear" (preloaded by luaopen_package) */
++LUALIB_API int (luaopen_table_new) (lua_State *L);
++LUALIB_API int (luaopen_table_clear) (lua_State *L);
+ 
+ #define LUA_IOLIBNAME	"io"
+ LUALIB_API int (luaopen_io) (lua_State *L);
+@@ -39,6 +42,10 @@
  #define LUA_LOADLIBNAME	"package"
  LUALIB_API int (luaopen_package) (lua_State *L);
  
@@ -152,3 +1162,71 @@ diff -ru a/src/lualib.h b/src/lualib.h
  
  /* open all previous libraries */
  LUALIB_API void (luaL_openlibs) (lua_State *L); 
+diff -ruN a/src/lvm.c b/src/lvm.c
+--- a/src/lvm.c
++++ b/src/lvm.c
+@@ -357,6 +357,12 @@
+ 
+ #define dojump(L,pc,i)	{(pc) += (i); luai_threadyield(L);}
+ 
++/* take the OP_JMP at pc; a nonzero A field closes upvalues from
++** base+A-1 up (Lua 5.2 semantics, used by goto) */
++#define donextjump(L,pc) { Instruction ji = *(pc); \
++	if (GETARG_A(ji)) luaF_close(L, base + GETARG_A(ji) - 1); \
++	dojump(L, pc, GETARG_sBx(ji)); }
++
+ 
+ #define Protect(x)	{ L->savedpc = pc; {x;}; base = L->base; }
+ 
+@@ -539,6 +545,7 @@
+         continue;
+       }
+       case OP_JMP: {
++        if (GETARG_A(i)) luaF_close(L, base + GETARG_A(i) - 1);
+         dojump(L, pc, GETARG_sBx(i));
+         continue;
+       }
+@@ -547,7 +554,7 @@
+         TValue *rc = RKC(i);
+         Protect(
+           if (equalobj(L, rb, rc) == GETARG_A(i))
+-            dojump(L, pc, GETARG_sBx(*pc));
++            donextjump(L, pc);
+         )
+         pc++;
+         continue;
+@@ -555,7 +562,7 @@
+       case OP_LT: {
+         Protect(
+           if (luaV_lessthan(L, RKB(i), RKC(i)) == GETARG_A(i))
+-            dojump(L, pc, GETARG_sBx(*pc));
++            donextjump(L, pc);
+         )
+         pc++;
+         continue;
+@@ -563,14 +570,14 @@
+       case OP_LE: {
+         Protect(
+           if (lessequal(L, RKB(i), RKC(i)) == GETARG_A(i))
+-            dojump(L, pc, GETARG_sBx(*pc));
++            donextjump(L, pc);
+         )
+         pc++;
+         continue;
+       }
+       case OP_TEST: {
+         if (l_isfalse(ra) != GETARG_C(i))
+-          dojump(L, pc, GETARG_sBx(*pc));
++          donextjump(L, pc);
+         pc++;
+         continue;
+       }
+@@ -578,7 +585,7 @@
+         TValue *rb = RB(i);
+         if (l_isfalse(rb) != GETARG_C(i)) {
+           setobjs2s(L, ra, rb);
+-          dojump(L, pc, GETARG_sBx(*pc));
++          donextjump(L, pc);
+         }
+         pc++;
+         continue;
