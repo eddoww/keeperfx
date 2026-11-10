@@ -193,7 +193,8 @@ How it fits together:
   and tells them when the lobby list changes.
 - On the page, `web/kfx_loader.js` starts the game (`window.KFX`) and
   `web/kfx_site.js` is everything around it: the pages, sign-in, lobbies,
-  tavern and records.
+  tavern and records; `web/kfx_rejoin.js` handles dropped connections
+  (below).
 - In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
   (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
   `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's
@@ -207,6 +208,74 @@ Traffic: a two-player game sends about 25 messages a second per player
 through the relay, which the Workers free plan (100,000 Durable Object requests
 a day, incoming WebSocket messages counted 20:1) covers for roughly ten hours of
 two-player games a day; Workers Paid lifts that.
+
+### Dropped connections
+
+A network blip, a laptop going to sleep or a reload no longer has to end an
+online game.
+
+- **Short drops resume by themselves.** The game's WebSocket is a resumable
+  link (`web/kfx_web.js` and `web/server/src/room.js`, "Resumable links"):
+  every frame carries a sequence number and an acknowledgement, both ends
+  keep what the other has not acknowledged, and when the socket drops the page
+  reconnects with the link's id and secret (backoff 0.5, 1, 2, then every 3 s,
+  for up to 90 s) and both resend what was missed. The game only sees a pause.
+  The page shows "Reconnecting…" over the game.
+- **A joiner's seat is held.** While a joiner is away the relay keeps their
+  connection number and tells the host (`LINK_DOWN`); the host's game waits
+  15 s for them (`PEER_TIMEOUT_MS`, as ENet does on the desktop), showing the
+  game's own "waiting for" countdown, with the game held up for everyone in
+  the meantime. If they are not back by then it times them out like the
+  desktop build: the game **pauses**, the computer takes over their keeper,
+  and the seat stays open for their return until that keeper is defeated or
+  the level is decided.
+- **Rejoining after a reload or a crash.** The page remembers the lobby
+  (`localStorage` `kfx.rejoin`) and offers "Rejoin your game" on the home,
+  lobbies and start pages, and on the stage after a lost connection (with a
+  10 s countdown). The game then joins as a spectator and the host gives the
+  keeper back (`src/net_spectator.c`: seat, then a resync of the whole game).
+  An invite link reloaded by a player of that game rejoins too.
+- **Only the same player gets the seat back.** For a resumed link the relay
+  checks the link's 128-bit secret, which only that page has. For a rejoin
+  the host compares the game's own reconnect token: a random 64-bit number
+  that each browser keeps in its `save/settings.toml` and sends at login. A
+  different browser that tries the same lobby becomes a spectator (when the
+  lobby allows them) or is turned away; it never gets the keeper.
+- **A host's lobby is held for 60 s.** When the host's connection drops the
+  relay keeps the lobby and the joiners' connections, buffers their traffic,
+  and tells them ("Host disconnected, waiting for them to come back"); a
+  Durable Object alarm ends the lobby if the host is not back in time. The
+  host's page resumes exactly as a joiner's does. A host whose page was
+  reloaded or closed cannot come back (the game exists only in that page;
+  there is no host migration), so a page that is going away says so first
+  (`{"type": "bye"}` on `pagehide`) and the lobby closes at once, as before.
+  Joiners' pages say goodbye the same way, so a reload hands their keeper to
+  the computer at once instead of holding everyone up for 15 s.
+- **Silent connections.** A page pings when it has sent nothing for 5 s
+  (from a worker's timer, which browsers do not slow down in background
+  tabs, so a hidden tab is never taken for gone); the runtime answers
+  without waking the Durable Object. A socket the relay has heard nothing
+  from for 15 s, and a page that has heard nothing for 15 s, count as
+  dropped: a laptop that went to sleep without closing its connection.
+
+Limits: unacknowledged frames live in the Durable Object's memory. If it is
+restarted (a deploy, an eviction) while a link is down, or a page falls more
+than 16 MB behind, the resume is refused (close 4410): a joiner then rejoins
+through the game, a host's game carries on alone. Deploying the Worker
+therefore still ends the games in progress. In a game where every other
+human has dropped, the engine counts their keepers as gone
+(`all_dungeons_destroyed` skips placeholders), so in a one-against-one game
+the remaining player wins as soon as the other is timed out or leaves: only
+drops that resume within the 15 s keep such a game going.
+
+Cost: the link adds no messages while a game runs (the acknowledgements
+ride on the game's own frames). A page that only listens (a spectator) sends
+a bare acknowledgement every 128 frames or 5 s, about one message every
+five seconds; an idle page sends one ping per 5 s, answered by the runtime
+(an auto-response, which does not run the Durable Object). Each resume
+attempt is one request, each dropped host one alarm, each dropped player one
+storage write, and a page that remembers a game asks `/api/lobbies/<CODE>`
+when it opens (and at most every 10 s on navigation). Nothing polls.
 
 ### Running the Worker
 
