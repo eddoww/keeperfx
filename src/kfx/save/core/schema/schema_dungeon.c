@@ -539,6 +539,7 @@ SAVE_STRUCT(PlayerInfo, struct PlayerInfo,
     SAVE_FIELD(struct PlayerInfo, player_type, SV_U8),
     SAVE_FIELD(struct PlayerInfo, special_digger, SV_I16),
     SAVE_FIELD(struct PlayerInfo, generate_speed, SV_U16),
+    SAVE_FIELD(struct PlayerInfo, rejoin_deadline_turn, SV_U32),
 );
 
 SAVE_STRUCT(ResearchVal, struct ResearchVal,

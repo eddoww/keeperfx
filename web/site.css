@@ -642,6 +642,15 @@ details p { margin: 8px 0 0; }
 .qm-dock > .icon { color: var(--gold); }
 .qm-dock .tool { flex: none; }
 body.theater .qm-dock { display: none; }
+/* Over the game's lobby screen (top, clear of its Start button): the automatic start. */
+.qm-auto {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 7;
+  display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100% - 24px);
+  padding: 8px 8px 8px 14px; border-radius: 10px; font-size: 14px; color: var(--text);
+  background: rgba(20, 14, 10, .94); border: 1px solid var(--gold-lo); box-shadow: var(--shadow);
+}
+.qm-auto b { color: var(--gold-hi); }
+.qm-auto .tool { flex: none; }
 
 /* ---- Footer ---------------------------------------------------------------- */
 

@@ -41,7 +41,7 @@ enum UserPreference {
     UPref_MinimapZoom, // also sets the parchment magnifier
     UPref_StartingComputerAssistantKind,
     UPref_ComputerAssistantDisabled,
-    UPref_Unused18,
+    UPref_RejoinGraceTurns, // host only: how long a dropped human's keeper still counts as an opponent
     UPref_Unused19,
     UPref_Unused20,
     UPref_Unused21,

@@ -69,6 +69,7 @@ void draw_gameturn_timer(void);
 void draw_watched_player_name(void);
 TbBool mouse_is_over_watched_player_name(void);
 void draw_paused_message(int tx_units_per_px);
+void draw_rejoin_grace_messages(int tx_units_per_px);
 TbBool mouse_is_over_paused_message(void);
 TbBool mouse_is_over_clickable_hud_text(void);
 void draw_consolelog(void);

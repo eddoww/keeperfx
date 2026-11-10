@@ -33,13 +33,8 @@ The site around the game is one document with a page per URL fragment:
 `#/` (home), `#/play`, `#/lobbies`, `#/workshop` (with `#/workshop/<category>`,
 `#/workshop/installed` and `#/workshop/item/<id>`), `#/fame` (Hall of Fame, with
 `#/fame/levels/<campaign>/<level>` and `#/keeper/<name>`) and `#/guide`. The
-lobbies, the workshop and the Hall of Fame need the site's server (see "Online
-play"); on plain static hosting they are left out. While a game runs, links to the other
-
-`#/` (home), `#/play`, `#/lobbies`, `#/fame` (Hall of Fame, with
-`#/fame/levels/<campaign>/<level>` and `#/keeper/<name>`), `#/replays` (with
-`#/replay/<id>`), `#/watch/<CODE>` and `#/guide`. The lobbies, the Hall of
-Fame, replays and watching need the site's server (see "Online play"); on
+lobbies, the workshop, the Hall of Fame, replays (`#/replays`, `#/replay/<id>`)
+and watching (`#/watch/<CODE>`) need the site's server (see "Online play"); on
 plain static hosting they are left out. While a game runs, links to the other
 pages open in a new tab.
 
@@ -497,9 +492,10 @@ When the site runs on its Worker (`web/server`, below), it has:
   panel shows how long, and everyone sees how many keepers are looking. When
   others are found, one of them (preferably one whose game is ready on the
   start screen) gets an unlisted lobby opened for them, and the others join it
-  by themselves: nobody types a code. The host then picks the map and presses
-  Start in the game's lobby screen, as in any lobby; the page says so. Details
-  below, under "Quick match".
+  by themselves: nobody types a code. Once they are in, the game starts by
+  itself on a random map for that many keepers, after a 10 s countdown the
+  host can cancel to pick the map themselves. Details below, under "Quick
+  match".
 - **The tavern**, on the lobbies page: who has the site open, a chat for
   signed-in players, and news lines (a lobby opened, someone won a level). Set
   `CHAT` to `off` in `wrangler.jsonc` to close the chat; names in
@@ -679,7 +675,11 @@ screenshots, description, author, rating and a link back to keeperfx.net.
 **Add to my game** downloads an item into the browser; **Play** starts one of
 its maps straight away (`-campaign <pack> -level <n>`, against computer
 keepers for multiplayer maps); **Host online** opens a lobby with the map that
-starts once enough keepers have joined (`-waitusers`); **Remove** deletes it.
+starts once enough keepers have joined (`-server -waitusers N -campaign <pack>
+-level L`); when that level ends everyone goes back to the menus like any
+multiplayer game (in the browser, `-level` with `-server` or `-connect` no
+longer means single-level mode, which closed the game at the end of the
+level); **Remove** deletes it.
 Campaigns are started from the game's own Campaigns menu, so they keep their
 story, land view and saves.
 
@@ -761,9 +761,41 @@ are kept in the tavern's storage. The protocol is described at the top of
   game starts. After 90 seconds alone in the queue a player is offered to
   open a public lobby instead; it is listed as usual, and quick match sends
   the next players to it.
-- The start is not automated. The game can start a hosted lobby by itself
-  (`-server -waitusers N -level L`), but `-level` puts it in single-level mode,
-  which quits the game when the level ends; the host picks the map instead.
+- **The game starts by itself.** The host's page runs the lobby
+  (`web/kfx_quickmatch.js`, "Automatic start"); the engine only carries out
+  its orders (below). The rule:
+  - **2 keepers**: the lobby is capped at 2 players and starts as soon as the
+    second keeper is in.
+  - **Any size**: capped at 4. It starts when 4 are in; otherwise once every
+    matched keeper is in (one who has not arrived 60 s after the lobby
+    opened is not waited for), 20 s after the last keeper arrived, or 45 s
+    while the tavern says other keepers are looking (quick match sends them
+    to this lobby while it has room).
+  - Then a 10 s countdown, shown over the host's game ("starting River sides
+    (2 keepers) in 7 s", with **Cancel**) and said in every player's lobby
+    chat at 10 and 5 s. Cancelling (or **Pick the map myself** while it
+    waits) leaves the lobby to the host, as before. A keeper arriving or
+    leaving during the countdown starts it again, with a map for the new
+    number; below 2 it waits again.
+  - The map is a random one of Bullfrog's original multiplayer maps, the
+    "Bullfrog levels" pack (`multiplayer/original`, classic rules), made for
+    exactly that many keepers: levels 50-59 for 2, 60-69 for 3, 70-79 for 4.
+    They come with every KeeperFX install, so every player has them.
+  - A public lobby opened after a long wait (above) starts the same way, as
+    does a lobby the matched keepers left before it opened.
+- **After the level** everyone lands where a normally started multiplayer
+  game ends: the level statistics, then the game's Online Lobbies screen;
+  the game keeps running, and Find a game works again from the site.
+- **The page and the engine**: on each frame of the game's online lobby
+  screen the engine calls `Module.kfxOnLobby({players, maxPlayers, host,
+  coloursConflict})` (`src/kfx/platform/web/WebLobby.c`, `web/kfx_web.js`);
+  the page may answer with one order for the host's game: `say <text>` (a
+  chat line from the host), `start <pack> <level>` (what the host typing
+  `<pack>:<level>` in the lobby chat does) or `max <n>` (cap the lobby; not
+  saved in the player's settings, and dropped when the next lobby opens). An
+  engine without the hook never calls it; the page then says to pick a map
+  and press Start, as before, so older builds keep working and
+  `KFX_WEB_API` stays 1.
 
 Cost on the free plan: queueing is one WebSocket message per player (1/20 of
 a request), plus one when the game's state changes while queued. A match costs
@@ -792,7 +824,12 @@ online game.
   the meantime. If they are not back by then it times them out like the
   desktop build: the game **pauses**, the computer takes over their keeper,
   and the seat stays open for their return until that keeper is defeated or
-  the level is decided.
+  the level is decided. A page that says goodbye (below) is let go at once,
+  without the pause.
+- **A dropped player does not decide the game.** For a grace period
+  (`REJOIN_GRACE_SECONDS`, default 180) a dropped human's keeper still
+  counts as an opponent, so a one-against-one game is not won by the drop.
+  See "Rejoin grace" below.
 - **Rejoining after a reload or a crash.** The page remembers the lobby
   (`localStorage` `kfx.rejoin`) and offers "Rejoin your game" on the home,
   lobbies and start pages, and on the stage after a lost connection (with a
@@ -826,11 +863,51 @@ Limits: unacknowledged frames live in the Durable Object's memory. If it is
 restarted (a deploy, an eviction) while a link is down, or a page falls more
 than 16 MB behind, the resume is refused (close 4410): a joiner then rejoins
 through the game, a host's game carries on alone. Deploying the Worker
-therefore still ends the games in progress. In a game where every other
-human has dropped, the engine counts their keepers as gone
-(`all_dungeons_destroyed` skips placeholders), so in a one-against-one game
-the remaining player wins as soon as the other is timed out or leaves: only
-drops that resume within the 15 s keep such a game going.
+therefore still ends the games in progress.
+
+#### Rejoin grace
+
+When a human's keeper is handed to the computer (timed out or left), it
+becomes a *placeholder*. Without a grace period the engine counted
+placeholders as gone (`all_dungeons_destroyed` skipped them), so in a
+one-against-one game the remaining player won the moment the other dropped,
+and there was nothing left to rejoin.
+
+- **How long**: `REJOIN_GRACE_SECONDS` in `keeperfx.cfg` (0 to 3600; the
+  browser build's default is 180, the desktop's 0, which is the old
+  behaviour). Only the host's value counts: it goes into the host's user
+  preferences in game turns (`UPref_RejoinGraceTurns`, `src/user_prefs.h`),
+  which every player and the replay receive at the start. On the site:
+  `?cfg=REJOIN_GRACE_SECONDS=40` for a host.
+- **Deterministic**: the drop is processed in sync with the simulation (the
+  leave packet), and sets `PlayerInfo.rejoin_deadline_turn` to that game turn
+  plus the grace (saved and resynced like other player fields). Until that
+  turn the placeholder counts as an opponent (`placeholder_awaiting_return`,
+  `src/player_utils.c`); nothing reads the clock. Game turns stop while the
+  game is paused, and so does the grace.
+- **Meanwhile the computer plays the keeper**, as before (it was already
+  what a dropped keeper did). Pausing the whole game for minutes would hold
+  the remaining player hostage, and a keeper that does nothing could be
+  walked over: the computer defends the dungeon at about the strength of a
+  human, and gives it back when the player returns (`seat_network_user`).
+  The timeout still pauses the game once, so the remaining player chooses
+  when to go on.
+- **The remaining player** sees "Keeper X disconnected: waiting 2:41 for them
+  to return" (with "(game paused)" while paused) under the paused message.
+  If X rejoins in time (the site's "Rejoin your game"), the keeper is theirs
+  again and the game goes on. If not, the placeholder stops counting when
+  the grace runs out and the usual victory check decides: on a map whose
+  script wins by `ALL_DUNGEONS_DESTROYED` (all of the original multiplayer
+  maps), the remaining player wins then. Leaving earlier (quitting the
+  level) records nothing, neither win nor loss.
+- **The host** cannot come back (no host migration), so when the host is
+  lost every placeholder stops counting at once, as before.
+- **Hall of Fame**: a result counts dropped humans' keepers as humans (so a
+  win by expiry is an online game like any other), and its statistics say
+  how many of them had not come back (`keepersDropped`). A player who
+  rejoined reports their own result as usual when the level ends.
+- **Replays and spectators** see the same: the grace and the deadline are
+  part of the game state, and the notice is drawn for anyone watching.
 
 Cost: the link adds no messages while a game runs (the acknowledgements
 ride on the game's own frames). A page that only listens (a spectator) sends

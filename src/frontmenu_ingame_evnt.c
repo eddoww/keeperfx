@@ -1004,6 +1004,45 @@ void draw_paused_message(int tx_units_per_px)
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
+/**
+ * While a dropped human may still come back (see placeholder_awaiting_return),
+ * says so under the paused message, with the game time left.
+ */
+void draw_rejoin_grace_messages(int tx_units_per_px)
+{
+    int line = 0;
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++) {
+        const struct PlayerInfo *player = get_player(plyr_idx);
+        if (!player_exists(player) || is_my_player(player) || !placeholder_awaiting_return(player)) {
+            continue;
+        }
+        long seconds = (placeholder_return_turns_left(player) + max(turns_per_second, 1) - 1) / max(turns_per_second, 1);
+        char text[TEXT_BUFFER_LENGTH];
+        // TODO: translations; English only for now.
+        snprintf(text, sizeof(text), "%s disconnected: waiting %ld:%02ld for them to return%s",
+            player->player_name[0] ? player->player_name : player_code_name(plyr_idx), seconds / 60, seconds % 60,
+            ((game.operation_flags & GOF_Paused) != 0) ? " (game paused)" : "");
+        LbTextSetFont(winfont);
+        int32_t width = LbTextStringWidth(text) * units_per_pixel / 16 + 2 * (LbTextCharWidth(' ') * units_per_pixel / 16);
+        int32_t height = LbTextLineHeight() * units_per_pixel / 16;
+        if (MyScreenHeight < 400) {
+            width *= 2;
+            height *= 3;
+        }
+        int32_t scr_x = (MyScreenWidth - width) / 2;
+        if (get_local_view_type() != PVT_MapScreen) {
+            scr_x = local_state.engine_window_x + (MyScreenWidth - width - local_state.engine_window_x) / 2;
+        }
+        int32_t scr_y = 16 * units_per_pixel / 16 + (2 + line) * height * 3 / 2;
+        RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
+        LbTextSetWindow(scr_x, scr_y, width, height);
+        draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
+        LbTextDrawResized(0, 0, tx_units_per_px, text);
+        LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
+        line++;
+    }
+}
+
 TbBool timer_enabled(void)
 {
   return ((game_flags2 & GF2_Timer) != 0);

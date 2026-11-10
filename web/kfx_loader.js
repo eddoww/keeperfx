@@ -910,6 +910,8 @@ var Module = {
   kfxOnHosting: onHosting,
   kfxOnJoining: (code) => Workshop.checkJoin(code),
   kfxOnLevelResult: (result) => document.dispatchEvent(new CustomEvent('kfx:result', { detail: result })),
+  // Each frame of the game's online lobby screen; quick match may answer with an order.
+  kfxOnLobby: (lobby) => (typeof QuickMatch === 'object' ? QuickMatch.onLobby(lobby) : ''),
   print: (text) => console.log(text),
   printErr: (text) => console.warn(text),
   onRuntimeInitialized: () => boot().catch((e) => {

@@ -68,6 +68,12 @@ uint32_t packetsave_max_kb = 32768;
 TbBool replays_enabled = true;
 uint32_t max_replays[ReplTyp_Count] = {5, 5, 10};
 uint32_t replay_rewind_buffer_kb = 65536;
+#ifdef __EMSCRIPTEN__
+// Browser players rejoin a game from the site (web/kfx_rejoin.js); give them time.
+uint32_t rejoin_grace_seconds = 180;
+#else
+uint32_t rejoin_grace_seconds = 0;
+#endif
 unsigned long features_enabled = 0;
 static unsigned char parchment_map_fade_turns = 0;
 unsigned char viewport_mode = VpMode_Original;
@@ -184,6 +190,7 @@ const struct NamedCommand conf_commands[] = {
   {"REPLAY_MAX_SIZE"               , 54},
   {"CHAT_FONT_SIZE"                , 55},
   {"REPLAY_REWIND_BUFFER_SIZE"     , 56},
+  {"REJOIN_GRACE_SECONDS"          , 57},
   {NULL,                   0},
   };
 
@@ -1152,6 +1159,19 @@ static void load_string_configuration(const char *buf, int32_t len, const char *
           }
           if (i >= 0) {
               replay_rewind_buffer_kb = i;
+          }
+          else {
+              CONFWRNLOG("Invalid \"%s\" value in %s file.", COMMAND_TEXT(cmd_num), config_textname);
+          }
+          break;
+      case 57: // REJOIN_GRACE_SECONDS
+          i = -1;
+          if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) > 0)
+          {
+              i = atoi(word_buf);
+          }
+          if ((i >= 0) && (i <= 3600)) {
+              rejoin_grace_seconds = i;
           }
           else {
               CONFWRNLOG("Invalid \"%s\" value in %s file.", COMMAND_TEXT(cmd_num), config_textname);
