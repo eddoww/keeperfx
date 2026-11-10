@@ -732,6 +732,172 @@ function persistNow() {
 }
 let fsReady = false;
 
+// ---- Autosave ------------------------------------------------------------------
+// The game saves itself every few minutes of play into fx1auto1.sav ...
+// fx1auto3.sav, the oldest replaced each time (src/kfx/save/SaveAutosave.cpp).
+// The page takes each one to IndexedDB at once and shows it in the bar above
+// the game; it also has the game save when the tab is hidden (which is also
+// the first thing that happens when a tab is closed) and when the player
+// presses Leave. The interval is the game's own setting, autosave_minutes in
+// the [gameplay] section of save/settings.toml, which cloud saves carry to
+// the player's other browsers.
+const SETTINGS_FILE = '/persist/save/settings.toml';
+const AUTOSAVE_DEFAULT = 5; // the browser build's default (DEFAULT_AUTOSAVE_MINUTES)
+const AUTOSAVE_CHOICES = [0, 2, 5, 10, 15, 30];
+const engineCall = (name) => (KFX.state === 'running' && typeof Module === 'object' && Module[`_kfx_web_${name}`]) || null;
+
+/** Sets lines of a section of settings.toml, which the game reads at start. values: {key: 'toml value'}. */
+function editSettings(section, values) {
+  const text = exists(SETTINGS_FILE) ? FS.readFile(SETTINGS_FILE, { encoding: 'utf8' }) : '';
+  const lines = text.split('\n');
+  let start = lines.findIndex((l) => new RegExp(`^\\s*\\[${section}\\]`).test(l));
+  if (start < 0) {
+    if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+    lines.push(`[${section}]`);
+    start = lines.length - 1;
+  }
+  let end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l));
+  if (end < 0) end = lines.length;
+  for (const [key, value] of Object.entries(values)) {
+    const line = `${key} = ${value}`;
+    const at = lines.findIndex((l, i) => i > start && i < end && new RegExp(`^\\s*${key}\\s*=`).test(l));
+    if (at >= 0) lines[at] = line;
+    else { lines.splice(start + 1, 0, line); end++; }
+  }
+  FS.mkdirTree('/persist/save');
+  FS.writeFile(SETTINGS_FILE, lines.join('\n').replace(/^\n+/, '').replace(/\n*$/, '\n'));
+}
+
+/** Minutes of play between autosaves (0: off). */
+function autosaveMinutes() {
+  const state = engineCall('autosave_state');
+  if (state && Module.kfxFrames) return state() & 255; // once the game has read its settings
+  try {
+    const text = FS.readFile(SETTINGS_FILE, { encoding: 'utf8' });
+    const gameplay = text.split(/^\s*\[/m).find((s) => /^gameplay\]/.test(s)) || '';
+    const m = /^\s*autosave_minutes\s*=\s*(\d+)/m.exec(gameplay);
+    if (m) return Math.min(60, Number(m[1]));
+  } catch (e) { /* no settings yet: the game's default */ }
+  return AUTOSAVE_DEFAULT;
+}
+
+function setAutosaveMinutes(minutes) {
+  minutes = Math.max(0, Math.min(60, Math.round(Number(minutes) || 0)));
+  const set = engineCall('autosave_set');
+  if (set) set(minutes); // the running game changes it and writes settings.toml itself
+  else editSettings('gameplay', { autosave_minutes: String(minutes) });
+  persistNow();
+  document.dispatchEvent(new CustomEvent('kfx:autosave-setting', { detail: minutes }));
+}
+
+const autosaveLabel = (m) => (m ? `every ${m} min` : 'off');
+
+/** A <select> for the interval, kept in step with the setting wherever it changes. */
+function autosaveSelect(id) {
+  const select = document.createElement('select');
+  if (id) select.id = id;
+  const fill = () => {
+    const now = autosaveMinutes();
+    const choices = AUTOSAVE_CHOICES.includes(now) ? AUTOSAVE_CHOICES : [...AUTOSAVE_CHOICES, now].sort((a, b) => a - b);
+    select.replaceChildren(...choices.map((m) => new Option(autosaveLabel(m), String(m), false, m === now)));
+  };
+  fill();
+  select.addEventListener('change', () => { setAutosaveMinutes(select.value); select.blur(); });
+  document.addEventListener('kfx:autosave-setting', fill);
+  return select;
+}
+
+/** Whether the running game would autosave now (a solo level: not online, a replay or a finished level). */
+function autosaveAvailable() {
+  const state = engineCall('autosave_state');
+  return !!state && (state() & 256) !== 0;
+}
+
+/** Has the game autosave now, if that makes sense (the game decides). why: 1 tab hidden, 2 leaving. */
+function autosaveNow(why) {
+  const now = engineCall('autosave_now');
+  if (!now) return false;
+  try { return now(why) === 1; } catch (e) { console.warn('Autosave failed', e); return false; }
+}
+
+// Called by the game after each autosave ({file, title, reason}).
+function onAutosave(save) {
+  persistNow();
+  const note = $('autosave-note');
+  if (!note) return;
+  const at = new Date();
+  note.hidden = false;
+  note.querySelector('span').textContent = `Autosaved ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  note.title = `${save.title} (${save.file}). The game saves itself ${autosaveLabel(autosaveMinutes())} of play; `
+    + '"Continue" on the start screen brings you back to the newest save. Click for your saves.';
+  note.classList.remove('fresh');
+  void note.offsetWidth; // restart the animation
+  note.classList.add('fresh');
+  document.dispatchEvent(new CustomEvent('kfx:autosave', { detail: save }));
+}
+
+// Before anything else that runs when the tab is hidden (cloud saves upload
+// then): the save has to be in the folder first. A capture listener on window
+// runs ahead of the document's own listeners.
+addEventListener('visibilitychange', () => { if (document.hidden && autosaveNow(1)) persistNow(); }, true);
+addEventListener('pagehide', () => { if (autosaveNow(1)) persistNow(); }, true);
+
+// ---- Continue where you left off -------------------------------------------------
+
+const SAVE_FILE_RE = /^fx1(?:g\d{4}|auto[1-9])\.sav$/;
+function ago(ms) {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  if (s < 86400 * 7) return `${Math.round(s / 86400)} days ago`;
+  return new Date(ms).toLocaleDateString();
+}
+
+/** The newest save in this browser, autosave or the player's: {name, mtime, info}, or null. */
+function newestSave() {
+  let names = [];
+  try { names = FS.readdir('/persist/save').filter((n) => SAVE_FILE_RE.test(n)); } catch (e) { return null; }
+  const saves = names.map((name) => ({ name, mtime: +FS.stat(`/persist/save/${name}`).mtime }))
+    .sort((a, b) => b.mtime - a.mtime);
+  for (const save of saves) {
+    const info = typeof CloudSaves === 'object' ? CloudSaves.saveInfo(FS.readFile(`/persist/save/${save.name}`)) : {};
+    if (info.title !== undefined) return { ...save, info };
+  }
+  return null;
+}
+
+function renderContinue() {
+  const box = $('continue');
+  if (!box) return;
+  const save = newestSave();
+  box.hidden = !save;
+  if (!save) return;
+  const { info } = save;
+  box.querySelector('.continue-title').textContent = info.title || save.name;
+  box.querySelector('.continue-info').textContent = [
+    /^fx1auto/.test(save.name) ? 'autosave' : 'your save',
+    info.campaign && info.level > 0 ? `${info.campaign}, level ${info.level}` : '',
+    ago(save.mtime),
+  ].filter(Boolean).join(' · ');
+  box.dataset.file = save.name;
+  box.dataset.label = info.title || 'your game';
+}
+
+function setupStartExtras() {
+  const pick = $('autosave-pick');
+  if (pick && !pick.querySelector('select')) pick.append(autosaveSelect('autosave-select'));
+  $('continue-button').addEventListener('click', () => {
+    const box = $('continue');
+    if (!box.dataset.file) return;
+    // The game loads it straight away instead of showing its main menu (-loadgame).
+    Site.start({ mode: 'play', args: ['-loadgame', box.dataset.file], label: box.dataset.label });
+  });
+  renderContinue();
+  // Saves can still arrive while the start screen is up (cloud saves after a sign-in).
+  const timer = setInterval(() => { if (KFX.state === 'ready') renderContinue(); else clearInterval(timer); }, 3000);
+}
+
 // Vivaldi's "fast forward": Space pressed on a page that cannot scroll further
 // makes the browser click the link it takes for "the next page" (one marked
 // rel="next", else a link whose text reads like "more" or "next"). On this
@@ -1006,6 +1172,7 @@ function waitForStartChoice() {
   return new Promise((resolve) => {
     KFX.resolveChoice = resolve;
     setState('ready');
+    setupStartExtras();
     $('start-button').addEventListener('click', () => Site.start({ mode: 'play' }));
     $('host-button').addEventListener('click', () => Site.openHost());
     $('invited-join').addEventListener('click', () => {
@@ -1027,27 +1194,9 @@ function waitForStartChoice() {
 function applyNetworkSettings(choice) {
   const set = {};
   const name = Site.keeperName();
-  if (name) set.player_name = name;
-  if (choice.mode === 'host' && choice.lobbyName) set.lobby_name = choice.lobbyName.replace(/["\\]/g, '');
-  if (!Object.keys(set).length) return;
-  const path = `${GAME_DIR}/save/settings.toml`;
-  const text = exists(path) ? FS.readFile(path, { encoding: 'utf8' }) : '';
-  const lines = text.split('\n');
-  let start = lines.findIndex((l) => /^\s*\[network\]/.test(l));
-  if (start < 0) {
-    if (lines.length && lines[lines.length - 1] !== '') lines.push('');
-    lines.push('[network]');
-    start = lines.length - 1;
-  }
-  let end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l));
-  if (end < 0) end = lines.length;
-  for (const [key, value] of Object.entries(set)) {
-    const line = `${key} = "${value}"`;
-    const at = lines.findIndex((l, i) => i > start && i < end && new RegExp(`^\\s*${key}\\s*=`).test(l));
-    if (at >= 0) lines[at] = line;
-    else { lines.splice(start + 1, 0, line); end++; }
-  }
-  FS.writeFile(path, lines.join('\n').replace(/^\n+/, '').replace(/\n*$/, '\n'));
+  if (name) set.player_name = `"${name}"`;
+  if (choice.mode === 'host' && choice.lobbyName) set.lobby_name = `"${choice.lobbyName.replace(/["\\]/g, '')}"`;
+  if (Object.keys(set).length) editSettings('network', set);
 }
 
 // ---- Lobby badge, exit, tools ------------------------------------------------
@@ -1097,8 +1246,11 @@ function showExit(text) {
 }
 
 async function leaveGame() {
-  if (!confirm('Leave the game? Anything not saved in the game is lost.')) return;
+  const autosaves = autosaveAvailable();
+  if (!confirm(autosaves ? 'Leave the game? It is autosaved first: "Continue" on the start screen brings you back.'
+    : 'Leave the game? Anything not saved in the game is lost.')) return;
   leaving = true;
+  if (autosaves) autosaveNow(2);
   await persistNow();
   location.href = `${location.pathname}${keptQuery()}#/play`;
   location.reload();
@@ -1119,6 +1271,7 @@ var Module = {
   }),
   kfxOnHosting: onHosting,
   kfxOnJoining: (code) => Workshop.checkJoin(code),
+  kfxOnAutosave: onAutosave,
   kfxOnLevelResult: (result) => document.dispatchEvent(new CustomEvent('kfx:result', { detail: result })),
   // Each frame of the game's online lobby screen; quick match may answer with an order.
   kfxOnLobby: (lobby) => (typeof QuickMatch === 'object' ? QuickMatch.onLobby(lobby) : ''),

@@ -144,7 +144,7 @@
     <div class="feature" data-online><svg class="icon"><use href="#i-trophy"/></svg><h3>Hall of Fame</h3>
       <p>Sign in and every level you win is written into the records: best score, fastest conquest, and your standing among keepers.</p></div>
     <div class="feature"><svg class="icon"><use href="#i-save"/></svg><h3>Saves stay with you</h3>
-      <p>Save games, settings and screenshots are kept in this browser. Close the tab and pick up where you left off.</p></div>
+      <p>Save games, settings and screenshots are kept in this browser, and the game saves itself every few minutes. Close the tab and pick up where you left off.</p></div>
     <div class="feature"><svg class="icon"><use href="#i-bolt"/></svg><h3>Nothing to install</h3>
       <p>The real KeeperFX engine, compiled to WebAssembly, drawing with WebGL at your screen's full resolution.</p></div>
     <div class="feature"><svg class="icon"><use href="#i-code"/></svg><h3>Open source</h3>
@@ -175,6 +175,7 @@
         <button type="button" class="tool" id="invite-copy" title="Copy the invite link"><svg class="icon"><use href="#i-copy"/></svg><span>Copy invite</span></button>
       </div>
       <span id="downloads" class="downloads" hidden></span>
+      <span id="autosave-note" class="autosave-note" hidden><svg class="icon"><use href="#i-save"/></svg><span></span></span>
       <div class="stage-tools">
         <button type="button" class="tool version-chip" id="stage-version" hidden></button>
         <button type="button" class="tool" id="btn-mouselock" title="Keep the mouse in the game all the time (Esc releases it), not only in possession" hidden><svg class="icon"><use href="#i-lock"/></svg><span>Lock mouse</span></button>
@@ -220,6 +221,11 @@
               <span class="invited-info"></span></div>
             <button type="button" class="btn primary" id="invited-join">Join this lobby</button>
           </div>
+          <div id="continue" class="continue" hidden>
+            <div><span class="invite-label">Continue where you left off</span> <strong class="continue-title"></strong>
+              <span class="continue-info"></span></div>
+            <button type="button" class="btn primary" id="continue-button">Continue</button>
+          </div>
           <h2>Choose your path</h2>
           <div class="version-row" id="version-row" hidden></div>
           <div class="namefield" id="namefield">
@@ -245,6 +251,7 @@
             </form>
             <div class="choice qm-choice" data-qm="choice" data-online hidden></div>
           </div>
+          <p class="fine autosave-pick" id="autosave-pick"><label for="autosave-select">Autosave</label></p>
           <p class="fine start-foot">The game loads its data as it needs it; the first start takes a little longer.
             <button type="button" class="linklike" id="forget-button">Forget my DK files</button></p>
         </section>
@@ -549,6 +556,17 @@
         computer, play with a mouse and keyboard or a controller. Tablets and phones (held sideways) work by
         touch; a phone's screen is small for Dungeon Keeper, so a tablet is nicer. You still need your Dungeon
         Keeper files on the device, or served to it (see <code>?dk=</code> in the docs).</p>
+    </details>
+    <details id="faq-autosave">
+      <summary>Does the game save by itself?</summary>
+      <p>Yes. While you play a level alone (the campaign, free play, skirmish against the computer) the game saves
+        itself every 5 minutes of play, and also when you hide or close the tab and when you press
+        <strong>Leave</strong>. It uses three autosaves of its own, replacing the oldest each time, so it never
+        touches your own saves and you can step back one or two if the last one came at a bad moment. They are at
+        the top of the game's <em>Load Game</em> list, and the start screen offers <strong>Continue where you left
+        off</strong> with the newest save, yours or an autosave. Change the interval (or turn it off) under
+        <em>Autosave</em> on the start screen or in your saves list; it is kept with your other settings. Online
+        games, replays and watching are not autosaved.</p>
     </details>
     <details>
       <summary>Something went wrong. How do I report it?</summary>

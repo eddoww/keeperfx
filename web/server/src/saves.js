@@ -31,7 +31,7 @@ export const LIMITS = {
 // Save slots, the continue link, campaign progress (<campaign>.cid), campaign
 // high score tables (named by the campaign, scr_*.dat in the shipped ones)
 // and the game's settings.
-const NAME_RE = /^(?:fx1g\d{4}\.sav|fx1lastf\.sav|[A-Za-z0-9_-]{1,48}\.cid|[A-Za-z0-9_-][A-Za-z0-9_.-]{0,47}\.dat|settings\.toml)$/;
+const NAME_RE = /^(?:fx1g\d{4}\.sav|fx1auto[1-9]\.sav|fx1lastf\.sav|[A-Za-z0-9_-]{1,48}\.cid|[A-Za-z0-9_-][A-Za-z0-9_.-]{0,47}\.dat|settings\.toml)$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 const INFO_KEYS = ['title', 'level', 'campaign', 'player', 'version'];
 
