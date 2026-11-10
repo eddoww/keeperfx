@@ -115,6 +115,8 @@ struct NetSP
     size_t (*readmsg)(NetUserId source, char *buffer, size_t max_size);
     void (*drop_user)(NetUserId id, enum NetJoinRejection reason);
     void (*reassign_user)(NetUserId old_id, NetUserId new_id);
+    // Optional (NULL: sendmsg_single to each): the same message to every user in user_mask.
+    void (*sendmsg_multi)(uint64_t user_mask, const char *buffer, size_t size);
 };
 
 enum NetUserProgress {

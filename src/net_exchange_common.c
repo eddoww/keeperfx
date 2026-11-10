@@ -60,6 +60,22 @@ extern long double host_packet_received;
 
 void send_to_active_peers(int send_count, enum NetworkPeerSendMode send_mode, const char *buffer, size_t msg_size, uint64_t user_mask)
 {
+    if (netstate.sp->sendmsg_multi != NULL) {
+        // A transport that can address several users with one message (the browser's relay).
+        uint64_t recipients = 0;
+        for (NetUserId id = 0; id < MAX_NET_CONNECTIONS; id += 1) {
+            if ((user_mask & (UINT64_C(1) << id)) != 0 && can_send_to_peer(id)) {
+                recipients |= UINT64_C(1) << id;
+            }
+        }
+        if (recipients != 0) {
+            int copies = (send_mode == NetSend_Reliable) ? 1 : send_count;
+            for (int i = 0; i < copies; i += 1) {
+                netstate.sp->sendmsg_multi(recipients, buffer, msg_size);
+            }
+        }
+        return;
+    }
     for (NetUserId id = 0; id < MAX_NET_CONNECTIONS; id += 1) {
         if ((user_mask & (UINT64_C(1) << id)) == 0 || !can_send_to_peer(id)) {
             continue;

@@ -68,6 +68,11 @@
 #include "timer.h"
 
 #include "kfx/save/SaveManager.h"
+#ifdef __EMSCRIPTEN__
+#include "kfx/platform/web/NetWebSP.h"
+// How long a game waiting for packets sleeps between checks when no message comes.
+#define WEB_NET_WAIT_SLICE_MS 5
+#endif
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -82,6 +87,7 @@ bool use_delta_time();
 
 /******************************************************************************/
 static short do_draw;
+static unsigned long gameplay_frames_presented;
 #define REWIND_TURNS_PER_SECOND 60
 static int64_t next_rewind_step_ns;
 static long double average_frame_draw_time = 1;
@@ -530,6 +536,7 @@ void gameplay_loop_draw()
     // Move the graphics window to center of screen buffer and swap screen
     if ( do_draw ) {
         RendererPresentFrame();
+        gameplay_frames_presented++;
     }
     frametime_end_measurement(Frametime_Draw);
 
@@ -547,7 +554,19 @@ void network_yield_waiting_gameplay_packets()
         exit_keeper = 1;
     }
     lbBufferKeyPresses = false;
+#ifdef __EMSCRIPTEN__
+    const unsigned long frames = gameplay_frames_presented;
+#endif
     gameplay_loop_draw();
+#ifdef __EMSCRIPTEN__
+    // The browser only hands the game its network messages while the game
+    // yields, which it does when it presents a frame. Between frames, wait
+    // for the next message rather than spin: the missing packet is processed
+    // as soon as it arrives instead of at the next frame.
+    if (gameplay_frames_presented == frames) {
+        web_net_wait(WEB_NET_WAIT_SLICE_MS);
+    }
+#endif
     update_gameplay_delta_time();
     // Reduce game speed during lag spikes.
     if (local_state.process_turn_time > 2.0)

@@ -24,18 +24,49 @@ addToLibrary({
   // Yield to the browser after each presented frame, so the canvas is shown
   // and input events arrive. Waits for the next animation frame (the display's
   // refresh, like vsync); in a hidden tab, where animation frames stop, it
-  // falls back to a short timeout so the game keeps running.
-  kfx_web_frame_yield__deps: ['$Asyncify'],
+  // wakes up from a worker instead (below), so the game keeps its pace.
+  kfx_web_frame_yield__deps: ['$Asyncify', '$kfxWakeAfter'],
   kfx_web_frame_yield__async: true,
   kfx_web_frame_yield: () => Asyncify.handleSleep((wakeUp) => {
     Module.kfxFrames = (Module.kfxFrames || 0) + 1;
     Module.kfxOnFrame?.();
     if (document.hidden) {
-      setTimeout(wakeUp, 0);
+      kfxWakeAfter(25, wakeUp); // at most 40 frames a second while hidden
     } else {
       requestAnimationFrame(() => wakeUp());
     }
   }),
+
+  // Sleeping (SDL_Delay, the network waits in NetWebSP.c) and the frames of a
+  // hidden tab. Browsers wake a hidden tab's timers at most once a second (and
+  // less after a few minutes), which slowed an online game to a turn or two a
+  // second for every player while one of them looked at another tab. A
+  // worker's timers are not throttled, and its messages are events, so a
+  // hidden tab sleeps on the worker's clock; a visible one uses setTimeout.
+  // While hidden the game keeps playing its turns (others are waiting for
+  // them) and draws a frame at most every 25 ms.
+  $kfxWake: { worker: null, next: 1, pending: new Map() },
+  $kfxWakeAfter__deps: ['$kfxWake'],
+  $kfxWakeAfter: (ms, fn) => {
+    if (typeof document === 'undefined' || !document.hidden || kfxWake.worker === false) { setTimeout(fn, ms); return; }
+    if (!kfxWake.worker) {
+      try {
+        const w = new Worker(URL.createObjectURL(new Blob(['onmessage = (e) => setTimeout(() => postMessage(e.data[0]), e.data[1]);'], { type: 'text/javascript' })));
+        w.onmessage = (e) => { const f = kfxWake.pending.get(e.data); kfxWake.pending.delete(e.data); if (f) f(); };
+        kfxWake.worker = w;
+      } catch (e) {
+        kfxWake.worker = false; // no workers here: throttled, but working
+        setTimeout(fn, ms);
+        return;
+      }
+    }
+    const id = kfxWake.next++;
+    kfxWake.pending.set(id, fn);
+    kfxWake.worker.postMessage([id, ms]);
+  },
+  emscripten_sleep__deps: ['$Asyncify', '$kfxWakeAfter'],
+  emscripten_sleep__async: true,
+  emscripten_sleep: (ms) => Asyncify.handleSleep((wakeUp) => kfxWakeAfter(ms, wakeUp)),
 
   $kfxLazyNode__deps: ['$FS', '$SYSCALLS', '$UTF8ToString'],
   $kfxLazyNode: (dirfd, pathPtr) => {
@@ -90,7 +121,7 @@ addToLibrary({
   //   {state: 'joined' | 'up' | 'reconnecting' | 'host-down' | 'peer-down' |
   //    'peer-up' | 'lost' | 'closed', code, host, role, ...}
 
-  $kfxNet: { ws: null, frames: [], texts: [], state: 0, closeCode: 0, link: null, ticker: null, frozenUntil: 0 },
+  $kfxNet: { ws: null, frames: [], texts: [], state: 0, closeCode: 0, link: null, ticker: null, frozenUntil: 0, waiter: null },
 
   $kfxNetEmit: (detail) => {
     Module.kfxNetStatus = detail;
@@ -99,7 +130,10 @@ addToLibrary({
 
   // Link timing (ms). The relay treats a socket silent for 15 s as dropped.
   // A page that only listens (a spectator) acknowledges every ACK_EVERY frames or ACK ms.
-  $kfxNetCfg: { PING: 5000, DEAD: 15000, GRACE: 90000, ACK: 5000, ACK_EVERY: 128, MAX_OUT: 32 * 1024 * 1024 },
+  // RTT: how often the page measures its round trip to the relay (a "ping" the
+  // relay's runtime answers without waking it), and reports it, for the game's
+  // input lag (NetWebSP.c, web_net_ping).
+  $kfxNetCfg: { PING: 5000, DEAD: 15000, GRACE: 90000, ACK: 5000, ACK_EVERY: 128, MAX_OUT: 32 * 1024 * 1024, RTT: 2000, RTT_REPORT: 10000 },
 
   // A one-second tick that background tabs do not slow down: a worker's
   // messages are events, not timers, so the browser's timer throttling for
@@ -177,7 +211,43 @@ addToLibrary({
     }
   },
 
-  $kfxNetAttach__deps: ['$kfxNet', '$kfxNetCfg', '$kfxNetTrim', '$kfxNetControl', '$kfxNetLost', '$kfxNetResumed', '$kfxNetSendAck', '$kfxNetEmit'],
+  // A pong: one round trip to the relay, through the same stream as the game's
+  // frames (so it includes their queueing). Event.timeStamp is when the
+  // message arrived, not when the game got round to it. Smoothed as ENet does.
+  $kfxNetPong__deps: ['$kfxNet', '$kfxNetCfg'],
+  $kfxNetPong: (l, at) => {
+    if (!l.pingAt) return;
+    const sample = Math.max(1, Math.round((at || performance.now()) - l.pingAt));
+    l.pingAt = 0;
+    // A ping that waited out an outage says nothing about the link: one far
+    // outside the estimate is ignored, unless three in a row are (the link
+    // really changed). Taking it pushed the input lag up for half a minute.
+    if (l.rtt && sample > 2 * l.rtt + 4 * l.rttVar + 500 && ++l.rttOutliers < 3) return;
+    l.rttOutliers = 0;
+    if (!l.rtt) { l.rtt = sample; l.rttVar = sample / 2; }
+    else {
+      const diff = sample - l.rtt;
+      l.rtt += diff / 8;
+      l.rttVar += (Math.abs(diff) - l.rttVar) / 4;
+    }
+    // Tell the relay (which tells the other end: the host about each joiner,
+    // the joiners about the host) when it changed or now and then. A relay
+    // that doesn't know this message ignores it.
+    const ws = kfxNet.ws;
+    const rtt = Math.round(l.rtt);
+    const v = Math.round(l.rttVar);
+    const now = Date.now();
+    if (ws && ws.readyState === 1 && l.id && l.phase === 'up' && Date.now() >= kfxNet.frozenUntil
+        && (Math.abs(rtt - l.rttSent) > Math.max(5, l.rttSent / 10) || Math.abs(v - l.varSent) > Math.max(5, l.varSent / 4)
+          || now - l.rttSentAt >= kfxNetCfg.RTT_REPORT)) {
+      ws.send(`{"type":"rtt","ms":${rtt},"var":${v}}`);
+      l.rttSent = rtt;
+      l.varSent = v;
+      l.rttSentAt = now;
+    }
+  },
+
+  $kfxNetAttach__deps: ['$kfxNet', '$kfxNetCfg', '$kfxNetTrim', '$kfxNetControl', '$kfxNetLost', '$kfxNetResumed', '$kfxNetSendAck', '$kfxNetEmit', '$kfxNetPong'],
   $kfxNetAttach: (ws) => {
     ws.binaryType = 'arraybuffer';
     ws.onopen = () => { if (kfxNet.ws === ws && !(kfxNet.link && kfxNet.link.phase === 'reconnecting')) kfxNet.state = 1; };
@@ -186,11 +256,12 @@ addToLibrary({
       const l = kfxNet.link;
       if (l) l.lastIn = Date.now();
       if (typeof ev.data === 'string') {
-        if (ev.data === 'pong') return;
+        if (ev.data === 'pong') { if (l) kfxNetPong(l, ev.timeStamp); return; }
         if (l && ev.data.startsWith('{"type":"link"')) {
           const m = JSON.parse(ev.data);
           l.id = m.id;
           l.secret = m.secret;
+          l.ops = Array.isArray(m.ops) ? m.ops : []; // optional frame ops this relay knows
           return;
         }
         if (l && ev.data.startsWith('{"type":"resumed"')) { kfxNetResumed(JSON.parse(ev.data).ack >>> 0); return; }
@@ -199,6 +270,7 @@ addToLibrary({
           if (m) { l.code = m[1]; kfxNetEmit({ state: 'up', code: l.code, host: true, role: 'host' }); }
         }
         kfxNet.texts.push(ev.data);
+        kfxNet.waiter?.();
         return;
       }
       let data = new Uint8Array(ev.data);
@@ -221,6 +293,7 @@ addToLibrary({
         if (data.length >= 2 && data[0] >= 8) kfxNetControl(l, data);
       }
       kfxNet.frames.push(data);
+      kfxNet.waiter?.();
     };
     ws.onclose = (ev) => {
       // (A test freeze hides the close too; the silence check finds it after.)
@@ -248,6 +321,7 @@ addToLibrary({
     }
     kfxNet.state = 2;
     kfxNet.closeCode = closeCode;
+    kfxNet.waiter?.();
     if (l) {
       kfxNet.link = null;
       if (l.id) kfxNetEmit({ state: 'lost', code: l.code, host: l.host, role: l.role, closeCode, reason: l.closing });
@@ -283,6 +357,7 @@ addToLibrary({
     l.phase = 'up';
     l.deadline = 0;
     l.sinceAck = 0;
+    l.pingAt = 0;
     l.lastSent = l.lastIn = Date.now();
     kfxNet.state = 1;
     kfxNetEmit({ state: 'up', resumed: true, code: l.code, host: l.host, role: l.role, after: Date.now() - l.since });
@@ -316,9 +391,15 @@ addToLibrary({
     if (ws.readyState > 1) { kfxNetLost(1006); return; } // closed while frozen
     if (ws.readyState !== 1) return;
     if (l.sinceAck > 0 && now - l.lastSent >= cfg.ACK) kfxNetSendAck(l);
-    if (now - l.lastPing >= cfg.PING && (now - l.lastSent >= cfg.PING || now - l.lastIn >= cfg.PING)) {
+    // A ping keeps a quiet connection checked, and measures the round trip.
+    // One that got no pong for long is forgotten (the silence check below
+    // deals with a dead connection).
+    if (l.pingAt && performance.now() - l.pingAt > cfg.DEAD) l.pingAt = 0;
+    if (!l.pingAt && (now - l.lastPing >= cfg.RTT
+        || (now - l.lastPing >= cfg.PING && (now - l.lastSent >= cfg.PING || now - l.lastIn >= cfg.PING)))) {
       ws.send('ping'); // answered by the relay's runtime, without waking it
       l.lastPing = now;
+      l.pingAt = performance.now();
     }
     if (now - l.lastIn >= cfg.DEAD) {
       // Nothing at all came back, not even a pong: the connection is gone
@@ -354,6 +435,7 @@ addToLibrary({
       role: host ? 'host' : ((/role=(\w+)/.exec(path) || [])[1] || 'player'),
       id: null, secret: null, inSeq: 0, outSeq: 0, out: [], outBytes: 0, sinceAck: 0,
       lastIn: now, lastSent: now, lastPing: now, phase: 'up', textQueue: [],
+      pingAt: 0, rtt: 0, rttVar: 0, rttOutliers: 0, rttSent: 0, varSent: 0, rttSentAt: 0,
     };
     let ws;
     try { ws = new WebSocket(url.href); } catch (e) { kfxNet.state = 2; kfxNet.link = null; return 0; }
@@ -365,7 +447,7 @@ addToLibrary({
       // and sending for a while (a dead connection the browser has not noticed).
       drop: () => kfxNet.ws && kfxNet.ws.close(3001, 'test drop'),
       freeze: (ms) => { kfxNet.frozenUntil = Date.now() + ms; },
-      get link() { const l = kfxNet.link; return l && { phase: l.phase, code: l.code, inSeq: l.inSeq, outSeq: l.outSeq, unacked: l.out ? l.out.length : -1 }; },
+      get link() { const l = kfxNet.link; return l && { phase: l.phase, code: l.code, inSeq: l.inSeq, outSeq: l.outSeq, unacked: l.out ? l.out.length : -1, rtt: l.rtt, rttVar: l.rttVar, buffered: kfxNet.ws ? kfxNet.ws.bufferedAmount : 0 }; },
     };
     return 1;
   },
@@ -375,6 +457,18 @@ addToLibrary({
   kfx_net_state: () => {
     if (kfxNet.link && kfxNet.link.phase === 'reconnecting') return 1;
     return (kfxNet.state === 2 && (kfxNet.frames.length || kfxNet.texts.length)) ? 1 : kfxNet.state;
+  },
+
+  // Whether the relay announced it handles frame op `op` (NetWebSP.c, MULTICAST).
+  kfx_net_relay_supports__deps: ['$kfxNet'],
+  kfx_net_relay_supports: (op) => (kfxNet.link && kfxNet.link.ops && kfxNet.link.ops.includes(op) ? 1 : 0),
+
+  // This page's round trip to the relay and its variation, in ms (0: not known yet).
+  kfx_net_rtt__deps: ['$kfxNet'],
+  kfx_net_rtt: (varPtr) => {
+    const l = kfxNet.link;
+    if (varPtr) HEAP32[varPtr >> 2] = l ? Math.round(l.rttVar) : 0;
+    return l ? Math.round(l.rtt) : 0;
   },
 
   kfx_net_close_code__deps: ['$kfxNet'],
@@ -421,6 +515,26 @@ addToLibrary({
     ws.send(UTF8ToString(ptr));
     return 1;
   },
+
+  // The game waits for a message (NetWebSP.c, web_net_wait): it sleeps until
+  // the next frame or text arrives, the socket closes, or ms pass, whichever
+  // comes first. The page only hears from the relay while the game yields, so
+  // a game that waited by spinning heard nothing until it drew its next frame.
+  kfx_net_waiting__deps: ['$kfxNet'],
+  kfx_net_waiting: () => (kfxNet.frames.length || kfxNet.texts.length || kfxNet.state === 2 ? 0 : 1),
+  kfx_net_wait__deps: ['$kfxNet', '$Asyncify', '$kfxWakeAfter'],
+  kfx_net_wait__async: true,
+  kfx_net_wait: (ms) => Asyncify.handleSleep((wakeUp) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (kfxNet.waiter === finish) kfxNet.waiter = null;
+      wakeUp();
+    };
+    kfxNet.waiter = finish;
+    kfxWakeAfter(ms, finish);
+  }),
 
   // Next binary frame: copies up to cap bytes, returns its full length, or -1.
   kfx_net_next__deps: ['$kfxNet'],

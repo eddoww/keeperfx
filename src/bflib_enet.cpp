@@ -14,6 +14,9 @@
 
 #include "pre_inc.h"
 #include "bflib_enet.h"
+#ifdef __EMSCRIPTEN__
+#include "kfx/platform/web/NetWebSP.h"
+#endif
 #include "bflib_datetm.h"
 #include "net_main.h"
 #include "front_network.h"
@@ -1127,6 +1130,10 @@ static bool IsLocalPeer(NetUserId id) {
 
 uint32_t GetPing(NetUserId id)
 {
+#ifdef __EMSCRIPTEN__
+    // Browsers play over the lobby relay (NetWebSP.c), not ENet.
+    return web_net_ping(id, nullptr);
+#endif
     ENetPeer *peer = client_peer;
     if (peer != nullptr) {
         if (id != SERVER_ID) {
@@ -1147,6 +1154,11 @@ uint32_t GetPing(NetUserId id)
 
 uint32_t GetPingVariance(NetUserId id)
 {
+#ifdef __EMSCRIPTEN__
+    uint32_t variance = 0;
+    web_net_ping(id, &variance);
+    return variance;
+#endif
     ENetPeer *peer = client_peer;
     if (peer != nullptr) {
         if (id != SERVER_ID) {
@@ -1163,6 +1175,11 @@ uint32_t GetPingVariance(NetUserId id)
 
 uint32_t GetPlayersPing(void)
 {
+#ifdef __EMSCRIPTEN__
+    if (!web_net_is_host()) {
+        return GetPing(SERVER_ID); // a joiner only talks to the host
+    }
+#endif
     if (client_peer != nullptr) {
         return GetPing(SERVER_ID);
     }
@@ -1384,6 +1401,7 @@ struct NetSP *InitEnetSP()
             .readmsg = &bf_enet_readmsg,
             .drop_user = &bf_enet_drop_user,
             .reassign_user = &bf_enet_reassign_user,
+            .sendmsg_multi = nullptr,
     };
     return &ret;
 }
