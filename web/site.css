@@ -701,6 +701,24 @@ body.theater .qm-dock { display: none; }
 
 /* ---- Small screens --------------------------------------------------------- */
 
+/* The top bar has grown (Workshop, Replays, Install, Discord): shed detail in
+   steps before anything overlaps. */
+.nav { overflow-x: auto; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.topbar-right { flex: none; }
+@media (max-width: 1340px) {
+  .presence { display: none; }
+  .topbar { gap: 14px; }
+}
+@media (max-width: 1200px) {
+  .nav a .icon { display: none; }
+  .nav a { padding: 9px 10px; }
+}
+@media (max-width: 1060px) {
+  .topbar-right .chip:not(#account-chip) span { display: none; }
+  .topbar-right .chip:not(#account-chip) { padding: 9px; }
+}
+
 @media (max-width: 980px) {
   .live, .features, .steps { grid-template-columns: 1fr; }
   .lobby-layout, .levels-layout, .guide-grid, .ws-item { grid-template-columns: 1fr; }
