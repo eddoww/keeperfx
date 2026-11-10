@@ -418,16 +418,38 @@ const Workshop = (() => {
     return data;
   }
 
-  /** Other workshop items an item needs, from its description ("requires [X](…/workshop/item/12)"). */
-  function needs(e) {
-    const ids = new Set();
-    for (const line of `${e.description || ''}\n${e.install || ''}`.split(/\r?\n/)) {
-      if (!/\b(requires?|required|needs?|depends? on|dependency|dependencies|prerequisite)\b/i.test(line)) continue;
-      if (/compatib|conflict|recommend|suggest|optional|inspired|based on|credit|thank/i.test(line)) continue;
-      for (const m of line.matchAll(/workshop\/item\/(\d+)/g)) if (Number(m[1]) !== e.id) ids.add(Number(m[1]));
+  /**
+   * Other workshop items an item's description links to as needed or as
+   * recommended: {need: [ids], also: [ids]}. Two ways authors write it: in one
+   * line ("requires [X](…/workshop/item/12)"), or as a heading ("**Required
+   * Mods**") with a list of links under it, up to the next heading or blank line.
+   */
+  function linkedItems(e) {
+    const need = new Set();
+    const also = new Set();
+    const NEED = /\b(requires?|required|requirements?|needs?|needed|depends? on|dependency|dependencies|prerequisites?)\b/i;
+    const ALSO = /recommend|suggest|optional|works well with|goes well with/i;
+    const OTHER = /compatib|conflict|inspired|based on|credit|thank/i;
+    const kind = (line) => (ALSO.test(line) ? also : OTHER.test(line) ? null : NEED.test(line) ? need : undefined);
+    let under = null; // the set the current heading's list goes to
+    for (const raw of `${e.description || ''}\n${e.install || ''}`.split(/\r?\n/)) {
+      const line = raw.replace(/^[\s>]+/, '');
+      const ids = [...line.matchAll(/workshop\/item\/(\d+)/g)].map((m) => Number(m[1])).filter((n) => n !== e.id);
+      if (!line.trim()) { under = null; continue; }
+      if (!ids.length) {
+        // A short line without links is a heading; any other text ends a list.
+        const bare = line.replace(/[*_#`:\[\]!]/g, '').trim();
+        under = bare.length <= 60 ? (kind(bare) || null) : null;
+        continue;
+      }
+      const own = kind(line);
+      const to = own !== undefined ? own : under;
+      if (to) for (const n of ids) to.add(n);
     }
-    return [...ids];
+    for (const n of need) also.delete(n);
+    return { need: [...need], also: [...also] };
   }
+  const needs = (e) => linkedItems(e).need;
 
   /** Items its author says it does not work with (a "Mod Conflictions" note...). */
   function declaredConflicts(e) {
@@ -986,11 +1008,13 @@ const Workshop = (() => {
         } }, 'Remove'))].filter(Boolean));
     } else {
       const deps = needs(e).filter((n) => !installed.has(n) && byId(n));
+      const extras = linkedItems(e).also.filter((n) => !installed.has(n) && byId(n));
       actions.append(h('button', { class: 'btn primary big', type: 'button', onclick: () => act(() => install(id)) }, icon('save'), 'Add to my game'),
         h('p', { class: 'fine' }, CATS[e.cat] && CATS[e.cat].group === 'mods'
           ? 'Downloads it from keeperfx.net into this browser and adds it as a mod layer over the game: nothing of the game is replaced, and you can switch it off or remove it.'
           : 'Downloads it from keeperfx.net into this browser. It stays here, like your saves.'),
-        ...(deps.length ? [h('p', { class: 'fine' }, 'It needs ', ...deps.flatMap((n, i) => [i ? ', ' : '', h('a', { href: `#/workshop/item/${n}` }, byId(n).name)]), ' too; you will be asked to add ', deps.length === 1 ? 'it' : 'them', '.')] : []));
+        ...(deps.length ? [h('p', { class: 'fine' }, 'It needs ', ...deps.flatMap((n, i) => [i ? ', ' : '', h('a', { href: `#/workshop/item/${n}` }, byId(n).name)]), ' too; you will be asked to add ', deps.length === 1 ? 'it' : 'them', '.')] : []),
+        ...(extras.length ? [h('p', { class: 'fine' }, 'Its author also recommends ', ...extras.flatMap((n, i) => [i ? ', ' : '', h('a', { href: `#/workshop/item/${n}` }, byId(n).name)]), '.')] : []));
     }
 
     const facts = h('dl', { class: 'ws-facts' },
@@ -1094,12 +1118,12 @@ const Workshop = (() => {
     const safe = h('div', { class: 'ws-safe' },
       h('div', {}, h('b', {}, 'Something broke?'), h('small', {}, 'Start the game once without any mods (they stay installed and keep their settings).')),
       h('button', { class: 'btn', type: 'button', onclick: () => Site.start({ mode: 'play', nomods: true, label: 'without mods' }) }, icon('play'), 'Start without mods'));
-    body.replaceChildren(tabs, intro,
+    body.replaceChildren(...[tabs, intro,
       h('div', { class: 'ws-modlist' }, rows),
       clashes.length ? h('div', { class: 'ws-clashes' }, h('h3', {}, `${clashes.length === 1 ? 'A conflict' : `${clashes.length} conflicts`} between mods that are on`),
         ...clashes.map((c) => h('p', { class: 'ws-warn' }, c.text))) : null,
       h('p', { class: 'fine' }, `${enabled.length} of ${items.length} on.`),
-      safe);
+      safe].filter(Boolean));
   }
 
   let renderGridFn = null;

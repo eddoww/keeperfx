@@ -441,7 +441,7 @@ const Versions = (() => {
       h('span', { class: 'fine' }, shortDate(current.date)),
       choices > 1 || (current.changes || []).length
         ? h('button', { type: 'button', class: 'linklike', onclick: openDialog }, choices > 1 ? 'What’s new / change' : 'What’s new')
-        : null,
+        : '',
       ...extra);
   }
 
