@@ -54,6 +54,8 @@ const Versions = (() => {
   const RECENT_MAX = 3; // builds whose engine and data stay cached
   const PAGE_ID = 'page'; // the engine next to the page
   const ENGINE = (document.querySelector('meta[name="kfx-engine"]') || {}).content || '';
+  // The network compatibility key of the engine next to the page (web/stamp-version.py), see compatOf().
+  const PAGE_COMPAT = (document.querySelector('meta[name="kfx-net-compat"]') || {}).content || '';
   const BACKUPS = '/persist/backups';
   const MARK = '/persist/.kfx-build';
   const MAX_BACKUPS = 3;
@@ -89,9 +91,38 @@ const Versions = (() => {
       || listed().find((b) => b.version === text || b.version.endsWith(`.${text}`)) || null;
   }
 
-  /** The build a lobby runs, if this site offers it: its build id, else the same version. */
+  // Network compatibility (src/net_compat.h, web/server/src/netcompat.js): a build's key is
+  // "<oldest protocol>-<protocol>/<simulation>" (index.json "netCompat"). Builds whose keys say
+  // they can play together join each other's lobbies without switching version; builds and
+  // lobbies from before the key only meet on exactly the same build.
+  function parseCompat(text) {
+    const m = typeof text === 'string' ? /^(\d{1,5})-(\d{1,5})\/(\d{1,10})$/.exec(text) : null;
+    return m && Number(m[1]) <= Number(m[2]) ? { oldest: Number(m[1]), protocol: Number(m[2]), sim: Number(m[3]) } : null;
+  }
+  function netCompatible(a, b) {
+    const x = parseCompat(a); const y = parseCompat(b);
+    return !!x && !!y && x.sim === y.sim && x.protocol >= y.oldest && y.protocol >= x.oldest;
+  }
+  /** A build's compatibility key ('' if it has none). */
+  function compatOf(build) {
+    if (!build) return '';
+    if (build.legacy) return parseCompat(PAGE_COMPAT) ? PAGE_COMPAT : '';
+    return parseCompat(build.netCompat) ? build.netCompat : '';
+  }
+
+  /** The build a lobby runs, if this site offers it: one that can play with it (the running
+   * build first, then the lobby's own, then the newest), else its build id or version. */
   function forLobby(lobby) {
+    if (lobby && lobby.netCompat && netCompatible(lobby.netCompat, compatOf(current))) {
+      return { build: current, same: true, missing: false };
+    }
     if (!index || !lobby) return { build: current, same: true, missing: false };
+    if (lobby.netCompat && parseCompat(lobby.netCompat)) {
+      const own = lobby.build && byId(lobby.build);
+      const build = (own && netCompatible(lobby.netCompat, compatOf(own)) && own)
+        || listed().find((b) => netCompatible(lobby.netCompat, compatOf(b))) || null;
+      if (build) return { build, same: !!current && build.id === current.id, missing: false };
+    }
     if (lobby.build === PAGE_ID) {
       // Hosted with the engine next to the page (?build=page): the same for everyone on this page.
       return { build: current.legacy ? current : legacyBuild(), same: !!current.legacy, missing: false };
@@ -511,6 +542,7 @@ const Versions = (() => {
 
   return {
     ready, loadEngine, locate, otherManifestUrls, noteRun, forLobby, forReplay, supports, tag, openDialog, urlFor,
+    compatOf, netCompatible,
     cacheEngine, cachedEngines, ENGINE_CACHE,
     get current() { return current; },
     get offered() { return offered; },

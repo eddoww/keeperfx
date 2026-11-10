@@ -18,10 +18,12 @@
 // "idle" (start screen or stopped), "busy" (a game is running: joining means leaving it),
 // "nofiles" (no Dungeon Keeper files yet: can join once they are added, but can't host).
 // A match needs at least one keeper who can host; the host is picked idle first, then oldest.
-// build: the engine build the page runs (web/kfx_versions.js; "" on a single-build site). Only
-// keepers on the same build are matched or sent to a seat: different builds can't play together.
+// build: the engine build the page runs (web/kfx_versions.js; "" on a single-build site).
+// compat: that build's network compatibility key (netcompat.js, src/net_compat.h). Keepers are
+// matched or sent to a seat when their keys say they can play together, so different builds
+// with the same game rules meet; a page or lobby without a key is matched by exact build.
 //
-//   page -> tavern  {type:"qm-join", size:2|"any", state, name, client, since?, build?}
+//   page -> tavern  {type:"qm-join", size:2|"any", state, name, client, since?, build?, compat?}
 //                   {type:"qm-state", state}           the game's state changed
 //                   {type:"qm-leave"}                  cancel (queue or match)
 //                   {type:"qm-reloading"}              the page reloads into the match (keep my place)
@@ -43,6 +45,8 @@
 // Worker then calls hosted() (one Durable Object request per match), which hands the
 // lobby code to the joiners. A lobby hosted with ?qmseat=2|any becomes a seat (seat()).
 // Quick-match lobbies tell us when their game starts or they close (ended()).
+
+import { compatOf, sameGame } from './netcompat.js';
 
 const MATCH_TTL = 10 * 60 * 1000;       // a match record is kept this long (late qm-resume)
 const SEAT_TTL = 20 * 60 * 1000;        // a seat is offered this long
@@ -182,6 +186,7 @@ export class QuickMatch {
           name,
           client,
           build: buildOf(msg.build),
+          compat: compatOf(msg.compat),
         };
         // One place per browser: a second tab takes it over.
         if (client) {
@@ -385,7 +390,7 @@ export class QuickMatch {
         if (room <= 0) break;
         // A two-keeper player only takes a lobby where they make the second keeper.
         if (this.info(ws).qm.size === 2 && occupied !== 1) continue;
-        if ((this.info(ws).qm.build || '') !== (seat.build || '')) continue; // another game version
+        if (!sameGame(this.info(ws).qm, { build: seat.build, compat: compatOf(lobby?.netCompat) })) continue; // can't play together
         this.setQm(ws, null);
         this.send(ws, { type: 'qm-go', code: seat.code, host: seat.name });
         seat.sent.push(now);
@@ -402,8 +407,7 @@ export class QuickMatch {
       const first = waiting.find((ws) => !skipped.has(ws));
       if (!first) break;
       const entry = (ws) => this.info(ws).qm;
-      const build = entry(first).build || '';
-      const others = waiting.filter((ws) => ws !== first && (entry(ws).build || '') === build);
+      const others = waiting.filter((ws) => ws !== first && sameGame(entry(ws), entry(first)));
       let group;
       if (entry(first).size === 2) {
         const mate = others.find((ws) => canHost(entry(first)) || canHost(entry(ws)));
