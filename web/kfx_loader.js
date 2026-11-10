@@ -7,6 +7,8 @@
 //              (see web/kfx_web.js and src/kfx/platform/web/WebFileSystem.c).
 //   /persist   IndexedDB-backed, survives reloads. Holds the player's DK files
 //              (dk/), music, saves, replays and screenshots; /kfx links to them.
+//              /kfx/save is /persist/save, or the folder of a game version
+//              that keeps its saves apart (Versions.saveDir, web/kfx_versions.js).
 // Workshop items the player installed (web/kfx_workshop.js) keep their files
 // in an IndexedDB of their own and appear in /kfx as lazy placeholders too.
 'use strict';
@@ -251,9 +253,10 @@ function linkPlayerFiles() {
     FS.symlink(`/persist/dk/${rel}`, target);
   }
   for (const dir of PERSIST_DIRS) {
-    FS.mkdirTree(`/persist/${dir}`);
+    const target = dir === 'save' ? Versions.saveDir : `/persist/${dir}`;
+    FS.mkdirTree(target);
     if (exists(`${GAME_DIR}/${dir}`)) continue;
-    FS.symlink(`/persist/${dir}`, `${GAME_DIR}/${dir}`);
+    FS.symlink(target, `${GAME_DIR}/${dir}`);
   }
 }
 
@@ -845,14 +848,15 @@ let fsReady = false;
 // presses Leave. The interval is the game's own setting, autosave_minutes in
 // the [gameplay] section of save/settings.toml, which cloud saves carry to
 // the player's other browsers.
-const SETTINGS_FILE = '/persist/save/settings.toml';
+// In the running version's save folder (Versions.saveDir).
+const settingsFile = () => `${Versions.saveDir}/settings.toml`;
 const AUTOSAVE_DEFAULT = 5; // the browser build's default (DEFAULT_AUTOSAVE_MINUTES)
 const AUTOSAVE_CHOICES = [0, 2, 5, 10, 15, 30];
 const engineCall = (name) => (KFX.state === 'running' && typeof Module === 'object' && Module[`_kfx_web_${name}`]) || null;
 
 /** Sets lines of a section of settings.toml, which the game reads at start. values: {key: 'toml value'}. */
 function editSettings(section, values) {
-  const text = exists(SETTINGS_FILE) ? FS.readFile(SETTINGS_FILE, { encoding: 'utf8' }) : '';
+  const text = exists(settingsFile()) ? FS.readFile(settingsFile(), { encoding: 'utf8' }) : '';
   const lines = text.split('\n');
   let start = lines.findIndex((l) => new RegExp(`^\\s*\\[${section}\\]`).test(l));
   if (start < 0) {
@@ -868,8 +872,8 @@ function editSettings(section, values) {
     if (at >= 0) lines[at] = line;
     else { lines.splice(start + 1, 0, line); end++; }
   }
-  FS.mkdirTree('/persist/save');
-  FS.writeFile(SETTINGS_FILE, lines.join('\n').replace(/^\n+/, '').replace(/\n*$/, '\n'));
+  FS.mkdirTree(Versions.saveDir);
+  FS.writeFile(settingsFile(), lines.join('\n').replace(/^\n+/, '').replace(/\n*$/, '\n'));
 }
 
 /** Minutes of play between autosaves (0: off). */
@@ -877,7 +881,7 @@ function autosaveMinutes() {
   const state = engineCall('autosave_state');
   if (state && Module.kfxFrames) return state() & 255; // once the game has read its settings
   try {
-    const text = FS.readFile(SETTINGS_FILE, { encoding: 'utf8' });
+    const text = FS.readFile(settingsFile(), { encoding: 'utf8' });
     const gameplay = text.split(/^\s*\[/m).find((s) => /^gameplay\]/.test(s)) || '';
     const m = /^\s*autosave_minutes\s*=\s*(\d+)/m.exec(gameplay);
     if (m) return Math.min(60, Number(m[1]));
@@ -961,11 +965,12 @@ function ago(ms) {
 /** The newest save in this browser, autosave or the player's: {name, mtime, info}, or null. */
 function newestSave() {
   let names = [];
-  try { names = FS.readdir('/persist/save').filter((n) => SAVE_FILE_RE.test(n)); } catch (e) { return null; }
-  const saves = names.map((name) => ({ name, mtime: +FS.stat(`/persist/save/${name}`).mtime }))
+  const dir = Versions.saveDir;
+  try { names = FS.readdir(dir).filter((n) => SAVE_FILE_RE.test(n)); } catch (e) { return null; }
+  const saves = names.map((name) => ({ name, mtime: +FS.stat(`${dir}/${name}`).mtime }))
     .sort((a, b) => b.mtime - a.mtime);
   for (const save of saves) {
-    const info = typeof CloudSaves === 'object' ? CloudSaves.saveInfo(FS.readFile(`/persist/save/${save.name}`)) : {};
+    const info = typeof CloudSaves === 'object' ? CloudSaves.saveInfo(FS.readFile(`${dir}/${save.name}`)) : {};
     if (info.title !== undefined) return { ...save, info };
   }
   return null;
@@ -996,7 +1001,9 @@ function renderContinue() {
 
 function setupStartExtras() {
   const pick = $('autosave-pick');
-  if (pick && !pick.querySelector('select')) pick.append(autosaveSelect('autosave-select'));
+  // An engine without autosave (a stable release before it): no interval to choose.
+  if (pick) pick.hidden = !Versions.supports('autosave');
+  if (pick && !pick.hidden && !pick.querySelector('select')) pick.append(autosaveSelect('autosave-select'));
   $('continue-button').addEventListener('click', () => {
     const box = $('continue');
     if (!box.dataset.file) return;
