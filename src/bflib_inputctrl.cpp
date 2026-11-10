@@ -37,6 +37,7 @@
 #include "game_legacy.h"
 #include "keeperfx.hpp"
 #include <SDL2/SDL.h>
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 using namespace std;
@@ -333,6 +334,9 @@ static void process_event(const SDL_Event *ev)
         }
         else
         {
+            // In the browser the page places an uncaptured cursor itself.
+            if (KFX_WEB_MOUSE_FROM_PAGE())
+                break;
             mouseDelta.x = ev->motion.xrel;
             mouseDelta.y = ev->motion.yrel;
             if (isMouseActivated)
@@ -620,7 +624,12 @@ void LbGrabMouseCheck(long grab_event)
                 }
                 break;
             case MG_InitMouse:
+#ifdef __EMSCRIPTEN__
+                    // The page asks for a captured mouse (CAPTURE_CURSOR) or places it itself.
+                    grab_cursor = lbMouseGrab;
+#else
                     grab_cursor = true;
+#endif
                 break;
             case MG_OnFocusGained:
                 grab_cursor = lbMouseGrab;

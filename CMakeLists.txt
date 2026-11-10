@@ -7,6 +7,14 @@ endif ()
 
 project(keeperfx C CXX)
 
+# Browser build (emcmake cmake): web/WebBuild.cmake, see docs/web.md.
+if(EMSCRIPTEN)
+    set(CMAKE_C_STANDARD 11)
+    set(CMAKE_CXX_STANDARD 20)
+    include(web/WebBuild.cmake)
+    return()
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 

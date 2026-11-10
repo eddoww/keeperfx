@@ -250,6 +250,14 @@ TbError LbNetwork_Create(char *, char *plyr_name, uint32_t *plyr_num, void *optn
     if (frontnet_service_selected(FrontendNetSvc_LAN)) {
         lan_host_start(plyr_name, local_port);
     }
+#ifdef __EMSCRIPTEN__
+    // Browser build: no threads; the relay made the lobby (NetWebSP.c), this
+    // publishes it in the site's lobby list.
+    if (frontnet_service_selected(FrontendNetSvc_Online)) {
+        snprintf(netstate.users[SERVER_ID].name, sizeof(netstate.users[SERVER_ID].name), "%s", plyr_name);
+        matchmaking_create(plyr_name, (int)ipv4_port, (int)ipv6_port);
+    }
+#else
     if (frontnet_service_selected(FrontendNetSvc_Online)) {
         struct MatchmakingCreateTask *task = malloc(sizeof(struct MatchmakingCreateTask));
         if (task != NULL) {
@@ -264,6 +272,7 @@ TbError LbNetwork_Create(char *, char *plyr_name, uint32_t *plyr_num, void *optn
             }
         }
     }
+#endif
     netstate.my_id = SERVER_ID;
     snprintf(netstate.users[netstate.my_id].name, sizeof(netstate.users[netstate.my_id].name), "%s", plyr_name);
     netstate.users[netstate.my_id].progress = USER_LOGGEDIN;

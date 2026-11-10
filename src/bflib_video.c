@@ -31,6 +31,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
 #include <math.h>
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 #define SCREEN_MODES_COUNT 40
@@ -164,6 +165,8 @@ TbResult LbScreenSwap(void)
         }
     }
     LbMouseOnEndSwap();
+    // Browser build: let the page show the frame and deliver input.
+    KFX_WEB_FRAME_YIELD();
     return ret;
 }
 

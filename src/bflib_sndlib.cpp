@@ -8,6 +8,12 @@
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <AL/alext.h>
+#ifndef AL_FORMAT_MONO_MSADPCM_SOFT
+// Emscripten's OpenAL lacks AL_SOFT_MSADPCM. The tags only mark ADPCM samples,
+// which are converted to PCM before alBufferData (see sound_sample).
+#define AL_FORMAT_MONO_MSADPCM_SOFT   0x1302
+#define AL_FORMAT_STEREO_MSADPCM_SOFT 0x1303
+#endif
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
 #include <cstddef>

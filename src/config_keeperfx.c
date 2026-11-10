@@ -155,6 +155,12 @@ const struct NamedCommand conf_commands[] = {
   {"FRAMES_PER_SECOND"             , 39},
   {"TAG_MODE_TOGGLING"             , 40},
   {"DEFAULT_TAG_MODE"              , 41},
+#ifdef __EMSCRIPTEN__
+  // Browser build: the page writes it (web/kfx_loader.js, "The mouse"), as the
+  // alpha builds have it. OFF: the page places the cursor, the game takes the
+  // mouse only in possession; ON: always captured, like 1.4 on the desktop.
+  {"CAPTURE_CURSOR"                , 1000},
+#endif
   {NULL,                   0},
   };
 
@@ -821,6 +827,18 @@ static void load_file_configuration(const char *fname, const char *sname, const 
               CONFWRNLOG("Invalid API port '%s' in %s file.",COMMAND_TEXT(cmd_num),config_textname);
           }
           break;
+#ifdef __EMSCRIPTEN__
+      case 1000: // CAPTURE_CURSOR
+          i = recognize_conf_parameter(buf,&pos,len,logicval_type);
+          if (i <= 0)
+          {
+              CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
+                COMMAND_TEXT(cmd_num),config_textname);
+            break;
+          }
+          lbMouseGrab = (i == 1);
+          break;
+#endif
       case 35: // EXIT_ON_LUA_ERROR
           i = recognize_conf_parameter(buf,&pos,len,logicval_type);
           if (i <= 0)

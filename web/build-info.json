@@ -1,0 +1,5 @@
+{
+  "about": "KeeperFX 1.4 for the browser (branch web-stable-1.4). Read by web/publish-build.py on the web branch: page features this engine lacks (the page hides them) and the kind of saves it writes (1.4 writes save/ files with the alpha's names in its own format, so the page keeps them in /persist/save-1.4). See docs/web.md there, 'Game versions'.",
+  "lacks": ["autosave", "cloudsaves", "replays", "spectate", "touchcamera", "waitusers"],
+  "saves": "1.4"
+}

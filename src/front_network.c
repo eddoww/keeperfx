@@ -48,6 +48,10 @@
 #include "net_input_lag.h"
 #include "bflib_enet.h"
 #include "config_campaigns.h"
+#include "kfx/platform/web/WebPlatform.h"
+#ifdef __EMSCRIPTEN__
+#include "value_util.h"
+#endif
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -629,6 +633,7 @@ void frontnet_start_update(void)
 
     frontnet_is_waiting_for_ping_stabilization();
     handle_autostart_multiplayer_messaging();
+    KFX_WEB_LOBBY_UPDATE();
 
     if ((net_number_of_messages <= 0) || (net_message_scroll_offset < 0))
     {
@@ -679,6 +684,27 @@ TbBool attempting_to_join_cancel_requested(void)
     return attempting_to_join_cancelled;
 }
 
+#ifdef __EMSCRIPTEN__
+/** Browser build: the keeper name the site gives (the signed-in account's
+ * name, or the one typed on the page), written by the page as player_name in
+ * the [network] section of save/settings.toml, as the alpha builds read it. */
+static void net_load_web_player_name(void)
+{
+    char *fname = prepare_file_path(FGrp_Save, "settings.toml");
+    VALUE root;
+    if (!load_toml_file(fname, &root, CnfLd_IgnoreErrors)) {
+        NETMSG("No keeper name from the page (%s)", fname);
+        return;
+    }
+    VALUE *section = value_dict_get(&root, "network");
+    VALUE *name = section ? value_dict_get(section, "player_name") : NULL;
+    if (name && value_type(name) == VALUE_STRING && value_string(name)[0] != '\0')
+        snprintf(net_config_info.net_player_name, sizeof(net_config_info.net_player_name), "%s", value_string(name));
+    NETMSG("Keeper name: \"%s\"", net_config_info.net_player_name);
+    value_fini(&root);
+}
+#endif
+
 void net_load_config_file(void)
 {
     // Try to load the config file
@@ -689,6 +715,9 @@ void net_load_config_file(void)
       if (LbFileRead(handle, &net_config_info, sizeof(net_config_info)) == sizeof(net_config_info))
       {
         LbFileClose(handle);
+#ifdef __EMSCRIPTEN__
+        net_load_web_player_name();
+#endif
         return;
       }
       LbFileClose(handle);
@@ -696,6 +725,9 @@ void net_load_config_file(void)
     // If can't load, then use default config
     memcpy(&net_config_info, &default_net_config_info, sizeof(net_config_info));
     snprintf(net_config_info.net_player_name, sizeof(net_config_info.net_player_name), "%s", get_string(GUIStr_MnuNoName));
+#ifdef __EMSCRIPTEN__
+    net_load_web_player_name();
+#endif
 }
 
 void net_write_config_file(void)

@@ -25,7 +25,7 @@
 #include "bflib_crash.h"
 #include <signal.h>
 #include <stdarg.h>
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) // wasm has no signals or stack unwinding to report
 #define BF_POSIX_CRASH 1
 #endif
 #if defined(_WIN32)
@@ -97,7 +97,7 @@ static const char* sigstr(int s)
 #ifdef SIGPWR
     case SIGPWR : return "Power failure restart (System V)";
 #endif
-#else
+#elif defined(_WIN32)
     case SIGBREAK : return "Ctrl-Break (Win32)";
 #endif
     }
@@ -592,7 +592,7 @@ void LbErrorParachuteInstall(void)
 #ifdef SIGSYS
     signal(SIGSYS,ctrl_handler);
 #endif
-#else
+#elif defined(_WIN32)
     signal(SIGBREAK,ctrl_handler);
 #endif
 #endif

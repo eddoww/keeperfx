@@ -32,6 +32,7 @@
 #include "bflib_vidraw.h"
 #include "bflib_mshandler.hpp"
 #include "bflib_inputctrl.h"
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -175,7 +176,7 @@ TbBool IsMouseInsideWindow(void)
     {
         isMouseInsideWindow = false; // LbIsMouseActive() == false when mouse cursor outside window
     }
-    return isMouseInsideWindow;
+    return KFX_WEB_CURSOR_INSIDE(isMouseInsideWindow);
 }
 
 TbResult LbMouseChangeSprite(const struct TbSprite *pointerSprite)
