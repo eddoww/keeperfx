@@ -10,6 +10,10 @@ hashes them and makes index.html request every script and stylesheet as
 <name>?v=<hash>;
 the loader asks for keeperfx.wasm?v=<hash> too (the kfx-build meta tag), so
 browser and CDN caches can never mix two builds.
+
+It also writes the kfx-engine meta tag: a hash of keeperfx.wasm alone. A
+replay only plays back on the engine that recorded it (web/kfx_replays.js),
+and page-only changes must not count as a new engine.
 """
 import hashlib
 import os
@@ -32,13 +36,16 @@ def main():
         with open(os.path.join(site, name), "rb") as f:
             h.update(f.read())
     build = h.hexdigest()[:12]
+    with open(os.path.join(site, "keeperfx.wasm"), "rb") as f:
+        engine = hashlib.sha1(f.read()).hexdigest()[:12]
     html = re.sub(r'<script src="([A-Za-z0-9_.-]+\.js)(\?v=[0-9a-f]*)?"', rf'<script src="\1?v={build}"', html)
     html = re.sub(r'<link rel="stylesheet" href="([A-Za-z0-9_.-]+\.css)(\?v=[0-9a-f]*)?"',
                   rf'<link rel="stylesheet" href="\1?v={build}"', html)
     html = re.sub(r'<meta name="kfx-build" content="[^"]*">', f'<meta name="kfx-build" content="{build}">', html)
+    html = re.sub(r'<meta name="kfx-engine" content="[^"]*">', f'<meta name="kfx-engine" content="{engine}">', html)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"build {build}")
+    print(f"build {build}, engine {engine}")
 
 
 if __name__ == "__main__":

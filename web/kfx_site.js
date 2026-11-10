@@ -101,7 +101,10 @@ const Site = (() => {
 
   // ---- Views ------------------------------------------------------------------
 
-  const VIEWS = ['home', 'play', 'lobbies', 'fame', 'guide'];
+  // replays and watch belong to web/kfx_replays.js, which draws them on the
+  // site:route event; #/replay/<id> is a replay's own page.
+  const VIEWS = ['home', 'play', 'lobbies', 'fame', 'replays', 'watch', 'guide'];
+  const ONLINE_VIEWS = ['lobbies', 'fame', 'replays', 'watch'];
   const OLD_ANCHORS = { how: 'guide', online: 'guide', controls: 'guide', faq: 'guide', credits: 'home' };
   let current = { view: '', parts: [] };
 
@@ -113,8 +116,9 @@ const Site = (() => {
     let view = parts.shift() || '';
     if (OLD_ANCHORS[view]) { parts.unshift(view); view = OLD_ANCHORS[view]; }
     if (view === 'keeper') { parts.unshift('keeper'); view = 'fame'; }
+    if (view === 'replay') view = 'replays';
     if (!VIEWS.includes(view)) view = 'home';
-    if (!online && (view === 'lobbies' || view === 'fame')) view = 'home';
+    if (!online && ONLINE_VIEWS.includes(view)) view = 'home';
     return { view, parts };
   }
 
@@ -140,6 +144,7 @@ const Site = (() => {
     if (next.view === 'fame') renderFame(next.parts);
     if (next.view === 'guide' && next.parts[0]) $(next.parts[0])?.scrollIntoView();
     if (next.view === 'play') window.dispatchEvent(new Event('resize')); // the stage just got a size
+    document.dispatchEvent(new CustomEvent('site:route', { detail: next }));
     Embers.update();
   }
 
@@ -387,6 +392,9 @@ const Site = (() => {
     if (mine) actions.push(h('a', { class: 'btn', href: '#/play' }, 'Your lobby'));
     if (canJoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => join(l.id) }, icon('sword'), inLobby(l) ? 'Join' : 'Rejoin'));
     if (canWatch(l)) actions.push(h('button', { class: 'btn', type: 'button', onclick: () => join(l.id, true) }, icon('eye'), 'Watch'));
+    if (l.spectatorsEnabled && !inLobby(l)) {
+      actions.push(h('a', { class: 'btn icon-only', href: `#/watch/${l.id}`, title: 'Watch link to share' }, icon('link')));
+    }
     if (!actions.length) actions.push(h('span', { class: 'pill plain' }, players.length >= max ? 'Full' : 'Closed'));
     return h('article', { class: `lobby${cls === 'busy' ? ' busy' : ''}${mine ? ' mine' : ''}` },
       h('div', {},
@@ -418,6 +426,7 @@ const Site = (() => {
         list.replaceChildren(...lobbies.map(lobbyCard));
       }
     }
+    document.dispatchEvent(new CustomEvent('site:lobbies', { detail: lobbies }));
     const home = $('home-lobbies');
     if (current.view === 'home' && lobbies !== null) {
       if (!count) {
@@ -467,6 +476,10 @@ const Site = (() => {
         return h('div', { class: 'line news victory', 'data-id': line.id }, icon('trophy'), ' ', keeperLink(line.name),
           ' conquered ', h('a', { href: `#/fame/levels/${encodeURIComponent(line.campaign)}/${line.level}` }, line.levelName),
           ` with ${num(line.score)} points${line.rank ? ` (#${line.rank})` : ''}.`, time, remove);
+      }
+      if (line.kind === 'replay') {
+        return h('div', { class: 'line news', 'data-id': line.id }, icon('film'), ' ', keeperLink(line.name),
+          ' published a replay: ', h('a', { href: `#/replay/${encodeURIComponent(line.replay)}` }, line.title || line.levelName), '.', time, remove);
       }
       const who = keeperLink(line.name);
       who.className = 'who';
@@ -686,6 +699,7 @@ const Site = (() => {
         h('a', { href: base, class: by === 'score' ? 'current' : '' }, 'Best score'),
         h('a', { href: `${base}/time`, class: by === 'time' ? 'current' : '' }, 'Fastest'))));
     board.replaceChildren(inner);
+    document.dispatchEvent(new CustomEvent('site:fame', { detail: { kind: 'level', campaign, level, node: inner } }));
   }
 
   async function fameKeeper(body, name) {
@@ -719,6 +733,7 @@ const Site = (() => {
         { title: 'Score', num: true, cell: (r) => num(r.score) },
         { title: 'Time', num: true, cell: (r) => gameTime(r.turns) },
       ], k.recent, 'No games recorded yet.'));
+    document.dispatchEvent(new CustomEvent('site:fame', { detail: { kind: 'keeper', name: k.name, node: body } }));
   }
 
   async function renderFame(parts) {
@@ -756,6 +771,10 @@ const Site = (() => {
 
   async function onLevelResult(result) {
     if (!online) return;
+    // A replay plays the recorded keeper's game again, and a spectator only
+    // watches: neither is the player's own result.
+    const choice = window.KFX && KFX.choice;
+    if (choice && (choice.mode === 'replay' || choice.spectate)) return;
     result = { ...result, at: Date.now() };
     const levelName = result.levelName || `level ${result.level}`;
     if (!Account.user) {
@@ -864,5 +883,11 @@ const Site = (() => {
 
   init();
 
-  return { config, toast, start, join, openHost, openAccount, keeperName, codeOf, get online() { return online; } };
+  return {
+    config, toast, start, join, openHost, openAccount, keeperName, codeOf, api,
+    ui: { h, icon, num, ago, gameTime, keeperLink, store, KEEPER_COLOURS },
+    get online() { return online; },
+    get lobbies() { return lobbies; },
+    get view() { return current; },
+  };
 })();

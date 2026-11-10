@@ -506,6 +506,57 @@ details p { margin: 8px 0 0; }
 .footer { border-top: 1px solid var(--border); padding: 26px 20px 34px; text-align: center; background: rgba(8, 5, 4, .7); }
 .footer p { font-size: 13px; margin: 0 0 6px; }
 
+/* ---- Replays and live games (web/kfx_replays.js) ---------------------------- */
+
+.btn.icon-only { padding-left: 10px; padding-right: 10px; }
+.pill.warn { color: #ffb070; border-color: rgba(255, 150, 80, .45); background: rgba(255, 150, 80, .08); }
+.pill.live { color: #ff8a7a; border-color: rgba(255, 110, 90, .5); background: rgba(226, 86, 43, .12); }
+.pill.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ff6a50; box-shadow: 0 0 8px #ff6a50; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.row-actions { display: inline-flex; gap: 6px; align-items: center; flex: none; }
+
+.live-now { margin-top: 20px; }
+#lobbies-live { margin: 0 0 16px; }
+.live-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; padding: 12px; }
+.live-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 8px; background: rgba(0, 0, 0, .28); border: 1px solid var(--border); border-left: 3px solid var(--ember); min-width: 0; }
+.live-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.live-title b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-card > small { color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.live-foot .fine { display: inline-flex; align-items: center; gap: 4px; }
+
+.list-title { font-size: 20px; display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+.list-title .icon { color: var(--gold); }
+.replay-list { display: grid; gap: 12px; }
+.replay-card {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 14px 18px; align-items: center; padding: 16px 20px;
+  border-radius: var(--radius); background: linear-gradient(180deg, var(--stone-2), var(--stone));
+  border: 1px solid var(--border); box-shadow: inset 0 1px 0 rgba(255, 225, 170, .06), 0 8px 24px rgba(0, 0, 0, .35);
+  animation: rise .25s ease-out;
+}
+.replay-thumb { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 10px; color: var(--gold);
+  background: radial-gradient(circle at 50% 40%, rgba(227, 171, 69, .22), rgba(0, 0, 0, .4)); border: 1px solid var(--border-hi); }
+.replay-thumb .icon { width: 30px; height: 30px; }
+.replay-thumb:hover { color: var(--gold-hi); border-color: var(--gold-lo); }
+.replay-card h3 a { color: var(--text); text-decoration: none; }
+.replay-card h3 a:hover { color: var(--gold-hi); }
+.replay-card .lobby-meta small { color: var(--faint); }
+.local-recordings { margin-top: 28px; }
+.local-row { padding: 10px 18px; }
+.local-row .main b { display: flex; align-items: center; gap: 8px; }
+.replay-link { display: inline-grid; place-items: center; vertical-align: -3px; color: var(--gold); }
+.replay-link:hover { color: var(--gold-hi); }
+.replay-page { padding-top: 28px; }
+.replay-hero h2 { font-size: 28px; }
+.replay-sub { margin: 10px 0 0; }
+.replay-hero .stat-row { margin-top: 18px; }
+.compat { display: flex; gap: 8px; align-items: flex-start; margin: 18px 0 0; padding: 12px 14px; border-radius: 8px; font-size: 14.5px; }
+.compat.ok { color: var(--green); background: rgba(127, 214, 109, .06); border: 1px solid rgba(127, 214, 109, .25); }
+.compat.ok .icon { margin-top: 2px; }
+.compat.bad { display: block; color: var(--text); background: rgba(255, 150, 80, .07); border: 1px solid rgba(255, 150, 80, .35); }
+.compat.bad p { color: var(--text); margin: 0 0 8px; }
+#watch-body .lobby-empty { margin-top: 8px; }
+
 /* ---- Small screens --------------------------------------------------------- */
 
 @media (max-width: 980px) {
@@ -531,6 +582,10 @@ details p { margin: 8px 0 0; }
   .counters > div:nth-child(n+3) { border-top: 1px solid var(--border); }
   .page-head h1 { font-size: 30px; }
   .lobby { grid-template-columns: 1fr; }
+  .replay-card { grid-template-columns: 48px minmax(0, 1fr); }
+  .replay-thumb { width: 48px; height: 48px; }
+  .replay-card .lobby-actions { grid-column: 1 / -1; flex-direction: row; }
+  .local-row { flex-wrap: wrap; }
   .lobby-actions { flex-direction: row; }
   .cards { grid-template-columns: 1fr; }
   .panel { padding: 18px; }

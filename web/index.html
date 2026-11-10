@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="kfx-build" content="">
+<meta name="kfx-engine" content="">
 <meta name="description" content="Dungeon Keeper in your browser with KeeperFX: the full campaign, skirmish and online multiplayer with public lobbies and a Hall of Fame. No install.">
 <meta name="theme-color" content="#0a0706">
 <title>KeeperFX: Dungeon Keeper in your browser</title>
@@ -38,6 +39,11 @@
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.500"/><path d="M12 7v5.500l3.500 2"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.500 6h6l2 2.500h9v10.500h-17z"/></symbol>
     <symbol id="i-map" viewBox="0 0 24 24"><path d="M3.500 6.500l5.500-2 6 2 5.500-2v13l-5.500 2-6-2-5.500 2zM9 4.500v13M15 6.500v13"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3.500" y="4.500" width="17" height="15" rx="1.500"/><path d="M7.500 4.500v15M16.500 4.500v15M3.500 9h4M3.500 15h4M16.500 9h4M16.500 15h4M10.500 9.500l3.500 2.500-3.500 2.500z"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.700 0l3.200-3.200a4 4 0 00-5.700-5.700L12 6.300M14 10a4 4 0 00-5.700 0l-3.200 3.200a4 4 0 005.700 5.700L12 17.700"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.500 10.500L12 15l4.500-4.500M5 19.500h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.500 8.500L12 4l4.500 4.500M5 19.500h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.500 7h15M9.500 7V4.500h5V7M6.500 7l1 12.500h9l1-12.500M10 10.500v6M14 10.500v6"/></symbol>
   </defs>
 </svg>
 
@@ -52,6 +58,7 @@
     <a href="#/play" data-route="play"><svg class="icon"><use href="#i-play"/></svg>Play</a>
     <a href="#/lobbies" data-route="lobbies" data-online><svg class="icon"><use href="#i-users"/></svg>Lobbies<span class="badge" id="nav-lobby-count" hidden></span></a>
     <a href="#/fame" data-route="fame" data-online><svg class="icon"><use href="#i-trophy"/></svg><span class="long">Hall of&nbsp;</span>Fame</a>
+    <a href="#/replays" data-route="replays" data-online><svg class="icon"><use href="#i-film"/></svg>Replays</a>
     <a href="#/guide" data-route="guide"><svg class="icon"><use href="#i-book"/></svg>Guide</a>
   </nav>
   <div class="topbar-right">
@@ -93,6 +100,11 @@
     <div><b id="count-victories">0</b><span>levels conquered</span></div>
     <div><b id="count-accounts">0</b><span>keepers enlisted</span></div>
   </div>
+
+  <section class="slab live-now" id="home-live" hidden>
+    <header><h2><svg class="icon"><use href="#i-eye"/></svg>Live now</h2><a href="#/lobbies">All games</a></header>
+    <div class="live-strip"></div>
+  </section>
 
   <div class="live" data-online hidden>
     <section class="slab">
@@ -260,6 +272,10 @@
   </div>
   <div class="lobby-layout">
     <div>
+      <section class="slab live-now" id="lobbies-live" hidden>
+        <header><h2><svg class="icon"><use href="#i-eye"/></svg>Live now</h2><span class="fine">Games in progress you can watch</span></header>
+        <div class="live-strip"></div>
+      </section>
       <div id="lobby-list" class="lobby-list" aria-live="polite"></div>
       <p class="lobby-discord"><svg class="icon"><use href="#i-chat"/></svg>Looking for opponents? Keepers arrange games on the
         <a href="https://discord.gg/Bx989fdcXe" target="_blank" rel="noopener">Keeper Klan Discord</a>.</p>
@@ -295,6 +311,24 @@
   <div id="fame-body" class="fame-body"></div>
   <p class="fine fame-note">Scores are reported by each player's own game, so these boards run on the honour system.
     Renown is the sum of a keeper's best score on every level they have won.</p>
+</section>
+
+<!-- =============================== Replays =============================== -->
+<!-- Drawn by web/kfx_replays.js: #/replays (list), #/replay/<id> (one replay). -->
+<section class="view" id="view-replays" hidden>
+  <div class="page-head" id="replays-head">
+    <div>
+      <h1>Replays</h1>
+      <p class="sub">Games keepers chose to share. Watch one in the game, right here, or send its link around.</p>
+    </div>
+  </div>
+  <div id="replays-body"></div>
+</section>
+
+<!-- ============================ Watch a live game ============================ -->
+<!-- #/watch/<CODE>: a link to share for watching a lobby's game (web/kfx_replays.js). -->
+<section class="view" id="view-watch" hidden>
+  <div id="watch-body"></div>
 </section>
 
 <!-- ================================ Guide ================================ -->
@@ -359,6 +393,27 @@
       <li>No one in the lobbies? The <a href="https://discord.gg/Bx989fdcXe" target="_blank" rel="noopener">Keeper Klan Discord</a> is where
         keepers find each other.</li>
     </ul>
+  </section>
+
+  <section class="slab pad" id="watching" data-online>
+    <h2>Watching games</h2>
+    <div class="cards">
+      <div><h3>Live games</h3>
+        <p>Games in progress show under <strong>Live now</strong> on the home and Lobbies pages. Press
+          <strong>Watch</strong> to join as a spectator, even halfway through: your game catches up with the
+          others first. A game's watch link (<code>#/watch/CODE</code>) leads straight there. The host decides
+          whether a lobby takes spectators.</p></div>
+      <div><h3>Replays</h3>
+        <p>Your game records every level you play, in this browser. When a level ends, sign in and press
+          <strong>Publish replay</strong> to share it, or publish an older one from <a href="#/replays">Replays</a>.
+          Each replay has its own page and link.</p></div>
+      <div><h3>While you watch</h3>
+        <p>The view follows the keeper whose game it is. Click their name at the top to switch keeper, scroll
+          to look around on your own, and click the view to follow again. <kbd>Esc</kbd> opens the menu.</p></div>
+      <div><h3>Why the game?</h3>
+        <p>A replay is the keepers' orders, not a video: your own game plays them again. That is why it is
+          small, and why watching also needs your Dungeon Keeper files and the same version of the game.</p></div>
+    </div>
   </section>
 
   <section class="slab pad" id="faq">
@@ -445,6 +500,7 @@
 
 <script src="kfx_account.js"></script>
 <script src="kfx_site.js"></script>
+<script src="kfx_replays.js"></script>
 <script src="kfx_loader.js"></script>
 <script src="keeperfx.js" async></script>
 </body>

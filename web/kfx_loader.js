@@ -488,14 +488,17 @@ async function persistNow() {
 // What the rest of the page (web/kfx_site.js) sees of the game.
 //   state: loading | setup (waiting for DK files) | ready (start screen) |
 //          starting | running | exited | failed
-//   start(choice): start the game as {mode: 'play' | 'host' | 'join', code,
-//          spectate, lobbyName, unlisted}. Before the start screen it is kept
-//          for then; once a game runs it restarts the page into the new one.
+//   start(choice): start the game as {mode: 'play' | 'host' | 'join' |
+//          'replay', code, spectate, lobbyName, unlisted, replay}. Before the
+//          start screen it is kept for then; once a game runs it restarts the
+//          page into the new one. ('replay': see web/kfx_replays.js.)
+//   choice: what the running game was started as (null before that).
 // Changes are announced as a `kfx:state` event on document; `kfx:hosting`
 // (lobby code or null) and `kfx:result` (a level's end) come from the game.
 const START_KEY = 'kfx.start';
 var KFX = { // var: the site script reaches it as window.KFX
   state: 'loading',
+  choice: null,
   pending: null,
   resolveChoice: null,
   start(choice) {
@@ -518,7 +521,9 @@ const STATE_TITLES = {
 };
 function setState(state) {
   KFX.state = state;
-  const [title, dot] = STATE_TITLES[state];
+  let [title, dot] = STATE_TITLES[state];
+  if (state === 'running' && KFX.choice && KFX.choice.mode === 'replay') title = 'Replay';
+  else if (state === 'running' && KFX.choice && KFX.choice.spectate) title = 'Watching';
   $('stage-title').textContent = title;
   $('stage-dot').className = `dot ${dot}`;
   $('btn-leave').hidden = state !== 'running';
@@ -531,7 +536,7 @@ function takeStoredChoice() {
     const text = sessionStorage.getItem(START_KEY);
     sessionStorage.removeItem(START_KEY);
     const choice = text ? JSON.parse(text) : null;
-    return choice && typeof choice === 'object' && ['play', 'host', 'join'].includes(choice.mode) ? choice : null;
+    return choice && typeof choice === 'object' && ['play', 'host', 'join', 'replay'].includes(choice.mode) ? choice : null;
   } catch (e) {
     return null;
   }
@@ -562,6 +567,7 @@ async function boot() {
   await Account.ready;
   const choice = takeStoredChoice() || KFX.pending
     || (params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice());
+  KFX.choice = choice;
   setState('starting');
   showPanel(null);
   applyNetworkSettings(choice);
@@ -587,6 +593,16 @@ async function boot() {
   } else if (choice.mode === 'host') {
     Module.kfxHostQuery = choice.unlisted ? 'unlisted=1' : '';
     args.push('-server');
+  } else if (choice.mode === 'replay') {
+    // The replay file goes into the game's filesystem; the game plays it and
+    // closes when it ends (-q), so the page can offer what comes next.
+    setStatus('Fetching the replay…');
+    try {
+      args.push('-packetload', await Replays.prepare(choice.replay), '-q');
+    } catch (e) {
+      showExit(`Could not load the replay: ${e.message}`);
+      return;
+    }
   }
   setState('running');
   Module.callMain(args);
