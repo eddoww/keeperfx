@@ -19,6 +19,8 @@
 // {"action": "update" | "game_started", ...fields}. The relay answers a new
 // host with {"type": "created", "code": "<lobby code>"}. A lobby hosted with
 // ?unlisted=1 stays out of the list: only its code or invite link leads to it.
+// A quick-match lobby (?qm=1, see quickmatch.js) tells the tavern when its game
+// starts or it closes, so it stops taking quick-match players.
 
 import { DurableObject } from 'cloudflare:workers';
 
@@ -64,6 +66,7 @@ export class Room extends DurableObject {
       server.serializeAttachment({
         host: true, code, user: url.searchParams.get('user') || '',
         unlisted: url.searchParams.get('unlisted') === '1',
+        qm: url.searchParams.get('qm') === '1',
       });
       await this.ctx.storage.put({ code, nextConn: 1, createdAt: Math.floor(Date.now() / 1000) });
       server.send(JSON.stringify({ type: 'created', code }));
@@ -175,6 +178,7 @@ export class Room extends DurableObject {
       }
       await this.directory().remove(info.code);
       await this.ctx.storage.deleteAll();
+      if (info.qm) await this.quickmatchEnded(info.code);
     } else {
       this.host()?.send(frame(OP.DISCONNECT, info.conn));
     }
@@ -192,6 +196,7 @@ export class Room extends DurableObject {
       // Kept here too, for invite links to lobbies that aren't listed (info()).
       await this.ctx.storage.put('meta', { ...((await this.ctx.storage.get('meta')) || {}), ...fields });
       if (!info.unlisted) await this.directory().update(info.code, fields);
+      if (info.qm && msg.action === 'game_started') await this.quickmatchEnded(info.code);
     } else if (msg.action === 'ping') {
       if (!info.unlisted) await this.directory().update(info.code, {}); // keeps the listing fresh
     } else if (msg.action === 'cancel' || msg.action === 'delete') {
@@ -207,6 +212,12 @@ export class Room extends DurableObject {
     if (!host || !meta) return null;
     const { code, unlisted } = host.deserializeAttachment();
     return { ...meta, id: code, unlisted: !!unlisted, createdAt: await this.ctx.storage.get('createdAt') };
+  }
+
+  async quickmatchEnded(code) {
+    try {
+      await this.env.TAVERN.get(this.env.TAVERN.idFromName('tavern')).quickmatchEnded(code);
+    } catch (e) { /* the seat expires by itself */ }
   }
 
   directory() {

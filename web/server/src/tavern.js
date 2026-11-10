@@ -16,8 +16,12 @@
 //                   {type:"mute", name, minutes}   admins
 //
 // A line is {id, at, kind:"chat"|"lobby"|"victory", name, text?, ...}.
+//
+// Quick match ("Find a game") rides on the same sockets: messages whose type
+// starts with "qm-" go to quickmatch.js, and hello carries `qm` (how many are waiting).
 
 import { DurableObject } from 'cloudflare:workers';
+import { QuickMatch } from './quickmatch.js';
 
 const HISTORY = 60;
 const MAX_TEXT = 240;
@@ -30,6 +34,7 @@ export class Tavern extends DurableObject {
     super(ctx, env);
     this.env = env;
     this.history = null;
+    this.quickmatch = new QuickMatch(ctx, env);
   }
 
   async fetch(request) {
@@ -52,6 +57,7 @@ export class Tavern extends DurableObject {
       history: await this.lines(),
       you: name ? { name, admin } : null,
       chat: this.env.CHAT !== 'off',
+      ...(await this.quickmatch.hello()),
     }));
     this.broadcastOnline();
     return new Response(null, { status: 101, webSocket: client });
@@ -96,11 +102,27 @@ export class Tavern extends DurableObject {
     }
   }
 
+  /** The Worker: a quick-match host's lobby opened (quickmatch.js). */
+  quickmatchHosted(qm, code) {
+    return this.quickmatch.hosted(qm, code);
+  }
+
+  /** The Worker: a lobby that takes quick-match players opened. */
+  quickmatchSeat(code, size, name) {
+    return this.quickmatch.seat(code, size, name);
+  }
+
+  /** A quick-match lobby started its game or closed. */
+  quickmatchEnded(code) {
+    return this.quickmatch.ended(code);
+  }
+
   async webSocketMessage(ws, message) {
     if (typeof message !== 'string' || message.length > 2000) return;
     let msg;
     try { msg = JSON.parse(message); } catch (e) { return; }
     if (!msg || typeof msg !== 'object') return;
+    if (this.quickmatch.handle(ws, msg)) return;
     const info = ws.deserializeAttachment();
     const fail = (error) => ws.send(JSON.stringify({ type: 'error', error }));
 
@@ -116,7 +138,7 @@ export class Tavern extends DurableObject {
       const said = (info.said || []).filter((t) => now - t < BURST_MS);
       if (said.length >= BURST) return fail('Slow down a little.');
       said.push(now);
-      ws.serializeAttachment({ ...info, said });
+      ws.serializeAttachment({ ...ws.deserializeAttachment(), said }); // fresh: quick match keeps its state there too
       await this.addLine({ kind: 'chat', name: info.name, text });
     } else if (msg.type === 'remove' && info.admin) {
       const history = await this.lines();
@@ -134,10 +156,12 @@ export class Tavern extends DurableObject {
   async webSocketClose(ws) {
     try { ws.close(1000, 'bye'); } catch (e) { /* already closed */ }
     this.broadcastOnline(ws);
+    await this.quickmatch.closed(ws);
   }
 
   async webSocketError(ws) {
     try { ws.close(1011, 'error'); } catch (e) { /* already closed */ }
     this.broadcastOnline(ws);
+    await this.quickmatch.closed(ws);
   }
 }
