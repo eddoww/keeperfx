@@ -41,3 +41,5 @@
   .cs-board th:nth-child(2), .cs-board td:nth-child(2) { display: none; }
   .cs-board .cs-actions .tool { display: block; width: 100%; margin-bottom: 4px; }
 }
+/* With a lobby badge in the bar there is no room for the label: the icon and dot stay. */
+.invite:not([hidden]) ~ .cloud-status span { display: none; }
