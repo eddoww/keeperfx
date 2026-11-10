@@ -53,8 +53,19 @@ int32_t multiplayer_speed_adjustment_ns;
 /******************************************************************************/
 
 // TURN_SYNC_MAX_ADJUSTMENT_NS being set too high causes stutters.
+#ifdef __EMSCRIPTEN__
+// The browser build's transport (the relay's resumable WebSocket links) never
+// loses a message, so the repair history only matters when a game was not
+// ready for a packet (level start, a resync): it is sent while a game waits
+// for packets or starts, not all the time, and not faster than this.
+#define REPAIR_HISTORY_RESEND_INTERVAL 200
+#define REPAIR_HISTORY_RECOVERY_INTERVAL 200
+#define REPAIR_HISTORY_ONLY_WHEN_WAITING 1
+#else
 #define REPAIR_HISTORY_RESEND_INTERVAL 200
 #define REPAIR_HISTORY_RECOVERY_INTERVAL 50
+#define REPAIR_HISTORY_ONLY_WHEN_WAITING 0
+#endif
 #define FINAL_RESORT_RESYNC_RECOVERY (PEER_TIMEOUT_MS * 2)
 #define TURN_SYNC_INTERVAL_MS 250
 #define TURN_SYNC_MAX_ADJUSTMENT_NS 1000000
@@ -591,7 +602,9 @@ TbError LbNetwork_ExchangeGameplay(void *send_buf, void *server_buf, size_t fram
     if (game.skip_initial_input_turns > 0) {
         repair_interval = REPAIR_HISTORY_RECOVERY_INTERVAL;
     }
-    send_repair_history_if_due(repair_interval);
+    if (!REPAIR_HISTORY_ONLY_WHEN_WAITING || game.skip_initial_input_turns > 0) {
+        send_repair_history_if_due(repair_interval);
+    }
     network_update(server_buf, frame_size);
     update_turn_speed_adjustment();
     if (game.skip_initial_input_turns <= 0 && !netstate.resync_pending && netstate.pending_spectator_id == INVALID_USER_ID) {
