@@ -22,6 +22,7 @@ add_custom_target(web-site ALL
         "${CMAKE_SOURCE_DIR}/web/kfx_loader.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_account.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_site.js"
+        "${CMAKE_SOURCE_DIR}/web/kfx_rejoin.js"
         "${CMAKE_SOURCE_DIR}/web/site.css"
         "${CMAKE_SOURCE_DIR}/web/_headers"
         "${CMAKE_SOURCE_DIR}/web/404.html"

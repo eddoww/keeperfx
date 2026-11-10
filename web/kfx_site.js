@@ -386,6 +386,7 @@ const Site = (() => {
     const actions = [];
     if (mine) actions.push(h('a', { class: 'btn', href: '#/play' }, 'Your lobby'));
     if (canJoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => join(l.id) }, icon('sword'), inLobby(l) ? 'Join' : 'Rejoin'));
+    if (window.Rejoin && Rejoin.canRejoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => Rejoin.start() }, icon('sword'), 'Rejoin your game'));
     if (canWatch(l)) actions.push(h('button', { class: 'btn', type: 'button', onclick: () => join(l.id, true) }, icon('eye'), 'Watch'));
     if (!actions.length) actions.push(h('span', { class: 'pill plain' }, players.length >= max ? 'Full' : 'Closed'));
     return h('article', { class: `lobby${cls === 'busy' ? ' busy' : ''}${mine ? ' mine' : ''}` },

@@ -489,10 +489,11 @@ async function persistNow() {
 //   state: loading | setup (waiting for DK files) | ready (start screen) |
 //          starting | running | exited | failed
 //   start(choice): start the game as {mode: 'play' | 'host' | 'join', code,
-//          spectate, lobbyName, unlisted}. Before the start screen it is kept
+//          spectate, rejoin, lobbyName, unlisted}. Before the start screen it is kept
 //          for then; once a game runs it restarts the page into the new one.
 // Changes are announced as a `kfx:state` event on document; `kfx:hosting`
-// (lobby code or null) and `kfx:result` (a level's end) come from the game.
+// (lobby code or null), `kfx:result` (a level's end) and `kfx:net` (the
+// online connection, see web/kfx_rejoin.js) come from the game.
 const START_KEY = 'kfx.start';
 var KFX = { // var: the site script reaches it as window.KFX
   state: 'loading',
@@ -504,7 +505,9 @@ var KFX = { // var: the site script reaches it as window.KFX
     } else if (this.state === 'loading' || this.state === 'setup') {
       this.pending = choice;
     } else {
-      if (this.state === 'running' && !confirm('Leave the current game and start this one?')) return;
+      // Rejoining after the connection was lost needs no "leave this game?".
+      const lost = choice.rejoin && Module.kfxNetStatus && Module.kfxNetStatus.state === 'lost';
+      if (this.state === 'running' && !lost && !confirm('Leave the current game and start this one?')) return;
       try { sessionStorage.setItem(START_KEY, JSON.stringify(choice)); } catch (e) { /* starts on the start screen */ }
       leaving = true;
       location.href = `${location.pathname}#/play`;
@@ -562,6 +565,7 @@ async function boot() {
   await Account.ready;
   const choice = takeStoredChoice() || KFX.pending
     || (params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice());
+  KFX.choice = choice;
   setState('starting');
   showPanel(null);
   applyNetworkSettings(choice);
@@ -581,7 +585,9 @@ async function boot() {
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
   if (choice.mode === 'join') {
-    if (choice.spectate) args.push('-spectate');
+    // A rejoin enters as a spectator; the host gives back the keeper this
+    // browser held (web/kfx_rejoin.js).
+    if (choice.spectate || choice.rejoin) args.push('-spectate');
     args.push('-connect', choice.code);
     showLobbyCode(choice.code);
   } else if (choice.mode === 'host') {
@@ -594,9 +600,11 @@ async function boot() {
 
 // ---- Start choices: play, host online, join online ---------------------------
 
-// ?join=CODE (invite link) joins a lobby, ?host opens one.
+// ?join=CODE (invite link) joins a lobby (&rejoin: take back your keeper), ?host opens one.
 function startChoiceFromUrl() {
   const code = Site.codeOf(params.get('join'));
+  // A reload of an invite link to a game this browser was playing in: take the keeper back.
+  if (code && (params.has('rejoin') || (window.Rejoin && Rejoin.code === code))) return { mode: 'join', code, spectate: true, rejoin: true };
   if (code) return { mode: 'join', code, spectate: params.has('spectate') };
   if (params.has('host')) return { mode: 'host', unlisted: params.has('unlisted') };
   return { mode: 'play' };
@@ -633,7 +641,10 @@ function waitForStartChoice() {
     setState('ready');
     $('start-button').addEventListener('click', () => Site.start({ mode: 'play' }));
     $('host-button').addEventListener('click', () => Site.openHost());
-    $('invited-join').addEventListener('click', () => Site.join(invited, params.has('spectate')));
+    $('invited-join').addEventListener('click', () => {
+      if (window.Rejoin && Rejoin.code === invited) Rejoin.start();
+      else Site.join(invited, params.has('spectate'));
+    });
     $('join-form').addEventListener('submit', (ev) => {
       ev.preventDefault();
       const code = Site.codeOf($('join-code').value);
