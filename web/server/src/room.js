@@ -21,9 +21,10 @@
 // {"action": "update" | "game_started", ...fields}. The relay answers a new
 // host with {"type": "created", "code": "<lobby code>"}. A lobby hosted with
 // ?unlisted=1 stays out of the list: only its code or invite link leads to it.
-// ?workshop=<id>.<file>,... names the KeeperFX Workshop items the host has for
-// this lobby; it is added to the lobby's metadata, so joiners' pages can
-// install them before joining (web/kfx_workshop.js).
+// ?workshop=<id>.<file>[.m],... names the KeeperFX Workshop items the host has
+// for this lobby (".m": a mod on for it, in load order); it is added to the
+// lobby's metadata, so joiners' pages can install them before joining and turn
+// on the same mods (web/kfx_workshop.js).
 // A quick-match lobby (?qm=1, see quickmatch.js) tells the tavern when its game
 // starts or it closes, so it stops taking quick-match players.
 //
@@ -70,10 +71,11 @@ const SILENCE_CHECK_MS = 5 * 1000;
 const ACK_EVERY = 32;              // bare ack after this many frames without a reply
 const MAX_UNACKED_BYTES = 16 * 1024 * 1024;
 
-/** "12.345,67.890" (checked by the Worker) -> [{id: 12, file: 345}, ...] */
+/** "12.345,67.890.m" (checked by the Worker) -> [{id: 12, file: 345}, {id: 67, file: 890, mod: true}] */
 function parseWorkshop(text) {
   if (!text) return [];
-  return text.split(',').map((pair) => pair.split('.').map(Number)).map(([id, file]) => ({ id, file }));
+  return text.split(',').map((entry) => entry.split('.')).map(([id, file, m]) => (m === 'm'
+    ? { id: Number(id), file: Number(file), mod: true } : { id: Number(id), file: Number(file) }));
 }
 
 function frame(op, conn, payload) {

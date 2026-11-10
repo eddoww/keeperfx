@@ -483,6 +483,7 @@ const Replays = (() => {
         h('div', { class: 'lobby-meta' },
           h('span', {}, h('span', { class: 'code' }, code)),
           lobby.mapName ? h('span', {}, icon('map'), lobby.mapName) : null,
+          typeof Workshop !== 'undefined' ? Workshop.lobbyNote(lobby) : null, // its workshop maps and mods, added when watching
           h('span', {}, icon('eye'), `${lobby.spectatorCount || 0} watching`),
           lobby.hostAccount ? h('span', {}, icon('crown'), 'hosted by ', keeperLink(lobby.hostAccount)) : null),
         h('div', { class: 'players' }, players),
@@ -512,6 +513,7 @@ const Replays = (() => {
     return h('div', { class: 'live-card' },
       h('div', { class: 'live-title' }, h('span', { class: 'pill live' }, 'Live'), h('b', {}, l.name || l.id)),
       h('small', {}, [l.mapName, players.join(' vs ')].filter(Boolean).join(' · ')),
+      typeof Workshop !== 'undefined' && (l.workshop || []).some((w) => w.mod) ? h('small', { class: 'fine' }, Workshop.lobbyNote(l)) : null,
       h('div', { class: 'live-foot' },
         h('span', { class: 'fine' }, icon('eye'), ` ${l.spectatorCount || 0} watching`),
         h('span', { class: 'row-actions' },

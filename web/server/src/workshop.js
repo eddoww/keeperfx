@@ -3,7 +3,8 @@
 //
 //   GET /api/workshop/catalogue        every published item (keeperfx.net's
 //                                      /api/v1/workshop/search, passed through)
-//   GET /api/workshop/item/<id>        an item's files and screenshots
+//   GET /api/workshop/item/<id>        an item's files and screenshots (and
+//                                      whether it says it is for modders)
 //   GET /api/workshop/file/<id>/<file> one file (archive) of an item
 //
 // Being a polite client: every request to keeperfx.net says who we are
@@ -24,8 +25,11 @@ const STALE_TTL = 7 * 86400; // seconds a cached copy may stand in while keeperf
 const MAX_FILE = 128 * 1024 * 1024;
 const CACHE_HOST = 'https://workshop.cache.invalid'; // Cache API keys only, never fetched
 
+// WORKSHOP_UPSTREAM (a var, for local tests only): a mirror of keeperfx.net to use instead.
+let upstreamBase = UPSTREAM;
+
 function upstream(path, { timeout = 15000 } = {}) {
-  return fetch(`${UPSTREAM}${path}`, {
+  return fetch(`${upstreamBase}${path}`, {
     headers: { 'User-Agent': USER_AGENT, Accept: path.startsWith('/api/') ? 'application/json' : '*/*' },
     signal: AbortSignal.timeout(timeout),
     redirect: 'follow',
@@ -102,26 +106,51 @@ function catalogue(ctx, env) {
   }, 'catalogue.json', 1800);
 }
 
-/** Files (from keeperfx.net's item API) and screenshots (from the item's page). */
+/**
+ * The files listed on an item's page (its "Downloads" table, newest first).
+ * keeperfx.net's item API leaves some items' files out (mods.7z of the DK2
+ * Salamander, say); the page has them. Same parsing as
+ * web/tools/workshop-survey/fetch.mjs.
+ */
+function pageFiles(html, id) {
+  const files = [];
+  const start = html.indexOf('<tbody>');
+  if (start < 0) return files;
+  const body = html.slice(start, html.indexOf('</tbody>', start) + 8);
+  const re = new RegExp(`<tr>\\s*<td>\\s*<a href="https://keeperfx\\.net/workshop/download/${id}/(\\d+)/([^"]+)"[\\s\\S]*?<td>\\s*([\\d.]+)\\s*(B|KiB|MiB|GiB)\\s*</td>[\\s\\S]*?<td>[\\s\\S]*?</td>\\s*<td>\\s*(\\d{4}-\\d\\d-\\d\\d)`, 'g');
+  for (const m of body.matchAll(re)) {
+    const mult = { B: 1, KiB: 1024, MiB: 1048576, GiB: 1073741824 }[m[4]];
+    let filename;
+    try { filename = decodeURIComponent(m[2]); } catch (e) { continue; }
+    files.push({ id: Number(m[1]), filename, size: Math.round(Number(m[3]) * mult), date: m[5] });
+  }
+  return files;
+}
+
+/** Files (from keeperfx.net's item API, else its page) and screenshots (from the item's page). */
 async function itemDetails(ctx, env, id) {
-  return cachedDoc(ctx, env, `item-v1/${id}`, ITEM_TTL, async () => {
+  return cachedDoc(ctx, env, `item-v2/${id}`, ITEM_TTL, async () => {
     const resp = await upstreamJson(`/api/v1/workshop/item/${id}`);
     const data = await resp.json();
     const item = data && data.workshop_item;
     if (!item || !Array.isArray(item.files)) throw new Error('Unexpected item format');
-    const files = item.files
+    let files = item.files
       .filter((f) => Number.isInteger(f.id) && typeof f.filename === 'string')
       .map((f) => ({ id: f.id, filename: f.filename, size: Number(f.size) || 0, date: f.timestamp || '' }));
     let images = [];
+    let forModders = false;
     try {
       const page = await upstream(`/workshop/item/${id}`);
       if (page.ok) {
         const html = await page.text();
         const re = new RegExp(`/workshop/image/${id}/([A-Za-z0-9_.%-]+\\.(?:png|jpe?g|gif|webp))`, 'gi');
         images = [...new Set([...html.matchAll(re)].map((m) => `${UPSTREAM}/workshop/image/${id}/${m[1]}`))].slice(0, 12);
+        // "This workshop item is meant for modders and mapmakers and will not change anything in the game..."
+        forModders = /meant for modders and mapmakers/i.test(html);
+        if (!files.length) files = pageFiles(html, id);
       }
     } catch (e) { /* screenshots are optional */ }
-    return JSON.stringify({ id, name: String(item.name || ''), files, images });
+    return JSON.stringify({ id, name: String(item.name || ''), files, images, forModders });
   }, null, 600);
 }
 
@@ -172,6 +201,7 @@ function fileHeaders(file, size) {
 
 export async function handleWorkshop(request, env, ctx, path) {
   if (request.method !== 'GET') return json({ error: 'Not found' }, { status: 404 });
+  upstreamBase = env.WORKSHOP_UPSTREAM || UPSTREAM;
   try {
     if (path === 'catalogue') return await catalogue(ctx, env);
     let m = path.match(/^item\/(\d{1,7})$/);

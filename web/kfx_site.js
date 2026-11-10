@@ -351,6 +351,13 @@ const Site = (() => {
     $('host-name').value = store.get('kfx.lobbyName', '') || `${who}'s dungeon`;
     $('host-map').hidden = !hostMap;
     $('host-plain-note').hidden = !!hostMap;
+    // The host's mods that change the game: ticked ones are on for the lobby (web/kfx_workshop.js).
+    const mods = typeof Workshop !== 'undefined' ? Workshop.hostableMods() : [];
+    const picked = store.get('kfx.hostMods', null);
+    $('host-mods').hidden = !mods.length;
+    $('host-mods-list').replaceChildren(...mods.map((it) => h('label', { class: 'option' },
+      h('input', { type: 'checkbox', name: 'mods', value: String(it.id), checked: !picked || picked.includes(it.id) }),
+      h('span', {}, h('b', {}, it.name), h('small', {}, it.mods.flatMap((m) => m.adds || []).length ? 'Adds creatures' : 'Changes the game for everyone in the lobby')))));
     if (hostMap) {
       $('host-map-name').textContent = hostMap.label;
       const select = $('host-wait');
@@ -432,9 +439,10 @@ const Site = (() => {
     if (version.missing && !mine) {
       actions.push(h('span', { class: 'pill plain', title: 'This lobby runs a game version this site no longer offers' }, 'Other version'));
     } else {
-      if (canJoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', title: other ? `Reloads into ${version.build.title}` : null, onclick: () => join(l.id, false, l) }, icon('sword'), inLobby(l) ? 'Join' : 'Rejoin', other));
+      const joinText = typeof Workshop !== 'undefined' ? Workshop.joinLabel(l, inLobby(l) ? 'Join' : 'Rejoin') : (inLobby(l) ? 'Join' : 'Rejoin');
+      if (canJoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', title: other ? `Reloads into ${version.build.title}` : null, onclick: () => join(l.id, false, l) }, icon('sword'), joinText, other));
       if (window.Rejoin && Rejoin.canRejoin(l)) actions.push(h('button', { class: 'btn primary', type: 'button', onclick: () => Rejoin.start() }, icon('sword'), 'Rejoin your game'));
-      if (canWatch(l)) actions.push(h('button', { class: 'btn', type: 'button', onclick: () => join(l.id, true, l) }, icon('eye'), 'Watch'));
+      if (canWatch(l)) actions.push(h('button', { class: 'btn', type: 'button', onclick: () => join(l.id, true, l) }, icon('eye'), typeof Workshop !== 'undefined' ? Workshop.joinLabel(l, 'Watch') : 'Watch'));
       if (l.spectatorsEnabled && !inLobby(l)) {
         actions.push(h('a', { class: 'btn icon-only', href: `#/watch/${l.id}`, title: 'Watch link to share' }, icon('link')));
       }
@@ -950,6 +958,11 @@ const Site = (() => {
     store.set('kfx.lobbyName', lobbyName);
     $('host-dialog').close();
     const choice = { mode: 'host', lobbyName, unlisted: ev.target.visibility.value === 'unlisted' };
+    const mods = [...ev.target.querySelectorAll('input[name="mods"]')];
+    if (mods.length) {
+      choice.mods = mods.filter((i) => i.checked).map((i) => Number(i.value));
+      store.set('kfx.hostMods', choice.mods);
+    }
     if (hostMap) {
       // The game starts the map by itself once this many keepers are in the lobby.
       Object.assign(choice, { args: [...hostMap.args, '-waitusers', String(Number($('host-wait').value) || 2)],
