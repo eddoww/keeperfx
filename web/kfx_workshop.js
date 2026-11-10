@@ -990,7 +990,7 @@ const Workshop = (() => {
         h('p', { class: 'fine' }, CATS[e.cat] && CATS[e.cat].group === 'mods'
           ? 'Downloads it from keeperfx.net into this browser and adds it as a mod layer over the game: nothing of the game is replaced, and you can switch it off or remove it.'
           : 'Downloads it from keeperfx.net into this browser. It stays here, like your saves.'),
-        deps.length ? h('p', { class: 'fine' }, 'It needs ', ...deps.flatMap((n, i) => [i ? ', ' : '', h('a', { href: `#/workshop/item/${n}` }, byId(n).name)]), ' too; you will be asked to add ', deps.length === 1 ? 'it' : 'them', '.') : null);
+        ...(deps.length ? [h('p', { class: 'fine' }, 'It needs ', ...deps.flatMap((n, i) => [i ? ', ' : '', h('a', { href: `#/workshop/item/${n}` }, byId(n).name)]), ' too; you will be asked to add ', deps.length === 1 ? 'it' : 'them', '.')] : []));
     }
 
     const facts = h('dl', { class: 'ws-facts' },
