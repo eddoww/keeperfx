@@ -10,7 +10,9 @@ Keeper Gold** install (the GOG release works) when asked. The page reads only
 the 16 files listed in [files_required_from_original_dk.txt](files_required_from_original_dk.txt),
 plus the soundtrack (`keeper02.ogg` ... `keeper07.ogg`) when the folder has it.
 They are kept in the browser's IndexedDB storage and never leave the computer.
-Saves, settings, replays and screenshots are kept there too.
+Saves, settings, replays and screenshots are kept there too; for a signed-in
+player, saves, campaign progress and settings also go to their account (see
+"Cloud saves").
 
 - The game sits in a frame on the Play page, with its buttons in the bar above
   it: **Fill tab** hides the site around it, **Fullscreen** (or F11) shows the
@@ -188,6 +190,59 @@ When the site runs on its Worker (`web/server`, below), it has:
 Browser players play each other; desktop KeeperFX uses UDP, which browsers
 cannot.
 
+### Cloud saves
+
+A signed-in player's saves follow their account: a save made in one browser
+can be loaded in another. The bar above the game says where the saves are
+("Saved to your account", "Syncing saves…", "Offline: saved in this
+browser"); clicking it, or **Saves** in the account dialog, lists them with
+their size and date, to download (export) or delete, plus the versions that
+were replaced. **Import save files** takes files from the `save` folder of
+desktop KeeperFX (`fx1g0001.sav`, campaign `.cid` files, `settings.toml`);
+saves from another game version are offered too, and the game says if it
+can't load one.
+
+- **What syncs**: the files the game writes to `save/`: save slots
+  (`fx1gNNNN.sav`), the continue link (`fx1lastf.sav`), campaign progress
+  (`<campaign>.cid`), campaign high scores (`*.dat`) and `settings.toml`
+  without the lines that belong to one machine or are set by the page
+  (`player_name`, `lobby_name`, `reconnect_token`,
+  `switching_vidmodes_index`). Never the Dungeon Keeper files or music
+  (`/persist/dk`, `/persist/music`), replays or screenshots; the server
+  accepts only those save file names.
+- **When**: before the game starts (the game reads its saves at start), when
+  the player signs in, and a few seconds after the game writes a file. The
+  page looks at the save folder every 2 s in memory; the server is only
+  called when something changed (and once per page load).
+- **Conflicts**: every file has a revision on the server, and the browser
+  remembers which one it last agreed on (`/persist/cloudsaves.json`). An
+  upload names that revision and is refused if another browser has replaced
+  the file since, so an old tab or a device that was offline can never
+  overwrite newer saves. Then: a save slot changed in two places keeps both
+  (one moves to a free slot, and the player is told); campaign progress
+  changed in two places is a question for the player at the next game start
+  ("This browser" or "Your account"); the continue link, high scores and
+  settings take the newest. During a game, files the game may hold in memory
+  (campaign progress, settings) are not replaced; that waits for the next
+  start.
+- **Signing in with saves already in the browser** (a guest, or a browser
+  that synced with another account): the player is asked whether those saves
+  go to the account or stay in this browser only. A new, empty account in a
+  browser no account used just takes them. Until the player answers, nothing
+  in the browser changes.
+- **Nothing is thrown away**: what a download replaces is copied to
+  `/persist/cloudbackup` (the last 30), and the server keeps one previous
+  version of a file that is deleted or replaced by a browser that had not
+  seen it.
+- **Limits** (`web/server/src/saves.js`): 8 MB per file (a save is about
+  0.25 MB early in the campaign), 64 MB and 200 files per player, 240
+  uploads and deletes per player and hour. The files are in a private R2
+  bucket (`SAVES`), with an index in D1 (`0011_cloudsaves.sql`). A save costs
+  one Worker request and one R2 write per file the game changed (usually the
+  slot and the continue link); opening the page costs one request.
+
+Without the `SAVES` binding the API answers 501 and the page hides it all.
+
 Accounts are optional: a signed-in player's account name is their keeper name
 (a guest can type one on the start screen). Players sign in with a name and
 password, or with Discord when it is set up.
@@ -204,7 +259,8 @@ How it fits together:
   `web/kfx_site.js` is everything around it: the pages, sign-in, lobbies,
   tavern and records, `web/kfx_workshop.js` is the workshop, and
   `web/kfx_quickmatch.js` is Find a game; its server side is
-  `web/server/src/quickmatch.js`, which runs inside the tavern.
+  `web/server/src/quickmatch.js`, which runs inside the tavern. `web/kfx_cloudsaves.js` syncs the saves
+  with the account (`web/server/src/saves.js`).
 - In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
   (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
   `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's
@@ -340,7 +396,10 @@ npx wrangler deploy
 ```
 
 Run the `migrations apply` step again whenever `web/server/migrations` gains a
-file (the Hall of Fame tables are `0002_scores.sql`), before `deploy`.
+file (the Hall of Fame tables are `0002_scores.sql`, cloud saves
+`0011_cloudsaves.sql`), before `deploy`. Cloud saves also need their private
+R2 bucket, once: `npx wrangler r2 bucket create keeperfx-saves` (no public
+domain: it is only read through `/api/saves`).
 
 For Discord sign-in, create an application at discord.com/developers with
 the redirect `https://<your site>/api/auth/discord/callback`, set

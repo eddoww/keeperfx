@@ -8,6 +8,7 @@
 //   GET  /api/lobbies/<CODE>          one lobby, listed or not (invite links)
 //   GET  /api/tavern                  WebSocket: who is online, chat, live news (tavern.js)
 //   POST /api/scores, GET /api/scores/..., /api/keepers/<name>   Hall of Fame (scores.js)
+//   GET|PUT|DELETE /api/saves[/file/<name>]   cloud saves of a signed-in player (saves.js)
 //   GET  /api/rooms/host[?unlisted=1][&workshop=<id>.<file>,...]
 //                                     WebSocket: host a new lobby (relay creates the code);
 //                                     `workshop`: items joiners need (shown with the lobby)
@@ -21,6 +22,7 @@
 
 import { handleAuth, currentUser, json } from './auth.js';
 import { handleScores } from './scores.js';
+import { handleSaves } from './saves.js';
 import { Room } from './room.js';
 import { Directory } from './directory.js';
 import { Tavern } from './tavern.js';
@@ -128,6 +130,7 @@ async function handleApi(request, env, ctx, path) {
   if (path === 'scores' || path.startsWith('scores/') || path.startsWith('keepers/')) {
     return handleScores(request, env, ctx, path);
   }
+  if (path === 'saves' || path.startsWith('saves/')) return handleSaves(request, env, ctx, path);
   if (path.startsWith('workshop/')) return handleWorkshop(request, env, ctx, path.slice(9));
   if (path === 'rooms/host') return hostRoom(request, env, ctx);
   const room = path.match(/^rooms\/([A-Za-z0-9]+)$/);

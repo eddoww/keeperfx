@@ -1,0 +1,43 @@
+/* Cloud saves (web/kfx_cloudsaves.js): the indicator in the bar above the
+   game, the Saves dialog and the question about this browser's saves. */
+
+.cloud-status { margin-left: auto; gap: 7px; font-weight: 500; color: var(--faint); }
+.cloud-status + .stage-tools { margin-left: 0; }
+.cloud-status .dot { width: 7px; height: 7px; }
+.cloud-status .icon { width: 15px; height: 15px; }
+.cloud-status[data-state="synced"] { color: var(--muted); }
+.cloud-status[data-state="offline"], .cloud-status[data-state="full"] { color: var(--error); }
+.cloud-status[data-state="attention"] { color: var(--gold-hi); border-color: var(--gold-lo); }
+
+.cloud-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+.cloud-dialog#cloud-ask { width: min(500px, calc(100vw - 32px)); }
+.cloud-dialog p { margin: 0 0 12px; }
+.cloud-dialog .options { margin-bottom: 16px; }
+
+.cs-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: -6px 0 14px; }
+.cs-state { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+
+.cs-table { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: rgba(0, 0, 0, .22); margin-bottom: 14px; }
+.cs-board { font-size: 14px; }
+.cs-board th, .cs-board td { padding: 9px 10px; vertical-align: top; }
+.cs-board td b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.cs-board small { display: block; font-size: 12.5px; }
+.cs-board .cs-where { color: var(--gold); }
+.cs-board .cs-where.ok { color: var(--green); }
+.cs-board .cs-actions { white-space: nowrap; text-align: right; }
+.cs-board .tool { padding: 6px 8px; font-size: 12.5px; }
+
+.cs-files { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+.cs-files li { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0, 0, 0, .22); }
+.cs-files li b { font-weight: 600; overflow-wrap: anywhere; }
+.cs-files li small { grid-column: 1; color: var(--faint); font-size: 12.5px; }
+.cs-files li .tool { grid-column: 2; grid-row: 1 / span 2; padding: 6px 8px; font-size: 12.5px; }
+
+.cs-older { margin: 0 0 6px; }
+.cs-older summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+.cs-older summary:hover { color: var(--text); }
+
+@media (max-width: 760px) {
+  .cs-board th:nth-child(2), .cs-board td:nth-child(2) { display: none; }
+  .cs-board .cs-actions .tool { display: block; width: 100%; margin-bottom: 4px; }
+}

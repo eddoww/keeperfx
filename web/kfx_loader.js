@@ -612,8 +612,12 @@ async function boot() {
   await writeConfig();
 
   await Account.ready;
+  // A signed-in player's saves from their account (web/kfx_cloudsaves.js).
+  await CloudSaves.beforeStart(setStatus);
   const choice = takeStoredChoice() || KFX.pending
     || (params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice());
+  setStatus('Fetching your saves…');
+  await CloudSaves.idle(); // a sign-in on the start screen may still be bringing them in
   KFX.choice = choice;
   if (choice.mode === 'join') {
     // The lobby may use workshop maps: install them first, as the host has them.

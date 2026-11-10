@@ -232,6 +232,7 @@ const Site = (() => {
         h('p', {}, 'Your keeper plays online under this name, and your victories go into the Hall of Fame.'),
         h('div', { class: 'row', style: 'justify-content:center' },
           h('a', { class: 'btn primary', href: `#/keeper/${encodeURIComponent(user.username)}`, onclick: () => $('account-dialog').close() }, 'My record'),
+          typeof CloudSaves !== 'undefined' ? h('button', { class: 'btn', type: 'button', onclick: () => { $('account-dialog').close(); CloudSaves.open(); } }, 'Saves') : null,
           out)));
       return;
     }

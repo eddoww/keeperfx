@@ -36,7 +36,11 @@
     { "binding": "DATA", "bucket_name": "keeperfx-data" },
     // Workshop downloads kept after their first fetch from keeperfx.net
     // (src/workshop.js). Private: never give this bucket a public domain.
-    { "binding": "WORKSHOP", "bucket_name": "keeperfx-workshop" }
+    { "binding": "WORKSHOP", "bucket_name": "keeperfx-workshop" },
+    // Cloud saves of signed-in players (src/saves.js). Private: no public
+    // domain, read only through /api/saves. Create once with
+    // `npx wrangler r2 bucket create keeperfx-saves`.
+    { "binding": "SAVES", "bucket_name": "keeperfx-saves" }
   ],
   "vars": {
     // Where the page downloads game data from. Empty: gamedata/ next to the page.
