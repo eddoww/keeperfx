@@ -177,6 +177,8 @@ static void region_connect(unsigned long tree_reg)
         long creg_id = region_get();
         if (creg_id == -1)
           break;
+        // region_lnk() only sets edge bits, so calling it again for the same triangle changes nothing
+        TbBool lnk_done = false;
         for (unsigned int ncor1 = 0; ncor1 < 3; ncor1++)
         {
             int ntri_id = Triangles[creg_id].tags[ncor1];
@@ -187,7 +189,11 @@ static void region_connect(unsigned long tree_reg)
                   long preg_id = get_triangle_region_id(ntri_id);
                   if (preg_id != nreg_id)
                   {
-                      region_lnk(creg_id);
+                      if (!lnk_done)
+                      {
+                          region_lnk(creg_id);
+                          lnk_done = true;
+                      }
                       region_set(ntri_id, nreg_id);
                       region_put(ntri_id);
                   }
