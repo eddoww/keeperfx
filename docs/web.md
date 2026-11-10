@@ -275,8 +275,11 @@ crash, a browser restart, a dropped connection. So the game saves itself.
   and **off by default on the desktop**, where nothing changes unless a
   player sets it. The page offers off, 2, 5, 10, 15 and 30 minutes on the
   start screen and in the Saves dialog; during a game it changes the running
-  game's setting (`kfx_web_autosave_set`), otherwise it edits the file. Cloud
-  saves carry `settings.toml`, so a signed-in player's choice follows them.
+  game's setting (`kfx_web_autosave_set`), otherwise it edits the file. In
+  the game, the Options panel (Esc) has an "Autosave" bar under its icons:
+  left click for the next of off, 1, 2, 5, 10, 15 and 30 minutes, right
+  click for the one before. Cloud saves carry `settings.toml`, so a
+  signed-in player's choice follows them.
 - **Safety**: the game writes every save to `<name>.tmp` and renames it over
   the old file (`FileSystemLb::WriteAll`), so a failed write leaves the old
   one. In the browser the file then reaches IndexedDB in one

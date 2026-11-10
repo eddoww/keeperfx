@@ -1018,10 +1018,9 @@ void draw_rejoin_grace_messages(int tx_units_per_px)
         }
         long seconds = (placeholder_return_turns_left(player) + max(turns_per_second, 1) - 1) / max(turns_per_second, 1);
         char text[TEXT_BUFFER_LENGTH];
-        // TODO: translations; English only for now.
-        snprintf(text, sizeof(text), "%s disconnected: waiting %ld:%02ld for them to return%s",
-            player->player_name[0] ? player->player_name : player_code_name(plyr_idx), seconds / 60, seconds % 60,
-            ((game.operation_flags & GOF_Paused) != 0) ? " (game paused)" : "");
+        TextStringId msg = ((game.operation_flags & GOF_Paused) != 0) ? GUIStr_NetAwaitingReturnPaused : GUIStr_NetAwaitingReturn;
+        snprintf(text, sizeof(text), get_string(msg),
+            player->player_name[0] ? player->player_name : player_code_name(plyr_idx), (int)(seconds / 60), (int)(seconds % 60));
         LbTextSetFont(winfont);
         int32_t width = LbTextStringWidth(text) * units_per_pixel / 16 + 2 * (LbTextCharWidth(' ') * units_per_pixel / 16);
         int32_t height = LbTextLineHeight() * units_per_pixel / 16;

@@ -16,6 +16,7 @@
 #include "config.h"
 #include "config_campaigns.h"
 #include "config_settings.h"
+#include "config_strings.h"
 #include "creature_battle.h"
 #include "game_legacy.h"
 #include "game_loop.h"
@@ -101,8 +102,8 @@ void autosave_title(char *out, size_t outlen)
     if ((name != nullptr) && (name[0] != '\0'))
         snprintf(level, sizeof(level), "%s", name);
     else
-        snprintf(level, sizeof(level), "Level %d", (int)lvnum);
-    snprintf(out, outlen, "Autosave %s %s", when, level);
+        snprintf(level, sizeof(level), get_string(GUIStr_AutosaveLevelNumber), (int)lvnum);
+    snprintf(out, outlen, "%s %s %s", get_string(GUIStr_AutosaveTitle), when, level);
 }
 
 } // namespace
@@ -146,7 +147,7 @@ bool SaveManager::Autosave(const char *reason)
     KFX_WEB_AUTOSAVED(slot - AUTOSAVE_SLOT_FIRST + 1, title, reason);
 #else
     // The browser page shows it in the bar above the game instead.
-    show_onscreen_msg(turns_per_second * 2, "Autosaved");
+    show_onscreen_msg(turns_per_second * 2, "%s", get_string(GUIStr_Autosaved));
 #endif
     return true;
 }

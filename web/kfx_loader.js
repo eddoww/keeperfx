@@ -1054,6 +1054,15 @@ var KFX = { // var: the site script reaches it as window.KFX
   choice: null,
   pending: null,
   resolveChoice: null,
+  /** Whether this tab only watches the game: started as a spectator and not (or no longer) given a keeper. A
+   *  rejoin starts as a spectator until the host hands the keeper back, so the game is asked. */
+  watching() {
+    const choice = this.choice;
+    if (!choice || !choice.spectate) return false;
+    const spectating = this.state === 'running' && typeof Module === 'object' && Module._kfx_web_spectating;
+    if (!spectating) return !choice.rejoin;
+    try { return spectating() === 1; } catch (e) { return !choice.rejoin; }
+  },
   start(choice, { confirmed = false } = {}) {
     // A lobby on another game version: reload into that version, then start.
     if (choice.build && Versions.current && !Versions.current.legacy && choice.build !== Versions.current.id) {
@@ -1100,12 +1109,22 @@ const STATE_TITLES = {
   loading: ['Loading', 'amber'], setup: ['Game files needed', 'amber'], ready: ['Ready', ''],
   starting: ['Starting', 'amber'], running: ['Playing', ''], exited: ['Stopped', 'idle'], failed: ['Could not start', 'red'],
 };
+function stageTitle(state) {
+  const title = STATE_TITLES[state][0];
+  if (state !== 'running' || !KFX.choice) return title;
+  if (KFX.choice.mode === 'replay') return 'Replay';
+  return KFX.watching() ? 'Watching' : title;
+}
+// A rejoin watches until the host gives the keeper back: keep the title in step.
+setInterval(() => {
+  if (KFX.state !== 'running' || !KFX.choice || !KFX.choice.spectate) return;
+  const title = stageTitle(KFX.state);
+  if ($('stage-title').textContent !== title) $('stage-title').textContent = title;
+}, 1000);
 function setState(state) {
   KFX.state = state;
-  let [title, dot] = STATE_TITLES[state];
-  if (state === 'running' && KFX.choice && KFX.choice.mode === 'replay') title = 'Replay';
-  else if (state === 'running' && KFX.choice && KFX.choice.spectate) title = 'Watching';
-  $('stage-title').textContent = title;
+  const dot = STATE_TITLES[state][1];
+  $('stage-title').textContent = stageTitle(state);
   $('stage-dot').className = `dot ${dot}`;
   $('btn-leave').hidden = state !== 'running';
   fastForwardGuard(state === 'running' || state === 'starting');

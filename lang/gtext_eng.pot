@@ -6177,3 +6177,53 @@ msgstr "Files differ between %s and host"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Single-Player Maps (co-op)..."
+
+#. Shown when the game has saved itself
+#: guitext:1172
+msgctxt "On-screen message"
+msgid "Autosaved"
+msgstr "Autosaved"
+
+#. Start of the name of a game the game saved by itself, followed by the time and the level name
+#: guitext:1173
+msgctxt "In-game interface item"
+msgid "Autosave"
+msgstr "Autosave"
+
+#. Name of a level in an autosave name, when the level has no name of its own
+#: guitext:1174
+#, c-format
+msgctxt "In-game interface item"
+msgid "Level %d"
+msgstr "Level %d"
+
+#: guitext:1175
+msgctxt "In-game interface item"
+msgid "Autosave: off"
+msgstr "Autosave: off"
+
+#. How many minutes of play between two automatic saves
+#: guitext:1176
+#, c-format
+msgctxt "In-game interface item"
+msgid "Autosave: every %d min"
+msgstr "Autosave: every %d min"
+
+#: guitext:1177
+msgctxt "In-game interface description"
+msgid "Autosave: How often the game saves itself while you play. LMB toggle."
+msgstr "Autosave: How often the game saves itself while you play. LMB toggle."
+
+#. A player dropped out of the game; the time is how long the game still waits for them, in minutes and seconds
+#: guitext:1178
+#, c-format
+msgctxt "Network game message"
+msgid "%s disconnected: waiting %d:%02d for them to return"
+msgstr "%s disconnected: waiting %d:%02d for them to return"
+
+#. As the previous message, while the game is paused
+#: guitext:1179
+#, c-format
+msgctxt "Network game message"
+msgid "%s disconnected: waiting %d:%02d for them to return (game paused)"
+msgstr "%s disconnected: waiting %d:%02d for them to return (game paused)"
