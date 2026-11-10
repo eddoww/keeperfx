@@ -7,6 +7,7 @@
 //
 //   host   -> relay  SEND(conn, data) BROADCAST(data) ACCEPT(conn)
 //                    REJECT(conn, reason u8) KICK(conn, reason u8)
+//                    MULTICAST(count, conn u8 * count, data): SEND to each of them
 //   joiner -> relay  SEND(0, data)                       (always to the host)
 //   relay  -> host   DATA(conn, data) CONNECT(conn, role u8) DISCONNECT(conn)
 //                    LINK_DOWN(conn) LINK_UP(conn)
@@ -45,7 +46,10 @@
 // {"type": "bye"} first, the page reconnects with
 // ?resume=<id>&secret=<secret>&ack=<last seq received>, gets
 // {"type": "resumed", "ack": <last seq the relay received>} and both resend
-// the rest, so the game never sees the gap. Meanwhile:
+// the rest, so the game never sees the gap. The link message also lists the
+// optional frame ops this relay handles ("ops": [15] for MULTICAST); an engine
+// only uses them when listed, so engines and relays of any age work together.
+// Meanwhile:
 //   - a joiner's seat is kept: the host gets LINK_DOWN(conn) and its game
 //     decides how long to wait (NetWebSP.c: then it times the player out and
 //     sends KICK, which forgets the link), and LINK_UP(conn) on return;
@@ -64,7 +68,9 @@ export const OP = {
   SEND: 1, BROADCAST: 2, ACCEPT: 3, REJECT: 4, KICK: 5,
   DATA: 1, CONNECT: 6, DISCONNECT: 7, ACCEPTED: 8, CLOSING: 9,
   LINK_DOWN: 10, LINK_UP: 11, HOST_DOWN: 12, HOST_UP: 13, PEER_RTT: 14,
+  MULTICAST: 15,
 };
+const OPTIONAL_OPS = [OP.MULTICAST];
 const HOST_LEFT = 255;
 const MAX_CONN = 250;
 const CLOSE_HOST_LEFT = 4100;
@@ -207,7 +213,7 @@ export class Room extends DurableObject {
     };
     this.links.set(link.id, link);
     this.saveLink(ws, link, info);
-    ws.send(JSON.stringify({ type: 'link', id: link.id, secret: link.secret }));
+    ws.send(JSON.stringify({ type: 'link', id: link.id, secret: link.secret, ops: OPTIONAL_OPS }));
     return link;
   }
 
@@ -489,6 +495,14 @@ export class Room extends DurableObject {
       case OP.BROADCAST:
         this.toPeers(frame(OP.DATA, 0, payload));
         break;
+      case OP.MULTICAST: {
+        // [MULTICAST][count][conn * count][data]
+        const count = conn;
+        if (bytes.length < 2 + count) break;
+        const data = frame(OP.DATA, 0, message.slice(2 + count));
+        for (let i = 0; i < count; i++) this.toPeer(bytes[2 + i], data);
+        break;
+      }
       case OP.ACCEPT: {
         const peer = this.peer(conn);
         if (peer) {

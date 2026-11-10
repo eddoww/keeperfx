@@ -1401,6 +1401,7 @@ struct NetSP *InitEnetSP()
             .readmsg = &bf_enet_readmsg,
             .drop_user = &bf_enet_drop_user,
             .reassign_user = &bf_enet_reassign_user,
+            .sendmsg_multi = nullptr,
     };
     return &ret;
 }

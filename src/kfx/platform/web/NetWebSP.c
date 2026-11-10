@@ -45,6 +45,7 @@ extern int kfx_net_next_text(char *buf, int cap);
 extern void kfx_net_hosting(const char *code);
 extern int kfx_net_rtt(int *variance);
 extern int kfx_net_waiting(void);
+extern int kfx_net_relay_supports(int op);
 extern void kfx_net_wait(int ms);
 
 // Frame ops, see web/server/src/room.js.
@@ -56,6 +57,9 @@ enum {
     // relay (each page measures its own, web/kfx_web.js); conn 0 is the host's.
     // Relays from before it never send it; engines from before it ignore it.
     OP_PEER_RTT = 14,
+    // Host: MULTICAST(count u8, conn u8 * count, data): DATA to each of those
+    // connections. Only used when the relay lists it in its link message.
+    OP_MULTICAST = 15,
 };
 #define RELAY_HOST_LEFT 255
 #define MAX_RELAY_CONN 256
@@ -450,6 +454,36 @@ static void web_sendmsg_all(const char *buffer, size_t size)
         send_frame(OP_BROADCAST, 0, buffer, size);
 }
 
+/** The same message to several users: one frame to the relay where it can fan it out. */
+static void web_sendmsg_multi(uint64_t user_mask, const char *buffer, size_t size)
+{
+    if (role == WEB_CLIENT) {
+        if (user_mask & (UINT64_C(1) << SERVER_ID))
+            send_frame(OP_SEND, 0, buffer, size);
+        return;
+    }
+    if (role != WEB_HOST)
+        return;
+    unsigned char conns[MAX_NET_CONNECTIONS];
+    int count = 0;
+    for (NetUserId id = 0; id < MAX_NET_CONNECTIONS; id++) {
+        if ((user_mask & (UINT64_C(1) << id)) && user_conn[id])
+            conns[count++] = user_conn[id];
+    }
+    if (count == 0)
+        return;
+    if (count == 1 || !kfx_net_relay_supports(OP_MULTICAST) || size + 2 + count > MAX_FRAME) {
+        for (int i = 0; i < count; i++)
+            send_frame(OP_SEND, conns[i], buffer, size);
+        return;
+    }
+    send_buf[0] = OP_MULTICAST;
+    send_buf[1] = (unsigned char)count;
+    memcpy(send_buf + 2, conns, count);
+    memcpy(send_buf + 2 + count, buffer, size);
+    kfx_net_send(send_buf, (int)(size + 2 + count));
+}
+
 static TbBool wait_message(NetUserId source, unsigned timeout)
 {
     if (source >= MAX_NET_CONNECTIONS)
@@ -602,6 +636,7 @@ struct NetSP *InitWebSP(void)
         .readmsg = web_readmsg,
         .drop_user = web_drop_user,
         .reassign_user = web_reassign_user,
+        .sendmsg_multi = web_sendmsg_multi,
     };
     return &sp;
 }

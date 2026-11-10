@@ -261,6 +261,7 @@ addToLibrary({
           const m = JSON.parse(ev.data);
           l.id = m.id;
           l.secret = m.secret;
+          l.ops = Array.isArray(m.ops) ? m.ops : []; // optional frame ops this relay knows
           return;
         }
         if (l && ev.data.startsWith('{"type":"resumed"')) { kfxNetResumed(JSON.parse(ev.data).ack >>> 0); return; }
@@ -457,6 +458,10 @@ addToLibrary({
     if (kfxNet.link && kfxNet.link.phase === 'reconnecting') return 1;
     return (kfxNet.state === 2 && (kfxNet.frames.length || kfxNet.texts.length)) ? 1 : kfxNet.state;
   },
+
+  // Whether the relay announced it handles frame op `op` (NetWebSP.c, MULTICAST).
+  kfx_net_relay_supports__deps: ['$kfxNet'],
+  kfx_net_relay_supports: (op) => (kfxNet.link && kfxNet.link.ops && kfxNet.link.ops.includes(op) ? 1 : 0),
 
   // This page's round trip to the relay and its variation, in ms (0: not known yet).
   kfx_net_rtt__deps: ['$kfxNet'],
