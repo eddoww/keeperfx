@@ -42,7 +42,12 @@ Commands:
 
       Each build records the page features its engine has ("features",
       web/kfx_versions.js supports()), found in the source tree it was built
-      from (--checkout) or given with --features.
+      from (--checkout) or given with --features. A port branch made for an
+      older release (stable 1.4: web-stable-1.4) describes itself in
+      web/build-info.json in its tree: {"lacks": [page features it does not
+      have], "saves": "<kind>"} (its saves are of another kind than the
+      alpha builds', so the page keeps them in a folder of their own);
+      --lacks and --saves override it.
 
   pull <layout> <builds-url>
       Fetch index.json and the manifests of the builds a deployed site lists
@@ -68,7 +73,8 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_FORMAT = 1
 CHANNELS = {
-    "stable": {"name": "Stable", "about": "The latest KeeperFX release."},
+    "stable": {"name": "Stable", "about": "The latest KeeperFX release, the game as most desktop players have it. "
+                                           "It has its own saves and lobbies, and lacks the newest features."},
     "alpha": {"name": "Alpha", "about": "A recent build of KeeperFX's development version, with the newest features. "
                                          "It can have bugs that the stable version does not."},
     "dev": {"name": "Test", "about": "A build made by hand for testing."},
@@ -80,6 +86,22 @@ FEATURES = {
     "loadgame": ("src/main.cpp", '"loadgame"'),  # -loadgame: autosave "Continue"
     "mpmods": ("src/main.cpp", '"mpmods"'),      # -mpmods: Workshop mods in online lobbies
 }
+
+
+def build_info(checkout):
+    """web/build-info.json of a port branch: {"lacks": [...], "saves": "..."} or {}."""
+    try:
+        with open(os.path.join(checkout, "web", "build-info.json"), encoding="utf-8") as f:
+            info = json.load(f)
+    except OSError:
+        return {}
+    except ValueError as e:
+        sys.exit(f"{checkout}/web/build-info.json: {e}")
+    lacks = info.get("lacks", [])
+    saves = info.get("saves", "")
+    if not isinstance(lacks, list) or not all(isinstance(x, str) for x in lacks) or not isinstance(saves, str):
+        sys.exit(f"{checkout}/web/build-info.json: lacks must be a list of names, saves a string")
+    return {"lacks": lacks, "saves": saves}
 
 
 def detect_features(checkout):
@@ -275,6 +297,15 @@ def cmd_add(args):
         "dataFiles": len(manifest["files"]),
         "dataBytes": total,
     }
+    info = build_info(args.checkout)
+    lacks = sorted(f for f in args.lacks.split(",") if f) if args.lacks is not None else info.get("lacks", [])
+    saves = args.saves if args.saves is not None else info.get("saves", "")
+    if saves and not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", saves):
+        sys.exit(f"Bad saves kind: {saves}")
+    if lacks:
+        build["lacks"] = lacks
+    if saves:
+        build["saves"] = saves
     if args.keep:
         build["keep"] = True
     index["builds"].insert(0, build)
@@ -448,6 +479,8 @@ def main():
     a.add_argument("--keep-referenced", metavar="URL",
                    help="prune, keeping the builds replays need: the site's /api/replays/builds, or 'none'")
     a.add_argument("--features", help="comma-separated page features the engine has (default: found in --checkout)")
+    a.add_argument("--lacks", help="comma-separated page features the engine lacks (default: --checkout's web/build-info.json)")
+    a.add_argument("--saves", help="kind of saves, if not the alpha builds' (default: --checkout's web/build-info.json)")
     a.add_argument("--grace-days", type=float, default=14)
     a.set_defaults(func=cmd_add)
     p = sub.add_parser("pull")

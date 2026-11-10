@@ -57,11 +57,14 @@ try {
     await page.evaluate(() => document.getElementById('start-button').click());
     s = await waitState(['exited'], 45000); // running for 45 s without stopping
     const frames = await page.evaluate(() => Module.kfxFrames || 0);
+    // In a level (web/kfx_touch.js's context bit 1), for engines that say so.
+    const inLevel = await page.evaluate(() => !!(Module._kfx_web_input_context && (Module._kfx_web_input_context() & 1)));
     const log = await page.evaluate(() => { try { return FS.readFile('/kfx/keeperfx.log', { encoding: 'utf8' }); } catch (e) { return ''; } });
     const version = (log.match(/ver (\d+\.\d+\.\d+\.\d+)/) || [])[1];
     if (s !== 'running') fail(`the game stopped (state ${s})`);
     if (frames < 100) fail(`only ${frames} frames in 45 s`);
-    if (!/level 1/i.test(log) && !/Level load timing/.test(log)) fail('the level did not load');
+    // "level 1" (alpha), "selected level (1)" (1.4), or the engine says it is in a level.
+    if (!/level \(?1\b/i.test(log) && !/Level load timing/.test(log) && !inLevel) fail('the level did not load');
     console.log(`${buildId}: running, ${frames} frames, reports version ${version}`);
   } else {
     console.log(`${buildId}: loaded, data list read, waiting for DK files (state ${s})`);

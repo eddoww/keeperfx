@@ -442,9 +442,10 @@ engine on the device, the engine next to the page.
 ## Game versions
 
 The site can offer several builds of the game side by side: the newest
-alpha, older alphas that lobbies or invites still use, and a stable release
-once one can be built (below). Players pick one on the start screen or with
-the version button in the game's frame bar; the page remembers the choice.
+alpha, older alphas that lobbies or invites still use, and the latest stable
+release (1.4.0, through a backport: see "Stable releases"). Players pick one
+on the start screen or with the version button in the game's frame bar; the
+page remembers the choice.
 
 On keeper.edwindejong.net this is switched on by the Worker var `BUILDS_URL`
 (`https://keeper-data.edwindejong.net/builds/`). Everyone gets the newest
@@ -490,14 +491,14 @@ therefore carries upstream's own number.
 
 ### What can be built
 
-The port needs SDL3 (master since build 5272, 2026-08-05), the CMake
-modules (5267), the platform layer (5276) and the OpenGL renderer (5389,
-2026-09-12). Stable 1.4.0 has none of them: applying the port to `v1.4.0`
-conflicts in its very first commit (CMakeLists.txt, the CMake modules, the
-sound, platform and renderer files are missing or different; 617 files and
-about 80,000 lines differ in `src/`). A stable channel appears once
-upstream's next release is cut from a master that has them; until then the
-site offers alpha builds only, and keeps a few older ones.
+The port on this branch needs SDL3 (master since build 5272, 2026-08-05),
+the CMake modules (5267), the platform layer (5276) and the OpenGL renderer
+(5389, 2026-09-12). Stable 1.4.0 has none of them: applying the port to
+`v1.4.0` conflicts in its very first commit (CMakeLists.txt, the CMake
+modules, the sound, platform and renderer files are missing or different;
+617 files and about 80,000 lines differ in `src/`). So the stable channel is
+built from a backport branch of its own, `web-stable-1.4` (see "Stable
+releases"); alpha builds come from this branch.
 
 New features reach the browser with the alpha that has them. *Hellhound
 mode* (co-op on any single-player map: in an online lobby, pick a map under
@@ -513,6 +514,82 @@ conflict and compiled first time. The port touches 26 files outside `web/`,
 mostly new ones (`src/kfx/platform/web/`, `WebBundle.cmake`) and guarded
 lines, so conflicts should be rare and small; the CMake modules and
 `RenderThreadManager` are the likeliest places.
+
+### Stable releases
+
+The stable channel offers the latest KeeperFX release as the KeeperFX team
+released it: its own game (simulation, rules, campaigns) and its own
+complete data package, with only what a browser needs added. 1.4 is an SDL2
+game with a software renderer, so the browser glue of this branch (written
+for master's SDL3 platform layer and OpenGL renderer) was carried over by
+hand rather than rebased.
+
+**The backport, `web-stable-1.4`**: tag `v1.4.0` plus a few commits:
+
+- `web/WebBuild.cmake` (used when configured with `emcmake`): SDL2,
+  SDL2_mixer, SDL2_image and SDL2_net from Emscripten's own ports (SDL 2.32,
+  SDL_mixer 2.8.0: what 1.4 shipped with, or close), OpenAL from Emscripten,
+  and the same pinned wasm libraries as the alphas (`web/build-deps.sh`; the
+  kfx-deps versions of 1.4 and master are the same: Lua 5.1 with the LuaJIT
+  compatibility patch, enet6, ffmpeg, astronomy, centijson, spng, zlib). It
+  builds only the engine (`build-web/site/keeperfx.js`, `.wasm`).
+- The glue from this branch, cut down to 1.4: lazy data download
+  (`WebFileSystem.c`), the frame yield after each presented frame, level
+  results for the Hall of Fame (`WebReport.c`), online play through the
+  site's relay (`NetWebSP.c`, `NetMatchmakingWeb.c` on 1.4's simpler network
+  interface: no spectators, no rejoin), the page's mouse and touch calls
+  (`WebInput.cpp`, with `CAPTURE_CURSOR` read in the browser build), the
+  lobby orders quick match uses (`WebLobby.c`, which starts a map the way
+  1.4's own `-level` autostart does: `pack:level` in the lobby chat), the
+  keeper name from the page, and the two compile fixes for wasm (no
+  `execinfo.h`, no ADPCM tags in Emscripten's OpenAL). `web/kfx_web.js` is a
+  copy of this branch's (`KFX_WEB_API` 1), so the engine speaks the page's
+  current contract.
+- `web/build-info.json`: what the page should know (below).
+
+Nothing of 1.4's game changes; every change is under `__EMSCRIPTEN__` or in
+files only the browser build compiles. It reports itself as upstream's
+release does: `1.4.0.5136` (`BUILD_NUMBER` = `git rev-list --count v1.4.0`,
+`PACKAGE_SUFFIX` empty).
+
+**What stable has and lacks** compared with the alpha: single player,
+campaigns, saves (the game's own Save/Load menu), skirmish, the Hall of Fame,
+online play between stable players through the relay (hosting, joining,
+invites, the lobby list, quick match with its automatic start), Workshop maps
+and mods played solo, the uncaptured mouse, edge scrolling, Lock mouse,
+touch taps and holds, controllers, offline play. It lacks (the page hides
+them for it):
+
+| Lacks | Because | The page |
+|---|---|---|
+| `autosave` | 1.4 has no autosave and no `-loadgame` | no Continue box, no autosave interval |
+| `cloudsaves` | its saves are of another format (below) | its saves stay in the browser; the Saves dialog shows them, local only |
+| `replays` | 1.4 records no automatic replays | no "publish replay" after a level |
+| `spectate` | 1.4 has no spectators (and so no rejoining) | no watch link; its lobbies publish no spectator places, so the site offers no Watch or Rejoin for them |
+| `touchcamera` | the two-finger pan and twist need the alpha's local camera; 1.4 moves its camera by synced packets | the two-finger hint is hidden (pinch zoom still works) |
+| `waitusers` | no `-waitusers` | hosting a Workshop map online starts a plain lobby (the host picks the map) |
+
+Also missing: the game's resolution does not follow the frame (no
+`kfx_web_set_resolution`: the page scales the picture, as with the first
+alpha builds), the OpenGL renderer (1.4 draws in software), a quick-match
+lobby cap (`max` is ignored: 1.4's lobby size is fixed), 1.4's lobby takes no
+lobby name (it is named after the host), and its saves are large (about
+50 MB each in browser storage, the old format).
+
+**Future stable releases**: the workflow finds a new release on keeperfx.net
+and builds it with the port for its version: a branch
+`web-stable-<major>.<minor>` if there is one (a patch release such as 1.4.1
+is merged into `web-stable-1.4`), else this branch (the next release, cut
+from a master that has SDL3 and the renderer, should take this branch's
+port as an alpha does: merged when it is newer than the port's base, or the
+port's commits rebased onto it). If neither applies, the run fails with
+`backport-needed` and opens the issue "A new stable KeeperFX release needs a
+browser backport branch"; the site keeps its previous stable build. Making
+one: branch from the release tag, carry the browser glue over as
+`web-stable-1.4` does (its commits show what that takes; start from this
+branch's files when the release has the platform layer), add
+`web/build-info.json`, push it as `web-stable-<major>.<minor>` and run the
+workflow with channel `stable`.
 
 ### Layout and hosting
 
@@ -601,6 +678,17 @@ and the engine next to the page has all the page knows:
 Engine exports the page checks for itself (autosave, resolution, mouse,
 `kfxOnLobby` for quick match's automatic start) need no entry.
 
+A build made for an older release also says what it **lacks** of what the
+page otherwise assumes (`"lacks"`, e.g. `["autosave", "cloudsaves",
+"replays", "spectate", "touchcamera", "waitusers"]` for stable 1.4; see
+"Stable releases"), and whether its **saves** are of another kind than the
+alpha builds' (`"saves": "1.4"`). Both come from `web/build-info.json` in
+the port branch it was built from (or `publish-build.py add --lacks/--saves`);
+a build without them lacks nothing and shares the alpha builds' saves, so the
+builds published before keep working as they did. `Versions.supports(name)`
+answers for both kinds (`loadgame` and `mpmods` must be listed; any other
+name is there unless lacked), and the page sets `body.lacks-<name>` for CSS.
+
 ### Choosing and switching
 
 `web/kfx_versions.js` decides which build a visit runs: `?build=` in the
@@ -627,8 +715,16 @@ builds.
 
 ### Saves, online play and records across versions
 
-- **Saves and settings** are shared by all versions (`/persist/save`).
-  Saves use a self-describing format (`src/kfx/save/FORMAT.txt`) that reads
+- **Saves and settings** are shared by all alpha versions (`/persist/save`).
+  A build with `"saves"` in `index.json` (stable 1.4: its game writes the
+  same file names, `fx1g0001.sav`, `fx1contn.sav`, `settings.toml`, in its
+  own format) keeps saves, settings and campaign progress in a folder of its
+  own, `/persist/save-<saves>` (`Versions.saveDir`): switching between the
+  two asks first ("Stable 1.4.0.5136 keeps its own saves ... Switch?"), and
+  the other version's files stay untouched for when the player switches back.
+  Those saves are not sent to the account (cloud saves only carry the shared
+  folder) and are not part of the version-switch backups below.
+- Between alpha versions, saves use a self-describing format (`src/kfx/save/FORMAT.txt`) that reads
   across builds: tested both ways between 1.4.0.5601 and 1.4.0.5603 (which
   changed the format, minor 9 to 10): each loads the other's saves of a
   campaign level with a "made by version" warning. Saves from builds before
@@ -641,12 +737,15 @@ builds.
   1.4.0.5601, this is 1.4.0.5603"); it loads, with the game's own warning.
   Autosaves and cloud saves are the same files, so they behave the same.
 - **Online play** needs the same build on every side. A hosted lobby records
-  its build; the Lobbies page shows each lobby's version, and joining one on
+  its build (and its version, which the game's own lobby lists compare: the
+  alpha's marks other versions incompatible and refuses them, 1.4's leaves
+  them out); the Lobbies page shows each lobby's version, and joining one on
   another version reloads into that version first. Invite links carry
   `&build=`, and older links without it resolve to the lobby's version. If
-  a player still reaches a lobby of another version (the game's own lobby
-  list shows them all), the game refuses: "The host is using a different
-  game version". Lobbies of a build the site no longer offers are shown but
+  a player still reaches a lobby of another version, the game refuses: "The
+  host is using a different game version" (an alpha host), or, with a 1.4
+  host, it shows the version mismatch in the lobby and does not start the
+  game. Lobbies of a build the site no longer offers are shown but
   not joinable. A lobby hosted with the engine next to the page records
   `build=page`.
 - **Quick match** pairs only keepers on the same build (the page sends its
@@ -657,7 +756,7 @@ builds.
   downloads the files that differ (3 files to start level 1 on 5601 after
   5603), and the cache keeps the data of the last few versions used.
 - **Hall of Fame** results record the version that played them (shown with
-  recent games). The boards are shared by all versions.
+  recent games), stable's included. The boards are shared by all versions.
 - **Replays** record the build (below, "Replays"); watching one loads that
   build when the site still has it.
 - **Workshop** items are data, so they work with every version; Workshop
@@ -667,21 +766,39 @@ builds.
 ### Following upstream automatically
 
 `.github/workflows/web-upstream.yml` runs every four hours (and by hand):
-it asks keeperfx.net for the newest alpha, compares it with the deployed
-`builds/index.json`, and if the site lacks it (or has it from an older port
-revision), runs `web/upstream-build.sh`, which
+for each channel, the newest alpha and the latest stable release
+(`KFX_CHANNELS`, default `alpha stable`), it asks keeperfx.net for the
+newest build, compares it with the deployed `builds/index.json`
+(`web/upstream-build.sh --check`), and for each the site lacks (or has from
+an older port revision) runs `web/upstream-build.sh`, one channel after the
+other, which
 
-1. rebases the port onto that upstream commit (exit 10 if it no longer
-   applies, naming the conflicting files),
-2. compiles it with upstream's build number (exit 11 on errors),
-3. packages the data: the latest complete release with that alpha's patch
-   laid over it, as desktop players have it (exit 12),
-4. adds it to the layout and loads it in headless Chromium until it asks for
-   the DK files (exit 13 if it does not; with `--dk` it plays a level),
-5. uploads it (exit 14 on failure).
+1. picks the port for the channel (`--port auto`): this branch for an
+   alpha; for a stable release the branch `web-stable-<major>.<minor>` if
+   the repository has one (the workflow fetches `web-stable-*`), else this
+   branch;
+2. brings it onto that upstream commit: a backport branch takes a later
+   release of its line by a merge; this branch merges a newer upstream in,
+   or has its commits rebased onto an older or unrelated one (exit 10 if it
+   no longer applies, naming the conflicting files; for a stable release
+   with no backport of its own, status `backport-needed`),
+3. compiles it with upstream's build number (exit 11 on errors),
+4. packages the data: for an alpha, the latest complete release with that
+   alpha's patch laid over it, as desktop players have it; for a stable
+   release, its own complete package (exit 12),
+5. adds it to the layout and loads it, with this branch's page (the page
+   players get, whichever port the engine came from), in headless Chromium
+   until it asks for the DK files (exit 13 if it does not; with `--dk` it
+   plays a level),
+6. uploads it (exit 14 on failure).
 
-A failure fails the run and opens (or comments on) an issue in the fork;
-the site keeps its previous builds. The workflow needs this branch on the
+The default stays the newest alpha (`index.json` `"default": "alpha"`); a
+stable build only becomes the default with `--default stable`.
+
+A failure fails that channel's run and opens (or comments on) an issue in
+the fork ("Web build for the newest upstream alpha failed", or "A new stable
+KeeperFX release needs a browser backport branch"); the site keeps its
+previous builds. The workflow needs this branch on the
 fork, the secrets `CLOUDFLARE_API_TOKEN` (Account → *Workers R2 Storage:
 Edit*) and `CLOUDFLARE_ACCOUNT_ID`, and the variable `KFX_BUILDS_URL` (the
 deployed `builds/`); without the variable it does nothing. Run the same
@@ -695,7 +812,10 @@ web/upstream-build.sh --work /tmp/kfx-upstream --builds-url https://keeper-data.
 
 When the port no longer merges with upstream, merge it by hand
 (`git merge origin/master` on the port branch), fix the conflicts, push; the next run
-builds from it.
+builds from it. The same for `web-stable-1.4` and a patch release
+(`git merge v1.4.1`). Build the stable channel by hand with
+`--channel stable` (it finds `web-stable-1.4` itself; `--port` names
+another).
 
 ## Online play
 

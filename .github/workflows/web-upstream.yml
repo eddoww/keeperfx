@@ -2,15 +2,21 @@ name: Web Upstream Builds
 
 # Keeps the browser site's engine builds in step with upstream KeeperFX
 # (docs/web.md, "Game versions"): every few hours, look for a new alpha build
-# on keeperfx.net; if the site does not offer it yet, merge that upstream commit into this branch's
-# browser port, build it, smoke test it in a
-# headless browser and upload it to the R2 bucket next to the older builds
-# (web/upstream-build.sh). The site picks it up from builds/index.json; no
-# deploy of the page is needed.
+# on keeperfx.net and for a new stable release; for each the site does not
+# offer yet, bring the browser port onto that upstream commit, build it, smoke
+# test it in a headless browser and upload it to the R2 bucket next to the
+# older builds (web/upstream-build.sh). The site picks it up from
+# builds/index.json; no deploy of the page is needed.
+#
+# Each channel has its own port: the alpha builds the branch this workflow runs
+# from (web); a stable release the backport branch made for it,
+# web-stable-<major>.<minor> (web-stable-1.4 for 1.4.x), fetched from this
+# repository, or, when there is none, this branch too if it applies to it.
 #
 # A failure (the port no longer applies, the build breaks, the smoke test
-# fails) fails the run and opens or updates an issue in this repository; the
-# site keeps offering its previous builds.
+# fails) fails that channel's run and opens or updates an issue in this
+# repository; the site keeps offering its previous builds. A new stable
+# release that no port applies to says that a backport branch is needed.
 #
 # Needs, in this repository's settings:
 #   secrets.CLOUDFLARE_API_TOKEN   "Workers R2 Storage: Edit" on the account
@@ -25,6 +31,8 @@ name: Web Upstream Builds
 #                                  the branch the workflow runs on. GitHub runs scheduled
 #                                  workflows from the default branch only, so this file
 #                                  must be there for the schedule to fire.
+#   vars.KFX_CHANNELS              (optional) the channels the schedule checks, default
+#                                  "alpha stable"
 # It runs only where KFX_BUILDS_URL is set, so upstream and other forks never run it.
 
 on:
@@ -33,10 +41,10 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: "alpha or stable"
-        default: alpha
+        description: "alpha, stable or both"
+        default: both
       commit:
-        description: "Upstream commit to build (empty: the newest build of the channel)"
+        description: "Upstream commit to build (empty: the newest build of the channel; needs a single channel)"
         default: ""
       force:
         description: "Build even if the site already has it"
@@ -59,54 +67,76 @@ env:
 
 jobs:
   check:
-    name: "Look for a new upstream build"
+    name: "Look for new upstream builds"
     if: vars.KFX_BUILDS_URL != ''
     runs-on: ubuntu-24.04
     outputs:
-      needed: ${{ steps.check.outputs.needed }}
+      channels: ${{ steps.check.outputs.channels }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ vars.KFX_PORT_BRANCH || github.ref }}
-    - name: Fetch upstream
+    - name: Fetch upstream and the backport branches
       run: |
         git remote add upstream https://github.com/dkfans/keeperfx.git
         git fetch --quiet --tags upstream master
+        git fetch --quiet origin '+refs/heads/web-stable-*:refs/remotes/origin/web-stable-*' || true
     - id: check
       name: Compare with the site
       env:
-        CHANNEL: ${{ inputs.channel || 'alpha' }}
+        CHANNEL: ${{ inputs.channel || 'both' }}
+        SCHEDULED: ${{ vars.KFX_CHANNELS || 'alpha stable' }}
         COMMIT: ${{ inputs.commit }}
         FORCE: ${{ inputs.force }}
         BUILDS_URL: ${{ vars.KFX_BUILDS_URL }}
       run: |
         set -eu
-        if [ "$FORCE" = true ] || [ -n "$COMMIT" ]; then echo "needed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-        latest=$(python3 web/upstream.py latest "$CHANNEL" --repo .)
-        commit=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["commit"] or "")' "$latest")
-        published=$(python3 web/upstream.py published "$BUILDS_URL" "$CHANNEL" --commit "$commit" --port "$(git rev-parse HEAD)")
-        echo "upstream: $latest"
-        echo "site: $published"
-        has=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["has"])' "$published")
-        if [ "$has" = True ]; then echo "needed=false" >> "$GITHUB_OUTPUT"; else echo "needed=true" >> "$GITHUB_OUTPUT"; fi
+        if [ "$CHANNEL" = both ]; then channels="$SCHEDULED"; else channels="$CHANNEL"; fi
+        if [ -n "$COMMIT" ] && [ "$(echo $channels | wc -w)" != 1 ]; then
+          echo "::error::A commit needs one channel (alpha or stable), not: $channels"; exit 1
+        fi
+        needed=()
+        for ch in $channels; do
+          if [ "$FORCE" = true ] || [ -n "$COMMIT" ]; then needed+=("$ch"); continue; fi
+          # Same port choice and comparison as the build (web/upstream-build.sh --check).
+          if web/upstream-build.sh --check --channel "$ch" --work "check-$ch" --upstream upstream/master \
+               --builds-url "$BUILDS_URL"; then
+            cat "check-$ch/result.json"
+            status=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "check-$ch/result.json")
+            [ "$status" = needed ] && needed+=("$ch")
+          else
+            # Could not tell (keeperfx.net down, no such port): let the build say why.
+            needed+=("$ch")
+          fi
+        done
+        json=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${needed[@]}")
+        echo "channels=$json" >> "$GITHUB_OUTPUT"
+        echo "builds needed: $json"
 
   build:
-    name: "Build and publish"
+    name: "Build and publish (${{ matrix.channel }})"
     needs: check
-    if: needs.check.outputs.needed == 'true'
+    if: needs.check.outputs.channels != '[]' && needs.check.outputs.channels != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    strategy:
+      # One at a time: each run adds its build to the index the previous one uploaded.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        channel: ${{ fromJSON(needs.check.outputs.channels) }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ vars.KFX_PORT_BRANCH || github.ref }}
 
-    - name: Fetch upstream
+    - name: Fetch upstream and the backport branches
       run: |
         git remote add upstream https://github.com/dkfans/keeperfx.git
         git fetch --quiet --tags upstream master
+        git fetch --quiet origin '+refs/heads/web-stable-*:refs/remotes/origin/web-stable-*' || true
 
     - name: Install tools
       run: |
@@ -126,11 +156,17 @@ jobs:
         path: work/deps/prefix
         key: web-deps-${{ env.EMSDK_VERSION }}-${{ hashFiles('web/build-deps.sh', 'web/lua51-luajit-compat.patch') }}
 
+    - id: release
+      name: Latest stable release
+      run: |
+        tag=$(python3 web/upstream.py latest stable | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"])' || echo none)
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
     - name: Cache the complete release
       uses: actions/cache@v6
       with:
         path: work/complete-*
-        key: kfx-complete-v1.4.0
+        key: kfx-complete-${{ steps.release.outputs.tag }}
 
     - name: Wrangler (for the upload)
       working-directory: web/server
@@ -146,7 +182,7 @@ jobs:
         CHROMIUM=$(find ~/.cache/ms-playwright -path '*chrome-linux*/chrome' -type f | head -1)
         export CHROMIUM
         args=(--work work --deps "$PWD/work/deps/prefix" --upstream upstream/master
-              --builds-url "${{ vars.KFX_BUILDS_URL }}" --channel "${{ inputs.channel || 'alpha' }}"
+              --builds-url "${{ vars.KFX_BUILDS_URL }}" --channel "${{ matrix.channel }}"
               --upload "${{ vars.KFX_BUILDS_BUCKET || 'keeperfx-data' }}")
         [ -n "${{ inputs.commit }}" ] && args+=(--commit "${{ inputs.commit }}")
         [ "${{ inputs.force }}" = true ] && args+=(--force)
@@ -158,7 +194,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: web-upstream-logs
+        name: web-upstream-logs-${{ matrix.channel }}
         path: |
           work/*.log
           work/result.json
@@ -175,12 +211,25 @@ jobs:
       if: failure()
       env:
         GH_TOKEN: ${{ github.token }}
+        CHANNEL: ${{ matrix.channel }}
       run: |
+        status=$(python3 -c 'import json; print(json.load(open("work/result.json"))["status"])' 2>/dev/null || echo unknown)
         msg=$(python3 -c 'import json; r=json.load(open("work/result.json")); print(f"**{r[\"status\"]}**: {r[\"message\"]}")' 2>/dev/null || echo "The run failed before it could say why.")
+        if [ "$status" = backport-needed ]; then
+          help="A new stable release that the browser port does not apply to needs a backport branch of its own, as web-stable-1.4 is for 1.4: start it from the release tag, carry over the browser glue the way web-stable-1.4 does (its commits list what that takes), push it as web-stable-<major>.<minor> and run this workflow again with channel stable (docs/web.md, \"Stable releases\"). Until then the site keeps offering the stable version it has."
+        elif [ "$CHANNEL" = stable ]; then
+          help="If the stable port (web-stable-<major>.<minor>) no longer merges with this release, merge the release tag into it by hand, fix the conflicts and push (docs/web.md, \"Stable releases\")."
+        else
+          help="If the port no longer merges, merge upstream master into it by hand (docs/web.md, \"Game versions\")."
+        fi
         body="$msg
 
         Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        The site keeps offering its previous builds. If the port no longer merges, merge upstream master into it by hand (docs/web.md, \"Game versions\")."
-        title="Web build for the newest upstream ${{ inputs.channel || 'alpha' }} failed"
+        The site keeps offering its previous builds. $help"
+        if [ "$status" = backport-needed ]; then
+          title="A new stable KeeperFX release needs a browser backport branch"
+        else
+          title="Web build for the newest upstream $CHANNEL failed"
+        fi
         number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
         if [ -n "$number" ]; then gh issue comment "$number" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

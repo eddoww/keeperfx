@@ -6,10 +6,15 @@
 #      keeperfx.net, or the one given;
 #   2. stop if the site already has it, built from this port (unless --force);
 #   3. bring the port onto that upstream commit in a scratch worktree (merge
-#      a newer upstream in; rebase onto an unrelated one): fails on conflicts;
+#      a newer upstream in; rebase onto an unrelated one): fails on conflicts.
+#      Each channel has its own port (--port auto): alpha the branch this
+#      script runs from (web); stable the backport branch for that release,
+#      web-stable-<major>.<minor> (e.g. web-stable-1.4), when one exists,
+#      else this branch too, as long as it applies to the release;
 #   4. compile it (version and build number as upstream's own build);
-#   5. package the game data: the latest complete release with that build's
-#      alpha patch laid over it, as desktop players have it;
+#   5. package the game data: for an alpha, the latest complete release with
+#      that build's alpha patch laid over it, as desktop players have it; for
+#      a stable release, its own complete package;
 #   6. add it to the builds layout (web/publish-build.py) and smoke test it in
 #      a headless browser (web/smoke-test.mjs);
 #   7. with --upload, upload it to R2 (web/upload-builds.sh). The index goes
@@ -20,7 +25,9 @@
 # Usage: web/upstream-build.sh [options]
 #   --channel alpha|stable  which upstream builds to follow (default alpha)
 #   --commit SHA            build this upstream commit instead of the newest
-#   --port REF              the browser port to apply (default HEAD)
+#   --port REF|auto         the browser port to apply (default auto: HEAD for alpha; for
+#                           stable the branch web-stable-<major>.<minor> (local, origin/ or
+#                           fork/) if there is one, else HEAD)
 #   --upstream REF          upstream master in this clone (default origin/master)
 #   --work DIR              scratch space (default /tmp/kfx-upstream)
 #   --deps DIR              wasm dependencies (web/build-deps.sh output; built if missing)
@@ -34,17 +41,20 @@
 #                           keeping those its published replays need (publish-build.py
 #                           --keep-referenced URL/api/replays/builds); without it nothing is pruned
 #   --force                 build even if the site already has this build
+#   --check                 only say whether a build is needed: result.json status
+#                           "up-to-date" or "needed" (exit 0), nothing is built
 #   JOBS=4                  parallel compile jobs (always under nice)
 #
-# Exit codes: 0 done or nothing to do, 10 the port does not apply, 11 the
+# Exit codes: 0 done or nothing to do, 10 the port does not apply (for a
+# stable release without a port of its own: a backport branch is needed), 11 the
 # build failed, 12 game data failed, 13 the smoke test failed, 14 the upload
 # failed, 2 bad usage or upstream not reachable.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
-CHANNEL=alpha COMMIT="" PORT=HEAD UPSTREAM=origin/master WORK=/tmp/kfx-upstream DEPS="" BUILDS_URL="" LAYOUT=""
-DK="" UPLOAD="" BUCKET=keeperfx-data FORCE="" DEFAULT="" WHERE=() SITE=""
+CHANNEL=alpha COMMIT="" PORT=auto UPSTREAM=origin/master WORK=/tmp/kfx-upstream DEPS="" BUILDS_URL="" LAYOUT=""
+DK="" UPLOAD="" BUCKET=keeperfx-data FORCE="" DEFAULT="" WHERE=() SITE="" CHECK=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --channel) CHANNEL="$2"; shift 2 ;;
@@ -61,6 +71,7 @@ while [ $# -gt 0 ]; do
         --default) DEFAULT="$2"; shift 2 ;;
         --site) SITE="${2%/}"; shift 2 ;;
         --force) FORCE=1; shift ;;
+        --check) CHECK=1; shift ;;
         *) echo "Unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -87,7 +98,6 @@ die() { result "$2" "$3" "${4:-}"; exit "$1"; }
 
 # ---- 1. Which upstream build ----------------------------------------------------
 cd "$REPO"
-PORT_SHA="$(git rev-parse --verify "$PORT^{commit}")"
 if [ -z "$COMMIT" ]; then
     INFO="$(python3 "$HERE/upstream.py" latest "$CHANNEL" --repo "$REPO")" || die 2 unreachable "keeperfx.net did not answer"
     COMMIT="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["commit"] or "")' "$INFO")"
@@ -104,7 +114,24 @@ NUMBER="$(git rev-list --count "$COMMIT")"
 eval "$(git show "$COMMIT:version.mk" | grep -E '^VER_(MAJOR|MINOR|RELEASE)=[0-9]+$')"
 VERSION="$VER_MAJOR.$VER_MINOR.$VER_RELEASE.$NUMBER"
 if [ "$CHANNEL" = alpha ]; then SUFFIX=Alpha; else SUFFIX=""; fi
-echo "== upstream $CHANNEL $VERSION ($COMMIT, $DATE), port $PORT_SHA"
+
+# Which port: a stable release has a branch of its own once the port on this
+# branch no longer applies to it (web-stable-1.4: 1.4 predates SDL3 and the
+# renderer the port is written for). A branch for this release, not an older one.
+BACKPORT=""
+if [ "$PORT" = auto ]; then
+    PORT=HEAD
+    if [ "$CHANNEL" = stable ]; then
+        WANT="web-stable-$VER_MAJOR.$VER_MINOR"
+        for ref in "$WANT" "origin/$WANT" "fork/$WANT"; do
+            if git rev-parse --verify -q "$ref^{commit}" > /dev/null; then PORT="$ref"; BACKPORT="$WANT"; break; fi
+        done
+    fi
+elif [[ "$PORT" == *web-stable-* ]]; then
+    BACKPORT="${PORT##*/}"
+fi
+PORT_SHA="$(git rev-parse --verify "$PORT^{commit}" 2>/dev/null)" || die 2 bad-port "No port branch $PORT in this clone"
+echo "== upstream $CHANNEL $VERSION ($COMMIT, $DATE), port $PORT ($PORT_SHA)"
 INFO_JSON="{\"version\": \"$VERSION\", \"upstream\": \"$COMMIT\", \"port\": \"$PORT_SHA\", \"channel\": \"$CHANNEL\"}"
 
 # ---- 2. Already published? --------------------------------------------------------
@@ -119,11 +146,29 @@ if [ -n "$BUILDS_URL" ]; then
         exit 0
     fi
 fi
+if [ -n "$CHECK" ]; then
+    result needed "The site does not offer $CHANNEL $VERSION built from $PORT yet" "$INFO_JSON"
+    exit 0
+fi
 
 # ---- 3. Apply the port ---------------------------------------------------------------
 # Done in a worktree of its own, then checked out in $SRC, where only the
 # files that differ from the last run change (so a rerun compiles little).
-BASE="$(git merge-base "$PORT_SHA" "$UPSTREAM")"
+if [ -n "$BACKPORT" ]; then
+    # A backport sits on a release, not on master: it takes that release's
+    # later commits (1.4.1 after 1.4.0) by a merge.
+    BASE="$(git merge-base "$PORT_SHA" "$COMMIT")"
+else
+    BASE="$(git merge-base "$PORT_SHA" "$UPSTREAM")"
+fi
+# What a failure to apply means: for a stable release without a backport of
+# its own, that one is needed (docs/web.md, "Stable releases").
+no_port() { # conflicts
+    if [ "$CHANNEL" = stable ] && [ -z "$BACKPORT" ]; then
+        die 10 backport-needed "Stable $VERSION ($COMMIT) has no browser port: there is no branch web-stable-$VER_MAJOR.$VER_MINOR, and the port on $PORT does not apply to it (conflicts in: $1). Make the backport branch web-stable-$VER_MAJOR.$VER_MINOR (docs/web.md, \"Stable releases\") and run this again." "$INFO_JSON"
+    fi
+    die 10 port-does-not-apply "The port on $PORT does not apply to $VERSION ($COMMIT); conflicts in: $1" "$INFO_JSON"
+}
 REBASE="$WORK/rebase"
 git worktree prune
 if [ -e "$REBASE/.git" ]; then
@@ -142,14 +187,14 @@ elif git merge-base --is-ancestor "$BASE" "$COMMIT"; then
     if ! git "${GIT_ID[@]}" merge --no-edit "$COMMIT" > "$WORK/rebase.log" 2>&1; then
         CONFLICTS="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
         git merge --abort || true
-        die 10 port-does-not-apply "The port does not merge with $VERSION ($COMMIT); conflicts in: $CONFLICTS" "$INFO_JSON"
+        no_port "$CONFLICTS"
     fi
 elif ! git "${GIT_ID[@]}" rebase --onto "$COMMIT" "$BASE" > "$WORK/rebase.log" 2>&1; then
     # An upstream commit the port is not based on (an older build, a release
     # branch): try to carry the port's commits over.
     CONFLICTS="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
     git rebase --abort || true
-    die 10 port-does-not-apply "The port's commits do not apply to $VERSION ($COMMIT); conflicts in: $CONFLICTS" "$INFO_JSON"
+    no_port "$CONFLICTS"
 fi
 BUILT_SHA="$(git rev-parse HEAD)"
 echo "== port applied: $(git rev-list --count "$COMMIT..HEAD") commits on $COMMIT"
@@ -169,11 +214,22 @@ fi
 } > "$WORK/build.log" 2>&1 || die 11 build-failed "The build failed for $VERSION: $(grep -m3 -E 'error:|Error ' "$WORK/build.log" | tr '\n' ' ')" "$INFO_JSON"
 
 # ---- 5. Game data -------------------------------------------------------------------------
-STABLE="$(python3 "$HERE/upstream.py" latest stable)" || die 2 unreachable "keeperfx.net did not answer"
-TAG="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$STABLE")"
+# The complete release: for a stable build, the one tagged at that commit;
+# for an alpha, the latest one (its patch goes over it).
+TAG=""
+if [ "$CHANNEL" = stable ]; then
+    TAG="$(git -C "$REPO" tag --points-at "$COMMIT" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+fi
+if [ -n "$TAG" ]; then
+    URL="https://github.com/dkfans/keeperfx/releases/download/$TAG/keeperfx_${VER_MAJOR}_${VER_MINOR}_${VER_RELEASE}_complete.7z"
+else
+    [ "$CHANNEL" = stable ] && die 12 data-failed "$COMMIT is not a release tag (vX.Y.Z): no complete package to build stable $VERSION with" "$INFO_JSON"
+    STABLE="$(python3 "$HERE/upstream.py" latest stable)" || die 2 unreachable "keeperfx.net did not answer"
+    TAG="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$STABLE")"
+    URL="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["download"])' "$STABLE")"
+fi
 COMPLETE="$WORK/complete-$TAG"
 if [ ! -d "$COMPLETE" ]; then
-    URL="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["download"])' "$STABLE")"
     echo "== downloading $URL"
     curl -fsSL -o "$WORK/complete.7z" "$URL" && mkdir -p "$COMPLETE.tmp" && 7z x -y -o"$COMPLETE.tmp" "$WORK/complete.7z" > /dev/null \
         && mv "$COMPLETE.tmp" "$COMPLETE" && rm -f "$WORK/complete.7z" || die 12 data-failed "Could not get $URL" "$INFO_JSON"
@@ -204,8 +260,17 @@ tail -1 "$WORK/data.log"
 # ---- 6. Add to the layout and smoke test ------------------------------------------------
 if [ -n "$BUILDS_URL" ]; then python3 "$HERE/publish-build.py" pull "$LAYOUT" "$BUILDS_URL"; fi
 CHANGES="$WORK/changes.json"
+PREV_TAG=""
+if [ "$CHANNEL" = stable ] && [ -n "$TAG" ]; then
+    # The release before this one, by version (releases are cut from branches of
+    # their own, so the previous tag is usually not an ancestor).
+    PREV_TAG="$(git -C "$REPO" tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -A1 -x "$TAG" | sed -n 2p || true)"
+fi
 if [ -n "$PREV_UPSTREAM" ] && git -C "$REPO" cat-file -e "$PREV_UPSTREAM^{commit}" 2>/dev/null; then
     python3 "$HERE/upstream.py" changes "$PREV_UPSTREAM" "$COMMIT" --repo "$REPO" > "$CHANGES"
+elif [ -n "$PREV_TAG" ]; then
+    # A first stable build: what changed since the release before.
+    python3 "$HERE/upstream.py" changes "$PREV_TAG" "$COMMIT" --repo "$REPO" > "$CHANGES"
 else
     python3 "$HERE/upstream.py" changes "$COMMIT~10" "$COMMIT" --repo "$REPO" > "$CHANGES"
 fi
@@ -218,15 +283,17 @@ BUILD_ID="$(python3 -c 'import json,sys; i=json.load(open(sys.argv[1])); print(n
     "$LAYOUT/builds/index.json" "$COMMIT" "$PORT_SHA")"
 INFO_JSON="{\"version\": \"$VERSION\", \"upstream\": \"$COMMIT\", \"port\": \"$PORT_SHA\", \"channel\": \"$CHANNEL\", \"id\": \"$BUILD_ID\"}"
 
-# The page of this port, the new build from the layout. A build that is only
+# The site's page (this checkout's web/: the page players get, whatever port
+# the engine came from), the new build from the layout. A build that is only
 # in the deployed site (pulled manifests, no engine) is not needed here.
 PAGE="$WORK/page"
 rm -rf "$PAGE" && mkdir -p "$PAGE"
-(cd build-web/site && cp -r index.html 404.html site.css kfx_*.js icon.png fonts "$PAGE/")
-rm -f "$PAGE/keeperfx.js" "$PAGE/keeperfx.wasm"
-python3 web/stamp-version.py "$PAGE" > /dev/null
+(cd "$REPO/web" && cp -r index.html 404.html site.css kfx_*.css sw.js manifest.webmanifest fonts icons vendor "$PAGE/" \
+    && find . -maxdepth 1 -name 'kfx_*.js' ! -name kfx_web.js -exec cp {} "$PAGE/" \;)
+cp "$REPO/res/keeperfx_icon256-24bpp.png" "$PAGE/icon.png"
+python3 "$HERE/stamp-version.py" "$PAGE" > /dev/null
 PORT_NO=$((20000 + RANDOM % 20000))
-python3 web/serve.py "$PAGE" --port "$PORT_NO" --layout "$LAYOUT" > "$WORK/serve.log" 2>&1 &
+python3 "$HERE/serve.py" "$PAGE" --port "$PORT_NO" --layout "$LAYOUT" > "$WORK/serve.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true' EXIT
 for _ in $(seq 1 20); do curl -fs -o /dev/null "http://127.0.0.1:$PORT_NO/" && break; sleep 0.5; done

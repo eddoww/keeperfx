@@ -936,3 +936,7 @@ body.theater.input-touch .stage-bar { display: none; }
   .tmore { right: calc(max(8px, env(safe-area-inset-right)) + 54px); }
   .tstick { width: 104px; height: 104px; bottom: 10px; }
 }
+
+/* A game version without a feature the page otherwise offers (index.json
+   "lacks", web/kfx_versions.js). */
+body.lacks-touchcamera .needs-touchcamera { display: none !important; }

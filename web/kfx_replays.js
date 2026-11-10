@@ -26,6 +26,9 @@ const Replays = (() => {
   const { h, icon, num, ago, gameTime, keeperLink, store, KEEPER_COLOURS } = Site.ui;
   const api = Site.api;
   const sessionStart = Date.now();
+  // Whether the running game version records replays and can be watched
+  // (web/kfx_versions.js, which loads after this script).
+  const can = (feature) => typeof Versions === 'undefined' || Versions.supports(feature);
 
   // ---- Which build of the game this page runs -----------------------------------
 
@@ -192,6 +195,7 @@ const Replays = (() => {
   async function onLevelResult(result) {
     const choice = KFX.choice;
     if (!choice || choice.mode === 'replay' || KFX.watching()) return;
+    if (!can('replays')) return; // an engine that records no replays (stable 1.4)
     // The level's recording is written every turn; anything older is another
     // level (a loaded save game is not recorded).
     const r = await tagNew();
@@ -282,8 +286,8 @@ const Replays = (() => {
     const choice = KFX.choice;
     if (KFX.state === 'running') {
       if (choice && choice.mode === 'replay') watchLog();
-      else tagNew();
-      addWatchLinkButton();
+      else if (can('replays')) tagNew();
+      if (can('spectate')) addWatchLinkButton();
     }
     if (KFX.state === 'exited' && choice && choice.mode === 'replay') {
       $('exit-text').textContent = 'The replay has ended.';
@@ -602,7 +606,10 @@ const Replays = (() => {
   document.addEventListener('kfx:result', (ev) => onLevelResult(ev.detail).catch((e) => console.warn(e)));
   // A recording grows while the level runs: tag it early, so it keeps this
   // build even if the site updates before the player publishes it.
-  setInterval(() => { if (window.KFX && KFX.state === 'running' && KFX.choice && KFX.choice.mode !== 'replay' && !KFX.watching()) tagNew(); }, 20000);
+  setInterval(() => {
+    if (window.KFX && KFX.state === 'running' && KFX.choice && KFX.choice.mode !== 'replay' && !KFX.watching()
+      && can('replays')) tagNew();
+  }, 20000);
   if (Site.current.view === 'replays' || Site.current.view === 'watch') render(Site.current);
 
   return { prepare, buildId, watch, listLocal };

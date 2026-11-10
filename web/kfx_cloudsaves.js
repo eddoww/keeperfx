@@ -27,6 +27,11 @@
 // changes nothing until the player answers; the account's continue link,
 // high scores and settings then win over the browser's.
 //
+// Only the saves of game versions that share /persist/save (the alpha
+// builds) go to the account. A version that keeps its saves apart (stable
+// 1.4, Versions.saveDir in web/kfx_versions.js) or lacks "cloudsaves" keeps
+// them in this browser only; the Saves dialog then shows that folder.
+//
 // When: before the game starts (the game reads its saves at start), when the
 // player signs in, and a few seconds after the game writes a file (the
 // folder is looked at every 2 s, which costs nothing; the server is only
@@ -36,7 +41,9 @@
 'use strict';
 
 const CloudSaves = (() => {
-  const SAVE_DIR = '/persist/save';
+  const SHARED_DIR = '/persist/save';
+  let SAVE_DIR = SHARED_DIR; // the running version's (beforeStart)
+  let localOnly = false;     // a version whose saves stay in this browser
   const STATE_FILE = '/persist/cloudsaves.json';
   const BACKUP_DIR = '/persist/cloudbackup';
   const BACKUPS_KEPT = 30;
@@ -678,6 +685,7 @@ const CloudSaves = (() => {
   const STATUS = {
     off: null,
     guest: ['idle', 'Saved in this browser', 'Sign in to keep your saves in your account and play them on other devices.'],
+    local: ['idle', 'Saved in this browser', 'This game version keeps its saves in this browser only: they do not go to your account.'],
     syncing: ['amber', 'Syncing saves…', 'Sending your saves to your account.'],
     synced: ['', 'Saved to your account', 'Your saves, campaign progress and settings are in your account.'],
     offline: ['red', 'Offline: saved in this browser', 'Your account could not be reached. Saves are kept here and sent when it can be.'],
@@ -842,12 +850,16 @@ const CloudSaves = (() => {
     box.replaceChildren(...[
       h('h2', {}, 'Your saves'),
       head,
-      !signed && Account.available
+      localOnly
+        ? h('p', { class: 'fine' }, 'This game version keeps its saves, settings and campaign progress apart from the other versions, '
+          + 'in this browser only: they do not go to your account. Download one to keep a copy.')
+        : null,
+      !signed && !localOnly && Account.available
         ? h('p', { class: 'fine' }, 'These are kept in this browser only. ',
           h('button', { class: 'linklike', type: 'button', onclick: () => { dialog.close(); Site.openAccount(); } }, 'Sign in'),
           ' to keep them in your account and continue on another device.') : null,
       statusDetail && status !== 'synced' ? h('p', { class: 'fine' }, statusDetail) : null,
-      typeof autosaveSelect === 'function'
+      typeof autosaveSelect === 'function' && (typeof Versions === 'undefined' || Versions.supports('autosave'))
         ? h('p', { class: 'fine cs-autosave' }, h('label', {}, 'Autosave ', autosaveSelect()),
           ' The game saves itself into three autosaves of its own, the oldest replaced each time; your own saves are never touched. '
           + 'Online games, replays and watching are not autosaved.') : null,
@@ -953,7 +965,12 @@ const CloudSaves = (() => {
   async function beforeStart(setStatusText) {
     mountIndicator();
     loadState();
+    if (typeof Versions !== 'undefined') {
+      SAVE_DIR = Versions.saveDir;
+      localOnly = SAVE_DIR !== SHARED_DIR || !Versions.supports('cloudsaves');
+    }
     ready = true;
+    if (localOnly) { disabled = true; setStatus('local'); return; }
     const conf = typeof Site !== 'undefined' ? await Site.config : { server: false };
     if (!conf.server && !Account.available) { disabled = true; setStatus('off'); return; }
     // Hash what is here once, so later changes are told apart from it.

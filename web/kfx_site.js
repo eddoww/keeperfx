@@ -347,6 +347,12 @@ const Site = (() => {
 
   function openHost(map) {
     hostMap = map && map.args ? map : null;
+    // An engine without -waitusers (stable 1.4) can't start a map by itself once
+    // everyone is in: the host picks it in the game's lobby screen instead.
+    if (hostMap && typeof Versions !== 'undefined' && !Versions.supports('waitusers')) {
+      toast(`This game version cannot start ${hostMap.label} by itself: host a lobby and pick the map in the game's lobby screen.`, { ms: 9000 });
+      hostMap = null;
+    }
     const who = keeperName() || 'Keeper';
     $('host-name').value = store.get('kfx.lobbyName', '') || `${who}'s dungeon`;
     $('host-map').hidden = !hostMap;

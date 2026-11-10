@@ -22,9 +22,14 @@
 //   (a channel, which then follows its newest build, or one exact build)
 //   index.json "default" (a channel or an id), then the newest build
 // Switching reloads the page into the new build, never in the middle of a
-// game without asking. Saves are shared by all builds (the save format reads
-// across versions); before a different build first runs, the saves are copied
-// to /persist/backups/<previous build> and can be put back from the dialog.
+// game without asking. Saves are shared by the builds that read each other's
+// (the alpha builds: the save format reads across versions); before a
+// different one of them first runs, the saves are copied to
+// /persist/backups/<previous build> and can be put back from the dialog. A
+// build whose saves are of another kind (index.json "saves", e.g. "1.4" for
+// stable 1.4, whose game writes the same file names in its own format) keeps
+// them in a folder of its own, /persist/save-<saves>, and the page warns
+// before switching between the two.
 //
 // Offline and fallbacks:
 //   - the last index.json that loaded is kept in localStorage (kfx.buildsIndex),
@@ -41,7 +46,9 @@
 // Builds marked "archived" in index.json (kept for replays, see
 // web/publish-build.py) run when asked for by id but are not offered.
 // "features" in index.json: page features that need the engine's help
-// (supports()); a build without the list has none of them.
+// (supports()); a build without the list has none of them. "lacks": page
+// features a build does not have although the page assumes them (a backport
+// to an older release, see publish-build.py); a build without it lacks none.
 'use strict';
 
 const Versions = (() => {
@@ -114,10 +121,22 @@ const Versions = (() => {
     return byId(engine) || (ENGINE && engine === ENGINE ? legacyBuild() : null);
   }
 
-  /** Whether the running engine has a feature the page uses (publish-build.py FEATURES). */
-  function supports(feature) {
-    if (!current || current.legacy) return true; // the page's own engine has what the page knows
-    return Array.isArray(current.features) && current.features.includes(feature);
+  // Features a build has only if index.json lists them (publish-build.py FEATURES);
+  // any other name is assumed unless the build "lacks" it.
+  const LISTED_FEATURES = ['loadgame', 'mpmods'];
+
+  /** Whether a build (the running one by default) has a feature the page uses. */
+  function supports(feature, build = current) {
+    if (!build || build.legacy) return true; // the page's own engine has what the page knows
+    if (Array.isArray(build.lacks) && build.lacks.includes(feature)) return false;
+    if (!LISTED_FEATURES.includes(feature)) return true;
+    return Array.isArray(build.features) && build.features.includes(feature);
+  }
+
+  /** The folder a build keeps its saves and settings in (the game's save/). */
+  function saveDirOf(build) {
+    const kind = build && !build.legacy && typeof build.saves === 'string' ? build.saves.replace(/[^A-Za-z0-9._-]/g, '') : '';
+    return kind ? `/persist/save-${kind}` : '/persist/save';
   }
 
   async function lobbyBuild(code) {
@@ -342,14 +361,18 @@ const Versions = (() => {
     if (!current || current.legacy) return;
     let last = '';
     try { last = FS.readFile(MARK, { encoding: 'utf8' }).trim(); } catch (e) { /* first run */ }
-    if (last && last !== current.id && fsExists('/persist/save')) {
+    const saves = saveDirOf(current);
+    // Only saves this build shares with the last one (the same folder) need a
+    // copy: a build with a folder of its own never touches the other's.
+    const prev = last ? byId(last) : null;
+    const sameFolder = !prev || saveDirOf(prev) === saves;
+    if (last && last !== current.id && sameFolder && fsExists(saves)) {
       try {
         const dir = `${BACKUPS}/${last.replace(/[^A-Za-z0-9._-]/g, '_')}`;
         removeTree(dir);
-        copyTree('/persist/save', dir);
-        const prev = byId(last);
+        copyTree(saves, dir);
         let list = backupList().filter((b) => b.id !== last);
-        list.unshift({ id: last, title: prev ? prev.title : last, at: Date.now() });
+        list.unshift({ id: last, title: prev ? prev.title : last, at: Date.now(), dir: saves });
         for (const old of list.slice(MAX_BACKUPS)) removeTree(`${BACKUPS}/${old.id.replace(/[^A-Za-z0-9._-]/g, '_')}`);
         list = list.slice(0, MAX_BACKUPS);
         FS.writeFile(`${BACKUPS}/list.json`, JSON.stringify(list));
@@ -367,8 +390,9 @@ const Versions = (() => {
     }
     if (!confirm(`Put back your saves as they were when you last left ${entry.title}? The current saves are replaced.`)) return;
     const dir = `${BACKUPS}/${entry.id.replace(/[^A-Za-z0-9._-]/g, '_')}`;
-    removeTree('/persist/save');
-    copyTree(dir, '/persist/save');
+    const saves = saveDirOf(current);
+    removeTree(saves);
+    copyTree(dir, saves);
     await new Promise((res) => FS.syncfs(false, () => res()));
     if (window.KFX) KFX.markLeaving();
     location.reload();
@@ -391,6 +415,15 @@ const Versions = (() => {
     if (!build) return;
     const running = window.KFX && (KFX.state === 'running' || KFX.state === 'starting');
     if (running && !confirm('Switching version ends the game you are playing; anything not saved in the game is lost. Switch?')) return false;
+    if (build.id !== current.id && !current.legacy && saveDirOf(build) !== saveDirOf(current)) {
+      const own = (b) => saveDirOf(b) !== '/persist/save';
+      const text = own(build)
+        ? `${build.title} keeps its own saves, settings and campaign progress: it does not see the ones you have now, `
+          + `and they stay as they are for when you switch back.${supports('cloudsaves', build) ? '' : ' Its saves stay in this browser (not in your account).'} Switch?`
+        : `${build.title} uses your other saves, settings and campaign progress, not those of ${current.title}, `
+          + 'which stay as they are for when you switch back. Switch?';
+      if (!confirm(text)) return false;
+    }
     store.set(PREF_KEY, latestOf(build.channel) === build
       ? { channel: build.channel }
       : { id: build.id, channel: build.channel, title: build.title });
@@ -467,19 +500,23 @@ const Versions = (() => {
           input.addEventListener('change', () => { picked = b; });
           options.push(input);
           const notes = changesList(b);
+          const ownSaves = saveDirOf(b) !== saveDirOf(current);
           return h('label', { class: 'option' }, input,
             h('span', {},
               h('b', {}, b.title, b === latestOf(c) ? h('span', { class: 'pill open' }, 'Latest') : null,
                 b === current ? h('span', { class: 'pill plain' }, 'Running') : null,
                 away ? h('span', { class: 'pill plain' }, 'Not on this device') : null),
-              h('small', {}, `${shortDate(b.date)}${b.upstream ? ` · ${b.upstream.slice(0, 9)}` : ''}`),
+              h('small', {}, `${shortDate(b.date)}${b.upstream ? ` · ${b.upstream.slice(0, 9)}` : ''}${ownSaves ? ' · other saves' : ''}`),
               notes.length ? h('details', {}, h('summary', {}, 'What’s new'), notes) : null));
         }));
     });
     const go = h('button', { type: 'submit', class: 'btn primary' }, running ? 'Leave the game and switch' : 'Play this version');
     const form = h('form', {}, h('h2', {}, 'Game version'),
       h('p', { class: 'fine' }, 'Everyone in an online game needs the same version: joining a lobby picks its version for you. '
-        + 'Saves are shared between versions; a newer version reads older saves, an older one may refuse newer ones.'),
+        + (offered.some((b) => saveDirOf(b) !== '/persist/save')
+          ? 'Alpha versions share their saves (a newer one reads older saves, an older one may refuse newer ones); '
+            + 'a stable release keeps saves, settings and campaign progress of its own.'
+          : 'Saves are shared between versions; a newer version reads older saves, an older one may refuse newer ones.')),
       h('p', { class: 'fine' }, 'Unless you pick one here, you get the newest Alpha as soon as it is out. '
         + 'Picking the latest of a kind keeps following it; picking an older one stays on it.'),
       offline ? h('p', { class: 'fine' }, 'You are offline: only the versions kept on this device for offline play can start.') : null,
@@ -491,7 +528,7 @@ const Versions = (() => {
       if (await switchTo(picked) !== false) dialog.close();
     });
     box.replaceChildren(form);
-    const backups = fsReady() ? backupList().filter((b) => b.id !== current.id) : [];
+    const backups = fsReady() ? backupList().filter((b) => b.id !== current.id && (b.dir || '/persist/save') === saveDirOf(current)) : [];
     if (backups.length) {
       box.append(h('div', { class: 'vbackups' }, h('h3', {}, 'Save backups'),
         h('p', { class: 'fine' }, 'Your saves as they were when you last left a version:'),
@@ -503,6 +540,10 @@ const Versions = (() => {
   const fsReady = () => typeof FS !== 'undefined' && fsExists('/persist');
 
   ready.then(() => {
+    // body.lacks-<feature>: page parts a build without that feature hides (site.css).
+    if (current && !current.legacy && Array.isArray(current.lacks)) {
+      for (const f of current.lacks) if (/^[a-z0-9-]+$/.test(f)) document.body.classList.add(`lacks-${f}`);
+    }
     renderRow();
     document.dispatchEvent(new CustomEvent('kfx:versions')); // the lobby list shows versions now
     if (notice) Site.toast(notice, { ms: 9000 });
@@ -510,8 +551,10 @@ const Versions = (() => {
   $('stage-version').addEventListener('click', (ev) => { openDialog(); ev.currentTarget.blur(); });
 
   return {
-    ready, loadEngine, locate, otherManifestUrls, noteRun, forLobby, forReplay, supports, tag, openDialog, urlFor,
+    ready, loadEngine, locate, otherManifestUrls, noteRun, forLobby, forReplay, supports, saveDirOf, tag, openDialog, urlFor,
     cacheEngine, cachedEngines, ENGINE_CACHE,
+    /** The running build's save folder (the game's save/): /persist/save unless it keeps its own. */
+    get saveDir() { return saveDirOf(current); },
     get current() { return current; },
     get offered() { return offered; },
     get multi() { return !!index; },
