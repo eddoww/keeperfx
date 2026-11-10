@@ -44,6 +44,8 @@ extern int kfx_net_next(void *buf, int cap);
 extern int kfx_net_next_text(char *buf, int cap);
 extern void kfx_net_hosting(const char *code);
 extern int kfx_net_rtt(int *variance);
+extern int kfx_net_waiting(void);
+extern void kfx_net_wait(int ms);
 
 // Frame ops, see web/server/src/room.js.
 enum {
@@ -459,7 +461,8 @@ static TbBool wait_message(NetUserId source, unsigned timeout)
         return false;
     TbClockMSec end = LbTimerClock() + timeout;
     while (!queue_head[source] && LbTimerClock() < end && role != WEB_NONE) {
-        emscripten_sleep(1);
+        TbClockMSec left = end - LbTimerClock();
+        web_net_wait(left < 50 ? (unsigned)left : 50);
         pump(NULL);
     }
     return queue_head[source] != NULL;
@@ -554,6 +557,16 @@ uint32_t web_net_ping(int id, uint32_t *variance)
     if (variance)
         *variance = (uint32_t)own_var + conn_rtt_var[conn];
     return (uint32_t)own + conn_rtt[conn];
+}
+
+void web_net_wait(unsigned ms)
+{
+    if (role == WEB_NONE) {
+        emscripten_sleep(ms ? ms : 1);
+        return;
+    }
+    if (kfx_net_waiting())
+        kfx_net_wait(ms ? (int)ms : 1);
 }
 
 const char *web_net_room_code(void)

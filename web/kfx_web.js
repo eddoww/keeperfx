@@ -121,7 +121,7 @@ addToLibrary({
   //   {state: 'joined' | 'up' | 'reconnecting' | 'host-down' | 'peer-down' |
   //    'peer-up' | 'lost' | 'closed', code, host, role, ...}
 
-  $kfxNet: { ws: null, frames: [], texts: [], state: 0, closeCode: 0, link: null, ticker: null, frozenUntil: 0 },
+  $kfxNet: { ws: null, frames: [], texts: [], state: 0, closeCode: 0, link: null, ticker: null, frozenUntil: 0, waiter: null },
 
   $kfxNetEmit: (detail) => {
     Module.kfxNetStatus = detail;
@@ -269,6 +269,7 @@ addToLibrary({
           if (m) { l.code = m[1]; kfxNetEmit({ state: 'up', code: l.code, host: true, role: 'host' }); }
         }
         kfxNet.texts.push(ev.data);
+        kfxNet.waiter?.();
         return;
       }
       let data = new Uint8Array(ev.data);
@@ -291,6 +292,7 @@ addToLibrary({
         if (data.length >= 2 && data[0] >= 8) kfxNetControl(l, data);
       }
       kfxNet.frames.push(data);
+      kfxNet.waiter?.();
     };
     ws.onclose = (ev) => {
       // (A test freeze hides the close too; the silence check finds it after.)
@@ -318,6 +320,7 @@ addToLibrary({
     }
     kfxNet.state = 2;
     kfxNet.closeCode = closeCode;
+    kfxNet.waiter?.();
     if (l) {
       kfxNet.link = null;
       if (l.id) kfxNetEmit({ state: 'lost', code: l.code, host: l.host, role: l.role, closeCode, reason: l.closing });
@@ -507,6 +510,26 @@ addToLibrary({
     ws.send(UTF8ToString(ptr));
     return 1;
   },
+
+  // The game waits for a message (NetWebSP.c, web_net_wait): it sleeps until
+  // the next frame or text arrives, the socket closes, or ms pass, whichever
+  // comes first. The page only hears from the relay while the game yields, so
+  // a game that waited by spinning heard nothing until it drew its next frame.
+  kfx_net_waiting__deps: ['$kfxNet'],
+  kfx_net_waiting: () => (kfxNet.frames.length || kfxNet.texts.length || kfxNet.state === 2 ? 0 : 1),
+  kfx_net_wait__deps: ['$kfxNet', '$Asyncify', '$kfxWakeAfter'],
+  kfx_net_wait__async: true,
+  kfx_net_wait: (ms) => Asyncify.handleSleep((wakeUp) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (kfxNet.waiter === finish) kfxNet.waiter = null;
+      wakeUp();
+    };
+    kfxNet.waiter = finish;
+    kfxWakeAfter(ms, finish);
+  }),
 
   // Next binary frame: copies up to cap bytes, returns its full length, or -1.
   kfx_net_next__deps: ['$kfxNet'],
