@@ -39,6 +39,9 @@
     // Where the page downloads game data from. Empty: gamedata/ next to the page.
     // After `web/upload-r2.sh`, set it to "https://keeper-data.edwindejong.net/gamedata/".
     "DATA_URL": "",
+    // "off" removes the offline app's service worker from players' browsers
+    // (kill switch, see docs/web.md "App and offline play"); normally "on".
+    "SERVICE_WORKER": "on",
     // The tavern chat on the site: "off" closes it (news lines stay).
     "CHAT": "on",
     // Account names, comma separated, that may remove tavern lines and mute players.

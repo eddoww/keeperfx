@@ -1,0 +1,73 @@
+/* The app and offline play (web/kfx_offline.js): top bar chip, offline notes,
+   the update bar and the "KeeperFX app" dialog. Uses site.css's colours. */
+
+.app-chip.offline { color: #ffc9a8; border-color: #7c3a22; background: rgba(226, 86, 43, .14); }
+.app-chip.offline .icon { color: var(--ember); }
+
+.offline-note {
+  display: flex; align-items: flex-start; gap: 10px; margin: 18px 0 0; padding: 12px 16px; border-radius: var(--radius);
+  font-size: 14px; color: var(--muted); background: rgba(226, 86, 43, .08); border: 1px solid #5a2e1c;
+}
+.offline-note b { color: var(--text); }
+.offline-note > .icon { color: var(--ember); margin-top: 2px; }
+body.in-play .offline-note { display: none; }
+/* Lost the connection after the page loaded: no hosting or joining for now. */
+body.net-offline #start [data-online] { display: none !important; }
+
+.offline-start {
+  display: flex; align-items: flex-start; gap: 9px; margin: 0 0 14px; padding: 10px 14px; border-radius: 8px;
+  font-size: 14px; background: rgba(127, 214, 109, .07); border: 1px solid #35552c;
+}
+.offline-start > .icon { margin-top: 2px; color: var(--green); }
+.offline-start.warn { background: rgba(226, 86, 43, .1); border-color: #6b3020; }
+.offline-start.warn > .icon { color: var(--ember); }
+.offline-missing { color: var(--error); }
+
+.update-bar {
+  position: fixed; left: 18px; bottom: 18px; z-index: 61; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  max-width: min(560px, calc(100vw - 36px)); padding: 12px 16px; border-radius: 10px; font-size: 14px; color: var(--muted);
+  background: rgba(20, 14, 10, .97); border: 1px solid var(--border-hi); border-left: 3px solid var(--gold);
+  box-shadow: var(--shadow); animation: toast-in .25s ease-out;
+}
+.update-bar b { color: var(--gold-hi); }
+.update-bar > .icon { color: var(--gold); }
+.update-bar > span { flex: 1 1 220px; }
+:fullscreen .update-bar, body.theater .update-bar { display: none; }
+
+.app-dialog { width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
+.app-section { padding: 16px 0; border-top: 1px solid var(--border); }
+.app-section:first-of-type { border-top: 0; padding-top: 0; }
+.app-section h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin-bottom: 10px; }
+.app-section h3 .icon { color: var(--gold); }
+.app-section p { font-size: 14px; }
+.app-section p b { color: var(--text); }
+.app-state { color: var(--text) !important; }
+.app-state.ok { color: var(--green) !important; }
+
+.dl-row {
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid rgba(61, 44, 29, .6);
+}
+.dl-row:last-child { border-bottom: 0; }
+.dl-name { min-width: 0; }
+.dl-name b { display: block; font-size: 14.5px; }
+.dl-name small { display: block; color: var(--faint); font-size: 12.5px; }
+.dl-size { font-size: 13px; color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.dl-size .icon { color: var(--green); }
+.dl-row .btn { min-width: 92px; }
+
+.dl-progress { margin: 12px 0 4px; }
+.dl-progress .bar { height: 8px; border-radius: 4px; background: #0e0906; border: 1px solid var(--border); overflow: hidden; }
+.dl-progress .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-lo), var(--gold)); transition: width .25s; }
+.dl-progress-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; font-size: 13.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.dl-more, .dl-more:first-of-type { margin-top: 8px; padding: 0; border: 0; }
+.dl-more summary { cursor: pointer; color: var(--gold); font-size: 14px; font-weight: 600; padding: 6px 0; }
+.dl-storage { margin: 14px 0 0; }
+
+@media (max-width: 760px) {
+  .dl-row { grid-template-columns: 1fr auto; }
+  .dl-row .dl-size { grid-column: 1; grid-row: 2; }
+  .dl-row .btn { grid-column: 2; grid-row: 1 / span 2; }
+  .update-bar { left: 12px; right: 12px; bottom: 12px; }
+}

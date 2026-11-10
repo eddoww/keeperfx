@@ -10,7 +10,8 @@
 //   POST /api/scores, GET /api/scores/..., /api/keepers/<name>   Hall of Fame (scores.js)
 //   GET  /api/rooms/host[?unlisted=1] WebSocket: host a new lobby (relay creates the code)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
-//   GET  /site.json                   page settings (dataUrl: where game data lives)
+//   GET  /site.json                   page settings (dataUrl: where game data lives,
+//                                     serviceWorker: false to switch the offline app off)
 //
 // Everything else is the static site (assets binding).
 
@@ -115,6 +116,8 @@ export default {
       // Page settings (web/kfx_loader.js loadSiteConfig).
       const site = {};
       if (env.DATA_URL) site.dataUrl = env.DATA_URL;
+      // Kill switch for the offline app: pages remove their service worker.
+      if (env.SERVICE_WORKER === 'off') site.serviceWorker = false;
       return json(site);
     }
     if (url.pathname.startsWith('/api/')) {

@@ -561,6 +561,9 @@ async function boot() {
   if (!haveDkFiles()) await waitForDkFiles();
   linkPlayerFiles();
   await writeConfig();
+  // The speech language, for the offline data groups (web/kfx_offline.js).
+  const lang = /^\s*LANGUAGE\s*=\s*(\w+)/m.exec(FS.readFile(`${GAME_DIR}/keeperfx.cfg`, { encoding: 'utf8' }));
+  KFX.language = lang ? lang[1].toLowerCase() : 'eng';
 
   await Account.ready;
   const choice = takeStoredChoice() || KFX.pending
@@ -731,14 +734,21 @@ var Module = {
   locateFile: (path, prefix) => (BUILD && path.endsWith('.wasm') ? `${prefix}${path}?v=${BUILD}` : prefix + path),
   canvas: document.getElementById('canvas'),
   thisProgram: `${GAME_DIR}/keeperfx`,
-  kfxFetchData: fetchData,
+  // A file the game opens. Offline, web/kfx_offline.js says which download
+  // it belongs to.
+  kfxFetchData: (url) => fetchData(url).catch((e) => {
+    if (window.Offline) Offline.dataMissing(url, e);
+    throw e;
+  }),
   kfxOnHosting: onHosting,
   kfxOnLevelResult: (result) => document.dispatchEvent(new CustomEvent('kfx:result', { detail: result })),
   print: (text) => console.log(text),
   printErr: (text) => console.warn(text),
   onRuntimeInitialized: () => boot().catch((e) => {
     console.error(e);
-    setStatus(`Could not start: ${e.message}`);
+    setStatus(navigator.onLine ? `Could not start: ${e.message}`
+      : 'Could not start offline: the game data it needs is not on this device. Connect to the internet, '
+        + 'or next time you are online download it under Offline play.');
     showPanel('loading');
     setState('failed');
   }),

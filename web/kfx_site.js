@@ -762,15 +762,20 @@ const Site = (() => {
   }
 
   async function onLevelResult(result) {
-    if (!online) return;
+    // Without a connection (web/kfx_offline.js), a site that has its server
+    // keeps wins to send later, as for a guest.
+    const offline = (!online || !navigator.onLine) && (online || !!window.Offline?.serverKnown);
+    if (!online && !offline) return;
     result = { ...result, at: Date.now() };
     const levelName = result.levelName || `level ${result.level}`;
-    if (!Account.user) {
+    if (!Account.user || offline) {
       if (!result.won || result.cheats) return;
       const pending = store.get(PENDING_KEY, []);
       pending.push(result);
       store.set(PENDING_KEY, pending.slice(-20));
-      toast([h('b', {}, 'Victory!'), ` Sign in after the game to carve ${levelName} into the Hall of Fame.`], { stage: true, ms: 9000 });
+      toast([h('b', {}, 'Victory!'), offline
+        ? ` You are offline: ${levelName} goes into the Hall of Fame once you are back online and signed in.`
+        : ` Sign in after the game to carve ${levelName} into the Hall of Fame.`], { stage: true, ms: 9000 });
       return;
     }
     try {
@@ -820,15 +825,35 @@ const Site = (() => {
     renderKeeperName();
     Account.onChange(onAccountChange);
     route();
-    if (online) {
-      Tavern.connect();
-      flushPending();
-      refreshLobbies();
-      // A slow safety net; changes normally arrive through the tavern.
-      setInterval(() => { if (!document.hidden && current.view !== 'play') refreshLobbies(); }, 30000);
-    }
+    if (online) connectServer();
     const loginError = new URLSearchParams(location.search).get('login_error');
     if (loginError) toast(loginError, { bad: true, ms: 10000 });
+  }
+
+  let serverConnected = false;
+  function connectServer() {
+    if (serverConnected) return;
+    serverConnected = true;
+    Tavern.connect();
+    flushPending();
+    refreshLobbies();
+    // A slow safety net; changes normally arrive through the tavern.
+    setInterval(() => { if (!document.hidden && current.view !== 'play') refreshLobbies(); }, 30000);
+  }
+
+  // Back online after starting without a connection (web/kfx_offline.js):
+  // the server may answer now. The game keeps running either way.
+  async function recheck() {
+    if (online) { flushPending(); return; }
+    const conf = await loadConfig();
+    if (!conf.server) return;
+    await Account.refresh(); // before `online`, so this connects the tavern once
+    online = true;
+    renderOnline();
+    renderAccountChip();
+    renderKeeperName();
+    route();
+    connectServer();
   }
 
   addEventListener('hashchange', route);
@@ -871,5 +896,5 @@ const Site = (() => {
 
   init();
 
-  return { config, toast, start, join, openHost, openAccount, keeperName, codeOf, get online() { return online; } };
+  return { config, toast, start, join, openHost, openAccount, keeperName, codeOf, recheck, get online() { return online; } };
 })();

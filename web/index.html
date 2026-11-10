@@ -4,12 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="kfx-build" content="">
+<meta name="kfx-sw" content="">
 <meta name="description" content="Dungeon Keeper in your browser with KeeperFX: the full campaign, skirmish and online multiplayer with public lobbies and a Hall of Fame. No install.">
 <meta name="theme-color" content="#0a0706">
 <title>KeeperFX: Dungeon Keeper in your browser</title>
 <link rel="icon" type="image/png" href="icon.png">
+<!-- Installable app (web/manifest.webmanifest, web/sw.js, web/kfx_offline.js). -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KeeperFX">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preload" href="fonts/cinzel-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="kfx_offline.css">
 </head>
 <body>
 
@@ -385,6 +394,14 @@
       <p>The game and the data for the menus and the first levels come to about 110 MB; more loads as you
         reach new campaigns and levels. Your browser keeps it, so later visits start quickly.</p>
     </details>
+    <details id="faq-app">
+      <summary>Can I install it, or play without a connection?</summary>
+      <p>Yes. <strong>Install</strong> (at the top of the page, or your browser's own install button) puts
+        KeeperFX on your desktop or home screen in its own window. Under <strong>Offline play</strong> you can
+        download the game data: the essentials (the game, its menus and the original campaign) or everything.
+        After that, solo play works with no connection at all. Lobbies, the tavern and the Hall of Fame need
+        one; victories you win offline are sent in when you are back online and signed in.</p>
+    </details>
     <details>
       <summary>Which browsers work?</summary>
       <p>A current browser on a computer, with WebGL 2: Chrome and Edge are tested; Firefox and Safari should
@@ -445,6 +462,7 @@
 
 <script src="kfx_account.js"></script>
 <script src="kfx_site.js"></script>
+<script src="kfx_offline.js"></script>
 <script src="kfx_loader.js"></script>
 <script src="keeperfx.js" async></script>
 </body>

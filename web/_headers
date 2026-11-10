@@ -9,6 +9,21 @@
   ! Cache-Control
   Cache-Control: no-cache
 
+# The service worker must never be cached for long: a new deploy reaches
+# players through it (web/sw.js). The page itself is revalidated too.
+/sw.js
+  Cache-Control: no-cache
+
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: no-cache
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
