@@ -43,11 +43,19 @@ command -v emcc >/dev/null || { echo "emcc not found: source emsdk_env.sh first"
 mkdir -p "$PREFIX/include" "$PREFIX/lib" "$WORK"
 cd "$WORK"
 
-fetch() { # fetch <dir> <url> <sha256>: download, check and unpack once into $WORK/<dir>
-    local dir=$1 url=$2 sum=$3 file
+fetch() { # fetch <dir> <url> <sha256> [mirror...]: download, check and unpack once into $WORK/<dir>
+    local dir=$1 url=$2 sum=$3 file u
     [ -d "$dir" ] && return 0
     file="$(basename "$url")"
-    [ -f "$file" ] || curl -fsSL -o "$file" "$url"
+    shift 3
+    if [ ! -f "$file" ]; then
+        # The checksum below is what makes a mirror as good as the first address.
+        for u in "$url" "$@"; do
+            curl -fsSL --connect-timeout 20 --retry 2 -o "$file" "$u" && break
+            rm -f "$file"
+        done
+        [ -f "$file" ] || { echo "could not download $file" >&2; exit 1; }
+    fi
     echo "$sum  $file" | sha256sum -c --quiet - || { rm -f "$file"; exit 1; }
     rm -rf "$dir.tmp"; mkdir -p "$dir.tmp"
     tar xf "$file" -C "$dir.tmp" --strip-components=1
@@ -166,7 +174,9 @@ LUA_STAMP="$(sha256sum < "$LUA_PATCH" | cut -d' ' -f1)"
 if want lua && [ "$(cat "$WORK/.done-lua" 2>/dev/null)" != "$LUA_STAMP" ]; then
     rm -rf lua build-lua
     fetch lua "https://www.lua.org/ftp/lua-$LUA_VER.tar.gz" \
-        2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333
+        2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333 \
+        "https://distfiles.macports.org/lua51/lua-$LUA_VER.tar.gz" \
+        "https://ftp.osuosl.org/pub/blfs/conglomeration/lua/lua-$LUA_VER.tar.gz"
     fetch luabitop "http://bitop.luajit.org/download/LuaBitOp-$BITOP_VER.tar.gz" \
         d514a3d2cefa76c8d11c1b9ec740d5fae316a9c9764e1e12ddea21e4982fab4b
     (cd lua && patch -p1 -N -s < "$LUA_PATCH")
