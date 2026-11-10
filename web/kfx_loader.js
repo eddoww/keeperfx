@@ -441,7 +441,12 @@ function toggleFullscreen() {
     return;
   }
   $('stage').requestFullscreen({ navigationUI: 'hide' }).then(() => {
-    if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {});
+    // "Game mode": in fullscreen, Chromium browsers hand the page every key,
+    // browser shortcuts included (Esc, Ctrl+W, Ctrl+T, F-keys, Alt+arrows),
+    // until Esc is held or F11 is pressed. Other browsers have no such thing.
+    if (navigator.keyboard && navigator.keyboard.lock) {
+      navigator.keyboard.lock().then(() => document.body.classList.add('keys-locked')).catch(() => {});
+    }
     // Show where the exit is, once, then tuck it away.
     $('hud').classList.add('peek');
     setTimeout(() => $('hud').classList.remove('peek'), 2600);
@@ -457,6 +462,7 @@ function toggleTheater() {
 document.addEventListener('fullscreenchange', () => {
   const on = isFullscreen();
   if (!on && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+  if (!on) document.body.classList.remove('keys-locked');
   $('btn-fullscreen').classList.toggle('on', on);
   fitCanvas();
 });
@@ -1081,6 +1087,14 @@ function onHosting(code) {
 }
 
 let leaving = false;
+// A shortcut that closes or reloads the tab (Ctrl+W, Ctrl+R, a mistyped
+// Alt+Left) should not end a game without asking. Browsers only show this
+// question after the player has interacted with the page, and word it themselves.
+window.addEventListener('beforeunload', (ev) => {
+  if (KFX.state !== 'running' || leaving) return;
+  ev.preventDefault();
+  ev.returnValue = '';
+});
 function showExit(text) {
   if (leaving) return;
   persistNow();

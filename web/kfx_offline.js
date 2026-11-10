@@ -174,6 +174,7 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
     if (!reg || !reg.waiting) { location.reload(); return; }
     if (!quiet && playing()
         && !confirm('Switch to the new version now? This ends the current game; anything not saved in the game is lost.')) return;
+    if (window.KFX && KFX.markLeaving) KFX.markLeaving(); // already asked: no second question from the browser
     if (await otherTabPlaying()) {
       toast('KeeperFX is in a game in another tab. The new version starts once that game is over and its tab is closed or reloaded.', { ms: 9000 });
       return;

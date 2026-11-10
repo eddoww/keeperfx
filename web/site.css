@@ -355,6 +355,8 @@ form.choice { cursor: default; }
   transform: translate(-50%, calc(-100% + 18px)); opacity: 0; transition: transform .18s, opacity .18s;
 }
 .stage:fullscreen .hud:hover, .stage:fullscreen .hud:focus-within, .stage:fullscreen .hud.peek { transform: translate(-50%, -18px); opacity: 1; }
+.hud-keys { display: none; font-size: 12.5px; color: var(--muted); }
+body.keys-locked .hud-keys { display: inline; }
 .hud-brand { font: 700 14px/1 var(--display); letter-spacing: .08em; color: var(--gold-hi); }
 .hud-lobby { font: 700 13px/1 ui-monospace, Menlo, monospace; letter-spacing: .12em; color: var(--text); }
 body.theater { overflow: hidden; }

@@ -230,6 +230,7 @@ const Versions = (() => {
     removeTree('/persist/save');
     copyTree(dir, '/persist/save');
     await new Promise((res) => FS.syncfs(false, () => res()));
+    if (window.KFX) KFX.markLeaving();
     location.reload();
   }
 
