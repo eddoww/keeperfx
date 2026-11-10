@@ -21,8 +21,11 @@
 
 #include "bflib_basics.h"
 #include "globals.h"
+#include "bflib_math.h"
+#include "ariadne_points.h"
 
 #define TRIANLGLES_COUNT 100000
+#define EDGELEN_BITS 6
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,18 +61,11 @@ extern const long MOD3[];
 long tri_new(void);
 void tri_dispose(long tri_idx);
 
-TbBool triangle_is_invalid(const struct Triangle *tri);
-struct Triangle *get_triangle(long tri_id);
 long triangle_find_first_used(void);
 
-long get_triangle_region_id(long tri_id);
 TbBool set_triangle_region_id(long tri_id, long reg_id);
-long get_triangle_edgelen(long tri_id);
 TbBool set_triangle_edgelen(long tri_id, long edgelen);
-NavColour get_triangle_tree_alt(long tri_id);
-struct Point *get_triangle_point(long tri_id, long pt_cor);
 TbBool triangle_tip_equals(long tri_id, long pt_cor, long pt_x, long pt_y);
-long link_find(long ntri, long val);
 TbBool outer_locked(long ntri, long ncor);
 
 long point_loop(long pt_tri, long pt_cor);
@@ -78,7 +74,77 @@ void edgelen_set(long tri_id);
 long edge_rotateAC(long tri1_id, long cor1_id);
 
 void triangulation_init_triangles(long pt_id1, long pt_id2, long pt_id3, long pt_id4);
-char triangle_divide_areas_s8differ(long ntri, long ncorA, long ncorB, long pt_x, long pt_y);
+/******************************************************************************/
+// Small accessors used in the pathfinding inner loops, inline to avoid call overhead
+
+static inline TbBool triangle_is_invalid(const struct Triangle *tri)
+{
+    return (tri < &Triangles[0]) || (tri > &Triangles[TRIANLGLES_COUNT-1]) || (tri == INVALID_TRIANGLE) || (tri == NULL);
+}
+
+static inline struct Triangle *get_triangle(long tri_id)
+{
+    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
+        return INVALID_TRIANGLE;
+    return &Triangles[tri_id];
+}
+
+static inline long get_triangle_region_id(long tri_id)
+{
+    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
+        return -1;
+    return (Triangles[tri_id].region_and_edgelen >> EDGELEN_BITS);
+}
+
+static inline long get_triangle_edgelen(long tri_id)
+{
+    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
+        return 0;
+    return (Triangles[tri_id].region_and_edgelen & ((1 << EDGELEN_BITS) - 1));
+}
+
+static inline NavColour get_triangle_tree_alt(long tri_id)
+{
+    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
+        return -1;
+    return Triangles[tri_id].tree_alt;
+}
+
+static inline struct Point *get_triangle_point(long tri_id, long pt_cor)
+{
+    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
+        return INVALID_POINT;
+    if ((pt_cor < 0) || (pt_cor >= 3))
+        return INVALID_POINT;
+    return point_get(Triangles[tri_id].points[pt_cor]);
+}
+
+static inline long link_find(long ntri, long val)
+{
+    if ((ntri < 0) || (ntri >= TRIANLGLES_COUNT))
+    {
+        return -1;
+    }
+    for (long i = 0; i < 3; i++)
+    {
+        if (Triangles[ntri].tags[i] == val)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static inline char triangle_divide_areas_s8differ(long ntri, long ncorA, long ncorB, long pt_x, long pt_y)
+{
+    struct Point* pt = get_triangle_point(ntri, ncorA);
+    long tipA_x = (pt->x << 8);
+    long tipA_y = (pt->y << 8);
+    pt = get_triangle_point(ntri,ncorB);
+    long tipB_x = (pt->x << 8);
+    long tipB_y = (pt->y << 8);
+    return LbCompareMultiplications(tipA_x-pt_x, tipB_y-pt_y, tipA_y-pt_y, tipB_x-pt_x);
+}
 /******************************************************************************/
 #ifdef __cplusplus
 }

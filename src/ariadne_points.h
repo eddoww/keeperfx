@@ -50,7 +50,16 @@ extern int32_t free_Points;
 /******************************************************************************/
 void point_dispose(AridPointId pt_id);
 TbBool point_set(AridPointId pt_id, long x, long y);
-struct Point *point_get(AridPointId pt_id);
+
+static inline struct Point *point_get(AridPointId pt_id)
+{
+    if ((pt_id < 0) || (pt_id >= POINTS_COUNT))
+    {
+        return INVALID_POINT;
+    }
+    return &ari_Points[pt_id];
+}
+
 TbBool point_is_invalid(const struct Point *pt);
 TbBool point_equals(AridPointId pt_idx, long pt_x, long pt_y);
 AridPointId point_set_new_or_reuse(long pt_x, long pt_y);

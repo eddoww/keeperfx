@@ -91,15 +91,6 @@ TbBool point_set(AridPointId pt_id, long x, long y)
     return true;
 }
 
-struct Point *point_get(AridPointId pt_id)
-{
-    if ((pt_id < 0) || (pt_id >= POINTS_COUNT))
-    {
-        return INVALID_POINT;
-    }
-    return &ari_Points[pt_id];
-}
-
 TbBool point_is_invalid(const struct Point *pt)
 {
     return (pt < &ari_Points[0]) || (pt > &ari_Points[POINTS_COUNT-1]) || (pt == INVALID_POINT) || (pt == NULL);

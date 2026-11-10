@@ -30,8 +30,6 @@
 #include "replay_rewind.h"
 #include "post_inc.h"
 
-#define EDGELEN_BITS 6
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -92,13 +90,6 @@ void tri_dispose(long tri_idx)
     KFX_C_PLOT("Ariadne: Triangles in use", count_Triangles);
 }
 
-long get_triangle_region_id(long tri_id)
-{
-    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
-        return -1;
-    return (Triangles[tri_id].region_and_edgelen >> EDGELEN_BITS);
-}
-
 TbBool set_triangle_region_id(long tri_id, long reg_id)
 {
     if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
@@ -106,13 +97,6 @@ TbBool set_triangle_region_id(long tri_id, long reg_id)
     Triangles[tri_id].region_and_edgelen &= ((1 << EDGELEN_BITS) - 1);
     Triangles[tri_id].region_and_edgelen |= (reg_id << EDGELEN_BITS);
     return true;
-}
-
-long get_triangle_edgelen(long tri_id)
-{
-    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
-        return 0;
-    return (Triangles[tri_id].region_and_edgelen & ((1 << EDGELEN_BITS) - 1));
 }
 
 TbBool set_triangle_edgelen(long tri_id, long edgelen)
@@ -124,34 +108,6 @@ TbBool set_triangle_edgelen(long tri_id, long edgelen)
     return true;
 }
 
-NavColour get_triangle_tree_alt(long tri_id)
-{
-    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
-        return -1;
-    return Triangles[tri_id].tree_alt;
-}
-
-struct Triangle *get_triangle(long tri_id)
-{
-    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
-        return INVALID_TRIANGLE;
-    return &Triangles[tri_id];
-}
-
-TbBool triangle_is_invalid(const struct Triangle *tri)
-{
-    return (tri < &Triangles[0]) || (tri > &Triangles[TRIANLGLES_COUNT-1]) || (tri == INVALID_TRIANGLE) || (tri == NULL);
-}
-
-struct Point *get_triangle_point(long tri_id, long pt_cor)
-{
-    if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
-        return INVALID_POINT;
-    if ((pt_cor < 0) || (pt_cor >= 3))
-        return INVALID_POINT;
-    return point_get(Triangles[tri_id].points[pt_cor]);
-}
-
 TbBool triangle_tip_equals(long tri_id, long pt_cor, long pt_x, long pt_y)
 {
     if ((tri_id < 0) || (tri_id >= TRIANLGLES_COUNT))
@@ -160,22 +116,6 @@ TbBool triangle_tip_equals(long tri_id, long pt_cor, long pt_x, long pt_y)
         return false;
     long pt_id = Triangles[tri_id].points[pt_cor];
     return point_equals(pt_id, pt_x, pt_y);
-}
-
-long link_find(long ntri, long val)
-{
-    if ((ntri < 0) || (ntri >= TRIANLGLES_COUNT))
-    {
-        return -1;
-    }
-    for (long i = 0; i < 3; i++)
-    {
-        if (Triangles[ntri].tags[i] == val)
-        {
-            return i;
-        }
-    }
-    return -1;
 }
 
 TbBool outer_locked(long ntri, long ncor)
@@ -401,16 +341,6 @@ void triangulation_init_triangles(long pt_id1, long pt_id2, long pt_id3, long pt
     Triangles[1].navigation_flags = 7;
 }
 
-char triangle_divide_areas_s8differ(long ntri, long ncorA, long ncorB, long pt_x, long pt_y)
-{
-    struct Point* pt = get_triangle_point(ntri, ncorA);
-    long tipA_x = (pt->x << 8);
-    long tipA_y = (pt->y << 8);
-    pt = get_triangle_point(ntri,ncorB);
-    long tipB_x = (pt->x << 8);
-    long tipB_y = (pt->y << 8);
-    return LbCompareMultiplications(tipA_x-pt_x, tipB_y-pt_y, tipA_y-pt_y, tipB_x-pt_x);
-}
 /******************************************************************************/
 #ifdef __cplusplus
 }

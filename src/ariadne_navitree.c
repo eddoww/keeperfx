@@ -119,16 +119,6 @@ long border_tags_to_current(int32_t *border_pt, long border_len)
     return update_border_tags(tag_current, border_pt, border_len);
 }
 
-TbBool is_current_tag(long tag_id)
-{
-    return (tag_current == Tags[tag_id]);
-}
-
-void store_current_tag(long tag_id)
-{
-    Tags[tag_id] = tag_current;
-}
-
 TbBool navitree_add(long itm_pos, long itm_dat, long mvcost)
 {
     long tag_pos = tag_current;

@@ -76,12 +76,23 @@ int32_t LbArcTanAngle(int32_t x,int32_t y);
 long LbMathOperation(unsigned char opkind, long first_operand, long second_operand);
 unsigned long LbRandomSeries(unsigned long range, uint32_t *seed, const char *func_name, unsigned long place);
 TbBool LbNumberSignsSame(long num_a, long num_b);
-char LbCompareMultiplications(long mul1a, long mul1b, long mul2a, long mul2b);
 long LbDiagonalLength(long a, long b);
 float LbLerp(float low, float high, float interval);
 float LbFmodf(float x, float y);
 float lerp_angle(float from, float to, float weight);
 double fastPow(double a, double b);
+
+// Inline, as the pathfinding uses it for its geometry tests in inner loops
+static inline char LbCompareMultiplications(long mul1a, long mul1b, long mul2a, long mul2b)
+{
+    long long mul1 = (long long)mul1a * (long long)mul1b;
+    long long mul2 = (long long)mul2a * (long long)mul2b;
+    if (mul1 > mul2)
+        return 1;
+    if (mul1 < mul2)
+        return -1;
+    return 0;
+}
 /******************************************************************************/
 #ifdef __cplusplus
 }
