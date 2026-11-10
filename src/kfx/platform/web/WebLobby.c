@@ -24,15 +24,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <emscripten.h>
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_datetm.h"
 #include "frontend.h"
 #include "front_network.h"
+#include "game_legacy.h"
 #include "net_exchange_common.h"
 #include "net_game.h"
 #include "net_lobby.h"
 #include "net_main.h"
+#include "net_spectator.h"
 #include "player_data.h"
 #include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
@@ -123,4 +126,12 @@ void web_lobby_update(void)
     } else {
         WARNLOG("Unknown lobby order from the page: '%s'", order);
     }
+}
+
+/** 1 while this browser watches an online game as a spectator, 0 otherwise. A rejoin starts as a spectator and
+ *  becomes a player again when the host gives the keeper back, so the page asks rather than going by how the
+ *  game was started (web/kfx_loader.js, KFX.watching). */
+EMSCRIPTEN_KEEPALIVE int kfx_web_spectating(void)
+{
+    return (network_is_active() && network_user_is_spectator(netstate.my_id)) ? 1 : 0;
 }

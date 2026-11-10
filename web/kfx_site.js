@@ -831,7 +831,7 @@ const Site = (() => {
     // A replay plays the recorded keeper's game again, and a spectator only
     // watches: neither is the player's own result.
     const choice = window.KFX && KFX.choice;
-    if (choice && (choice.mode === 'replay' || choice.spectate)) return;
+    if (choice && (choice.mode === 'replay' || KFX.watching())) return;
     // Without a connection (web/kfx_offline.js), a site that has its server
     // keeps wins to send later, as for a guest.
     const offline = (!online || !navigator.onLine) && (online || !!window.Offline?.serverKnown);
