@@ -1024,6 +1024,7 @@ int32_t network_session_join(void)
             error = spectator_join_error;
         }
         if (error) {
+            NETMSG("Joining the game failed: %s", error);
             create_frontend_error_box(error);
         } else {
             process_network_error(-802);

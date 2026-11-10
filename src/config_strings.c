@@ -444,6 +444,7 @@ const char * get_string(TextStringId stridx)
         case GUIStr_OptionAutosaveDesc: return "Autosave: How often the game saves itself while you play. LMB toggle.";
         case GUIStr_NetAwaitingReturn: return "%s disconnected: waiting %d:%02d for them to return";
         case GUIStr_NetAwaitingReturnPaused: return "%s disconnected: waiting %d:%02d for them to return (game paused)";
+        case GUIStr_NetDifferentRules: return "The host runs a game version with different game rules. Use the same version as the host.";
         default: return text;
         }
 #else

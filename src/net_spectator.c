@@ -566,8 +566,8 @@ TbBool network_spectator_start(void)
 static TbBool user_can_become_spectator(NetUserId user)
 {
     return (!user_present(user) || (player_has_lost(get_net_user_player_number(user)) && network_human_contenders_remain()))
-        && net_versions_match(&netstate.users[SERVER_ID].version, &net_current_version)
-        && net_versions_match(&netstate.users[user].version, &net_current_version);
+        && net_compat_ok(net_users_compat(&netstate.users[SERVER_ID], &netstate.users[netstate.my_id]))
+        && net_compat_ok(net_users_compat(&netstate.users[user], &netstate.users[netstate.my_id]));
 }
 
 TbBool network_spectator_request_conversion(void)

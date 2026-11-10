@@ -23,6 +23,7 @@
 #include "bflib_netsession.h"
 #include "user_prefs.h"
 #include "ver_defs.h"
+#include "net_compat.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -134,6 +135,8 @@ struct NetUser {
     enum NetUserProgress progress;
     int ack;
     struct GameVersionPacket version;
+    struct NetCompatInfo compat; // valid when compat_known
+    TbBool compat_known;
     uint32_t connected_at;
     enum NetSpectatorState spectator_state;
     uint8_t spectator_icon;
@@ -203,6 +206,8 @@ static inline TbBool net_versions_match(const struct GameVersionPacket *version_
         (version_a->build == version_b->build);
 }
 
+/** Whether two users' game versions can play together (net_compat.h). */
+enum NetCompatResult net_users_compat(const struct NetUser *a, const struct NetUser *b);
 TbError LbNetwork_Init(uint32_t srvcindex, uint32_t maxplayrs, struct TbNetworkUserInfo *locplayr, struct ServiceInitData *init_data);
 enum NetJoinRejection OnNewUser(NetUserId *assigned_id, enum NetConnectionRole role);
 void OnDroppedUser(NetUserId id, enum NetDropReason reason);

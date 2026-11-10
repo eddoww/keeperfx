@@ -48,6 +48,8 @@ enum NetJoinRejection {
     NetJoin_SpectatorsFull = 7,
     NetJoin_SpectatorsUnsupported = 8,
     NetJoin_SpectatorDesynced = 9,
+    NetJoin_GameRules = 10,     // the host's game version has different game rules (simulation)
+    NetJoin_Protocol = 11,      // the host's game version speaks another network protocol
     NetJoin_Count,
 };
 
@@ -87,6 +89,7 @@ struct TbNetworkSessionNameEntry {
     unsigned char max_players;
     int64_t created_at;
     char version[32];
+    char net_compat[32]; // "<protocol_oldest>-<protocol>/<sim>" (net_compat.h), empty for builds from before it
     char players[SESSION_HUMANS_MAX][NETSP_PLAYER_NAME_MAX_LEN];
     uint8_t spectator_support;
     uint8_t spectators_enabled;
@@ -131,6 +134,7 @@ int net_session_incompatible(const struct TbNetworkSessionNameEntry *session);
 enum NetJoinRejection net_session_join_rejection(const struct TbNetworkSessionNameEntry *session);
 enum NetJoinRejection net_session_spectator_rejection(const struct TbNetworkSessionNameEntry *session);
 const char *net_join_error_text(enum NetJoinRejection reason);
+const char *net_different_rules_text(void);
 /******************************************************************************/
 #ifdef __cplusplus
 };
