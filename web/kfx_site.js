@@ -665,6 +665,7 @@ const Site = (() => {
         ' ', h('small', {}, r.online && r.humans > 1 ? 'online' : r.campaignName)] },
       { title: 'Score', num: true, gold: true, cell: (r) => num(r.score) },
       { title: 'Time', num: true, cell: (r) => gameTime(r.turns) },
+      { title: 'Version', num: true, cell: (r) => h('small', {}, r.version || '') },
     ], data.recent, 'No conquests recorded yet.'));
   }
 
@@ -738,6 +739,7 @@ const Site = (() => {
           r.won && !r.ranked ? h('small', {}, ' not ranked') : null] },
         { title: 'Score', num: true, cell: (r) => num(r.score) },
         { title: 'Time', num: true, cell: (r) => gameTime(r.turns) },
+        { title: 'Version', num: true, cell: (r) => h('small', {}, r.version || '') },
       ], k.recent, 'No games recorded yet.'));
   }
 

@@ -62,7 +62,8 @@ and Safari have both; it has been tested in Chromium).
 | `?renderer=software` | `RENDERER` setting (`opengl` or `software`) |
 | `?cfg=KEY=VALUE;KEY=VALUE` | Override any `keeperfx.cfg` line |
 | `?dk=<url>` | Import the DK files from a folder served at `<url>` instead of asking (lower-case names: `data/main.pal`, `sound/atmos1.sbk`, ..., plus optional `keeper02.ogg` ... `keeper07.ogg`) |
-| `?join=CODE` | An invite: the start screen offers to join that lobby (`&spectate` to watch) |
+| `?build=<id \| version \| channel>` | Run that game version for this visit, e.g. `?build=alpha`, `?build=1.4.0.5603` (see "Game versions") |
+| `?join=CODE` | An invite: the start screen offers to join that lobby (`&spectate` to watch); without `?build` the page picks the lobby's version |
 | `?autostart` | Skip the start screen; with `?join=CODE` or `?host` (`&unlisted`) go straight online |
 | `?debug` | Log each game data download to the console |
 
@@ -110,7 +111,8 @@ web/serve.py build-web/site --dk "/path/to/Dungeon Keeper Gold"
 ## Hosting
 
 `build-web/site` is a static site (about 530 MB in 5,500 files, mostly game
-data in `gamedata/`). Any static host with HTTPS works; no special headers are
+data in `gamedata/`). That is the single-build layout a plain CMake build
+makes; for several versions side by side see "Game versions". Any static host with HTTPS works; no special headers are
 needed (the build uses no threads, so no cross-origin isolation). Serve `.wasm`
 as `application/wasm`. Files under `gamedata/` are requested as
 `<path>?v=<content hash>`, so they can be cached for good; `web/_headers` says
@@ -152,6 +154,190 @@ The page reads `dataUrl` from `/site.json` (answered by the Worker from
 before deploying a page whose manifest names it.
 
 Do not publish Dungeon Keeper's own files: each player supplies their own.
+
+## Game versions
+
+The site can offer several builds of the game side by side: the newest
+alpha, older alphas that lobbies or invites still use, and a stable release
+once one can be built (below). Players pick one on the start screen or with
+the version button in the game's frame bar; the page remembers the choice.
+
+### How upstream publishes KeeperFX
+
+- **Stable releases** are GitHub releases (tags `vX.Y.Z`) with a complete
+  `keeperfx_X_Y_Z_complete.7z`. The latest is 1.4.0 (tag `v1.4.0`,
+  2026-07-04), cut from a release branch that left master on 2026-06-08.
+- **Alpha builds** are made from every push to master by the *Alpha Patches*
+  workflow and served on keeperfx.net as
+  `keeperfx-1_4_0_<N>-Alpha-patch.7z`, with `N = git rev-list --count <commit>`
+  (about 110 master commits, so as many alpha builds, in the month to
+  2026-11-10). The
+  game reports itself as `1.4.0.<N> Alpha`; a stable build as `1.4.0.<N>`
+  with N counted at its tag (1.4.0 is 1.4.0.5136).
+- keeperfx.net answers `https://keeperfx.net/api/v1/release/alpha/latest`
+  and `.../stable/latest` (version, workflow run, date, download); the
+  workflow run on GitHub names the commit. `web/upstream.py` reads these.
+
+The version comes from `version.mk` (major, minor, release) and the build
+number CMake is given (`-DBUILD_NUMBER`, `-DPACKAGE_SUFFIX`, see
+`ver_defs.h.in`). Without them a build says `1.4.0.0`, and online play then
+lets two different builds meet: the game refuses a join only when the
+version numbers differ (`net_versions_match`). Every build the site offers
+therefore carries upstream's own number.
+
+### What can be built
+
+The port needs SDL3 (master since build 5272, 2026-08-05), the CMake
+modules (5267), the platform layer (5276) and the OpenGL renderer (5389,
+2026-09-12). Stable 1.4.0 has none of them: applying the port to `v1.4.0`
+conflicts in its very first commit (CMakeLists.txt, the CMake modules, the
+sound, platform and renderer files are missing or different; 617 files and
+about 80,000 lines differ in `src/`). A stable channel appears once
+upstream's next release is cut from a master that has them; until then the
+site offers alpha builds only, and keeps a few older ones.
+
+New features reach the browser with the alpha that has them. *Hellhound
+mode* (co-op on any single-player map: in an online lobby, pick a map under
+"Single-Player Maps (co-op)..." and give both players the same colour; they
+then share one keeper) came with alpha 5603 (PR #5581, 2026-11-09), two
+commits after the master the first web build was made from; it has been
+played between two browsers on the site's relay. Co-op multiplayer maps
+(PR #4757) were already in 1.4.0.
+
+Keeping up with master is cheap so far: rebasing the port's 21 commits onto
+master two commits later (`f75ddc07b`, Hellhound mode) applied without a
+conflict and compiled first time. The port touches 26 files outside `web/`,
+mostly new ones (`src/kfx/platform/web/`, `WebBundle.cmake`) and guarded
+lines, so conflicts should be rare and small; the CMake modules and
+`RenderThreadManager` are the likeliest places.
+
+### Layout and hosting
+
+`web/publish-build.py` keeps the builds in one folder:
+
+```
+builds/index.json                 the builds (channel, version, upstream commit, date, changes)
+builds/<id>/keeperfx.js|.wasm     the engine; <id> is <version>-<hash>, so these never change
+builds/<id>/manifest.json         its game data list ("layout": "cas")
+data/<hash>[.partN]               game data, stored once by content hash
+```
+
+One build's data is 4,808 distinct files, 538 MiB (5,660 paths: many are
+the same file). The next build adds its engine (8.6 MiB) and only the files
+that differ: 21 files, 2 MiB from alpha 5601 to 5603; about 100 files,
+4 MiB across five weeks of alphas. Each channel keeps its newest three
+builds (`--keep-count`) plus any marked `keep`; older ones are retired and,
+14 days later, deleted with the data no other build uses.
+
+The page stays on the Worker (static assets: a few dozen files), the builds
+and data go to the R2 bucket. The Worker's static assets would fit two or
+three versions (20,000 files, 25 MiB each), but each new build would then be
+a Worker deploy; with R2 a new build is an upload and the page picks it up
+from `index.json`. Three alphas and a stable come to about 600 MB, within
+R2's free 10 GB.
+
+```sh
+# a site's current builds -> a local layout (only the index and manifests)
+web/publish-build.py pull work/layout https://keeper-data.edwindejong.net/builds/
+# add a build: a dir with keeperfx.js, keeperfx.wasm and gamedata/ (web/package-data.py)
+web/publish-build.py add work/layout --site build-web/site --version 1.4.0.5603 --channel alpha \
+    --upstream <commit> --notes <url> --changes changes.json
+web/publish-build.py list work/layout
+web/publish-build.py set work/layout --default alpha     # or --keep ID, --remove ID
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... web/upload-builds.sh work/layout
+```
+
+`upload-builds.sh` uploads new data first, then the build, then
+`index.json`, and deletes retired files last, so a failure leaves the site
+on its previous builds. The page finds the builds at `builds/` next to it,
+or where `site.json` says (`buildsUrl`). For the Worker, set `BUILDS_URL` in
+`wrangler.jsonc` to the bucket's public address
+(`https://keeper-data.edwindejong.net/builds/`), or `BUILDS_FROM` to `r2` to
+have the Worker serve `/builds/` and `/data/` from the bucket itself (handy
+locally; in production every data file would then be a Worker request). A
+site without `builds/index.json` runs the one engine next to the page, as a
+plain CMake build makes it. Locally: `web/serve.py <page> --layout <layout>`.
+
+### Choosing and switching
+
+`web/kfx_versions.js` decides which build a visit runs: `?build=` in the
+address, else the version of the lobby an invite (`?join=CODE`) leads to,
+else the player's choice (a channel, which follows its newest build, or one
+exact build), else `index.json`'s `default` (a channel or build id; `alpha`
+now). The start screen shows the version, what changed upstream (the
+commits since the previous build, linked to their pull requests) and a
+dialog to switch; the frame bar shows it too. Switching reloads the page
+into the other build. During a game the page asks first; the game is lost
+unless saved.
+
+One page runs every build. The page and an engine talk through a small
+contract (Module hooks, the loader's command line, `/persist`, the `/api`
+routes the engine calls), numbered `KFX_WEB_API` in `web/kfx_web.js`. Each
+build records its number in `index.json` and the page offers only builds
+whose number it knows (`SUPPORTED_API` in `kfx_versions.js`). Raise it when
+an engine-side change needs a matching page, and keep the page able to run
+the builds still offered. Page deploys and engine builds are therefore
+independent: a new build needs no page deploy, and a page deploy keeps the
+builds.
+
+### Saves, online play and records across versions
+
+- **Saves and settings** are shared by all versions (`/persist/save`).
+  Saves use a self-describing format (`src/kfx/save/FORMAT.txt`) that reads
+  across builds: tested both ways between 1.4.0.5601 and 1.4.0.5603 (which
+  changed the format, minor 9 to 10): each loads the other's saves of a
+  campaign level with a "made by version" warning. Saves from builds before
+  5523 (2026-10-18) cannot be read by any later build, but no web build is
+  that old. Fields a version moves can be lost (5603 moved the things in a
+  keeper's hand), so before a different build first runs the page copies the
+  saves to `/persist/backups/<previous build>` (the last three); the version
+  dialog can put them back.
+- **Online play** needs the same build on every side. A hosted lobby records
+  its build; the Lobbies page shows each lobby's version, and joining one on
+  another version reloads into that version first. Invite links carry
+  `&build=`, and older links without it resolve to the lobby's version. If
+  a player still reaches a lobby of another version (the game's own lobby
+  list shows them all), the game refuses: "The host is using a different
+  game version". Lobbies of a build the site no longer offers are shown but
+  not joinable.
+- **Game data** is cached in the browser by content hash, so a switch only
+  downloads the files that differ (3 files to start level 1 on 5601 after
+  5603), and the cache keeps the data of the last few versions used.
+- **Hall of Fame** results record the version that played them (shown with
+  recent games). The boards are shared by all versions.
+
+### Following upstream automatically
+
+`.github/workflows/web-upstream.yml` runs every four hours (and by hand):
+it asks keeperfx.net for the newest alpha, compares it with the deployed
+`builds/index.json`, and if the site lacks it (or has it from an older port
+revision), runs `web/upstream-build.sh`, which
+
+1. rebases the port onto that upstream commit (exit 10 if it no longer
+   applies, naming the conflicting files),
+2. compiles it with upstream's build number (exit 11 on errors),
+3. packages the data: the latest complete release with that alpha's patch
+   laid over it, as desktop players have it (exit 12),
+4. adds it to the layout and loads it in headless Chromium until it asks for
+   the DK files (exit 13 if it does not; with `--dk` it plays a level),
+5. uploads it (exit 14 on failure).
+
+A failure fails the run and opens (or comments on) an issue in the fork;
+the site keeps its previous builds. The workflow needs this branch on the
+fork, the secrets `CLOUDFLARE_API_TOKEN` (Account → *Workers R2 Storage:
+Edit*) and `CLOUDFLARE_ACCOUNT_ID`, and the variable `KFX_BUILDS_URL` (the
+deployed `builds/`); without the variable it does nothing. Run the same
+thing by hand with:
+
+```sh
+source /path/to/emsdk/emsdk_env.sh
+web/upstream-build.sh --work /tmp/kfx-upstream --builds-url https://keeper-data.edwindejong.net/builds/ \
+    --dk "/path/to/Dungeon Keeper" --upload        # without --upload it stops before publishing
+```
+
+When the port no longer applies, rebase it by hand
+(`git rebase origin/master` on the port branch), fix, push; the next run
+builds from it.
 
 ## Online play
 
