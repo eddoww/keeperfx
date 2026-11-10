@@ -93,13 +93,12 @@ example 1612x744 on a 2532x1170 phone and 1314x914 on a 1180x820 iPad.
 - **Online play is between browsers only**, through the site's own lobby
   server (see "Online play"); LAN play is not available. Skirmish against the
   computer works.
-- **Lua 5.1 instead of LuaJIT**, which has no WebAssembly backend. It is patched
-  with the LuaJIT/Lua 5.2 functions KeeperFX and its scripts use
-  (`web/lua51-luajit-compat.patch`) and has LuaJIT's `bit` module, so level and
-  campaign scripts behave the same. Mods that use LuaJIT's `ffi` or `jit`
-  modules are not supported. Lua bytecode differs between the two, so a save
-  from a desktop build whose scripts stored compiled functions may not load in
-  the browser, or the other way round.
+- **Lua 5.1 patched to behave like LuaJIT** instead of LuaJIT, which has no
+  WebAssembly backend; see "Lua" under "How it works". Scripts written for
+  desktop KeeperFX run unchanged, `goto` included, and `math.random` gives the
+  same numbers for the same seed. Lua bytecode differs between the two, so a
+  save from a desktop build whose scripts stored compiled functions may not
+  load in the browser, or the other way round.
 - The display modes in `keeperfx.cfg` are replaced with windowed modes sized to
   the screen (exact in fullscreen); the page scales the picture to its frame.
 - The mouse is not captured outside possession (the page writes
@@ -711,8 +710,9 @@ existing pack, get a map pack of their own instead: `levels/ws<id>.cfg` or
 `multiplayer/ws<id>.cfg`, named after the item and copied from the pack their
 folder names (e.g. `classic`), else `standard`/`modern`. Nothing replaces a
 file of the game itself, and two items may not share a file. Lua scripts are
-checked for LuaJIT-only features (`ffi`, `goto`), which the browser's Lua 5.1
-lacks; the item page warns when it finds them.
+checked for the LuaJIT parts the browser's Lua lacks (`ffi` and `jit`, which
+desktop KeeperFX does not give scripts either, and `string.buffer`); the item
+page warns when it finds them. No Workshop script used them in November 2026.
 
 Installed files are kept in their own IndexedDB database
 (`keeperfx-workshop`), not in `/persist`, so a second tab saving its
@@ -966,6 +966,31 @@ the redirect `https://<your site>/api/auth/discord/callback`, set
   and Linux ones (`Platforms`, `Dependencies`, `Helpers`, `WebBundle`).
   `web/build-deps.sh` builds SDL3, SDL3_image, SDL3_mixer, zlib/minizip, spng,
   centijson, astronomy, enet6, Lua and a smacker-only ffmpeg.
+  `web/build-deps.sh --only lua <prefix>` rebuilds one of them (Lua is also
+  rebuilt by itself whenever its patch changes).
+- **Lua**: LuaJIT, which desktop KeeperFX uses, is an interpreter written in
+  assembly per CPU plus a JIT, with no WebAssembly target, so the browser
+  build uses PUC Lua 5.1.5 with `web/lua51-luajit-compat.patch`. LuaJIT is Lua
+  5.1 plus extensions, so the patch adds the extensions rather than moving to a
+  newer Lua (5.3 and later have integers: `GetSlab(x/3, y/3)` would raise
+  errors there, and numbers would print as `3.0`). What it adds, all as LuaJIT
+  2.1 does it: `goto`/labels (Lua 5.2's design, upvalues closed through the A
+  field of `OP_JMP`; `goto` stays a valid name when no name follows it);
+  LuaJIT's `math.random` generator, per Lua state rather than the C library's
+  `rand()` (which the engine reseeds from the clock when a level starts); the
+  5.2/5.3 functions LuaJIT has (`load`/`loadfile` with mode and environment,
+  `xpcall` arguments, `table.move`, `math.log(x, base)`, `string.rep` with a
+  separator, `%a`/`%g`, `\x`/`\z`/`\u{}` escapes, hexadecimal fractions, ...)
+  and `require "table.new"`/`"table.clear"`; LuaBitOp is linked in as `bit`.
+  Not there: `ffi` and `jit` (KeeperFX does not open them on the desktop
+  either), `string.buffer`, `1LL` literals. LuaJIT's newer syntax (bit
+  operators, `continue`, `?.`, compound assignment; LuaJIT 2.1 from July 2026)
+  is not in the desktop releases either, which link LuaJIT from April 2025.
+  Two things still differ from the desktop and cannot be patched cheaply: the
+  order in which `pairs()` visits keys (each Lua hashes differently) and error
+  message texts. Browser players only meet browser players online, so
+  lockstep is not affected, but a desktop replay of a script that acts in
+  `pairs()` order may play out differently in the browser.
 - **Main loop**: the game keeps its own blocking loop. Asyncify lets it pause:
   after each presented frame it waits for the browser's next animation frame
   (`kfx_web_frame_yield` in `web/kfx_web.js`), and `SDL_Delay` sleeps the same
