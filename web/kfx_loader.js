@@ -255,37 +255,32 @@ function linkPlayerFiles() {
   }
 }
 
-// Make the config suit a browser tab: windowed modes sized to the screen (the
-// browser's own fullscreen is used instead of SDL's), unless the player keeps
-// their own /persist/keeperfx.cfg.
+// Make the config suit a browser tab: windowed modes sized to the game's frame
+// (the browser's own fullscreen is used instead of SDL's), unless the player
+// keeps their own /persist/keeperfx.cfg.
 async function writeConfig() {
   await loadNow(`${GAME_DIR}/keeperfx.cfg`);
   if (exists('/persist/keeperfx.cfg')) {
     FS.writeFile(`${GAME_DIR}/keeperfx.cfg`, FS.readFile('/persist/keeperfx.cfg'));
+    setFollowFrame(false);
     return;
   }
-  // The screen's own size in device pixels, like the desktop build's DESKTOP
-  // mode: exact in fullscreen, sharp on high-DPI screens, and scaled down by
-  // the browser while the game sits in its frame on the page (fitCanvas).
-  const dpr = window.devicePixelRatio || 1;
-  let sw = Math.max(window.screen.width || 0, window.innerWidth);
-  let sh = Math.max(window.screen.height || 0, window.innerHeight);
-  let scale = Math.min(dpr, 3840 / sw, 2160 / sh);
-  // Phones and tablets: always landscape (the game has no portrait layout),
-  // and at most about 1.2 megapixels (0.8 with little memory), which keeps a
-  // phone GPU at the display's refresh rate and still looks sharp on its
-  // small screen.
-  if (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) {
-    if (sh > sw) [sw, sh] = [sh, sw];
-    const budget = (navigator.deviceMemory && navigator.deviceMemory <= 2) ? 0.8e6 : 1.2e6;
-    scale = Math.min(scale, Math.sqrt(budget / (sw * sh)));
+  // The player's own resolution (?cfg=INGAME_RES=...) is kept as it is.
+  setFollowFrame(engineFollowsFrame() && !/(^|;)\s*(INGAME|FRONTEND)_RES\s*=/i.test(params.get('cfg') || ''));
+  let game;
+  let front;
+  const target = followFrame && targetResolution();
+  if (target) {
+    // The size of the frame now; the page keeps the game to it (see "The
+    // game's resolution").
+    game = `${target[0]}x${target[1]}w32`;
+    front = `${target[2]}x${target[3]}w32`;
+  } else {
+    game = front = screenResolution();
   }
-  const w = Math.max(640, Math.round(sw * scale / 2) * 2);
-  const h = Math.max(480, Math.round(sh * scale / 2) * 2);
-  const page = `${w}x${h}w32`;
   const set = {
-    FRONTEND_RES: `640x480w32 ${page} ${page}`,
-    INGAME_RES: page,
+    FRONTEND_RES: `640x480w32 ${front} ${front}`,
+    INGAME_RES: game,
     // The page places the cursor; the game locks the mouse only in possession
     // (see "The mouse"), unless the player chose "Lock mouse".
     CAPTURE_CURSOR: (mouseLockChosen() || !enginePlacesMouse()) ? 'ON' : 'OFF',
@@ -409,14 +404,111 @@ function waitForDkFiles() {
 
 // ---- The stage: canvas sizing, fullscreen, fill-the-tab ----------------------
 
-// The game draws at one resolution (writeConfig); the canvas is scaled with CSS
-// to fit the stage, keeping the game's aspect ratio. Setting the CSS size (not
-// the canvas resolution) keeps SDL's mouse mapping exact.
+// The game's resolution. An engine with kfx_web_set_resolution
+// (src/kfx/platform/web/WebVideo.c) draws at the size of its frame, in device
+// pixels, and follows it: the frame takes the space the page has for it
+// (site.css), Fill tab and fullscreen give it the whole tab or screen, and a
+// window resized or a device turned changes it. Once the frame has kept its
+// size for RES_SETTLE_MS the page asks the engine for that size; a level
+// switches at once, between two frames, and the CSS scaling below bridges the
+// moment until it does. The front end (menus, land view, movies) lays its
+// screens out once, when they open, so it gets a size of its own, between 4:3
+// and 16:9, which it takes the next time it opens; meanwhile it is scaled to
+// fit like any picture. Older engines, and a player's own INGAME_RES, keep the
+// screen-sized resolution chosen at the start (screenResolution) and the
+// frame takes the game's shape instead.
+const RES_SETTLE_MS = 350;
+const RES_MAX = [3840, 2160];
+// The smallest picture the game's panels fit in, as in the original game.
+const RES_MIN = [640, 480];
+// Past these shapes the game stops following and the page adds bars: a level
+// from 3:4 (upright) to 32:9 (the widest monitors), the front end from 4:3
+// to 16:9, the shapes its screens were drawn for.
+const GAME_SHAPES = [3 / 4, 32 / 9];
+const FRONT_SHAPES = [4 / 3, 16 / 9];
+const engineFollowsFrame = () => typeof Module === 'object' && !!Module._kfx_web_set_resolution;
+let followFrame = false;
+function setFollowFrame(on) {
+  followFrame = on;
+  $('shell').classList.toggle('fixed-shape', !on);
+}
+// Phones and tablets: at most about 1.2 megapixels (0.8 with little memory),
+// which keeps a phone GPU at the display's refresh rate and still looks sharp
+// on its small screen.
+const touchOnly = () => matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+const pixelBudget = () => (!touchOnly() ? Infinity : (navigator.deviceMemory && navigator.deviceMemory <= 2) ? 0.8e6 : 1.2e6);
+
+// The largest picture with a shape in [lo, hi] that fits w x h device pixels,
+// within the limits; even sizes.
+function fitResolution(w, h, [lo, hi]) {
+  const shape = Math.min(Math.max(w / h, lo), hi);
+  if (w / h > shape) w = h * shape; else h = w / shape;
+  let scale = Math.min(1, RES_MAX[0] / w, RES_MAX[1] / h, Math.sqrt(pixelBudget() / (w * h)));
+  scale = Math.max(scale, RES_MIN[0] / w, RES_MIN[1] / h);
+  return [Math.round(w * scale / 2) * 2, Math.round(h * scale / 2) * 2];
+}
+
+// [level width, height, front end width, height] for the frame as it is now,
+// or null while it has no size (another page is shown).
+function targetResolution() {
+  const stage = $('stage');
+  const dpr = window.devicePixelRatio || 1;
+  const w = stage.clientWidth * dpr;
+  const h = stage.clientHeight * dpr;
+  if (!(w > 0 && h > 0)) return null;
+  return [...fitResolution(w, h, GAME_SHAPES), ...fitResolution(w, h, FRONT_SHAPES)];
+}
+
+// The screen's own size in device pixels, like the desktop build's DESKTOP
+// mode, for engines that can't follow the frame: exact in fullscreen, sharp on
+// high-DPI screens, and scaled down by the browser in the frame (fitCanvas).
+function screenResolution() {
+  const dpr = window.devicePixelRatio || 1;
+  let sw = Math.max(window.screen.width || 0, window.innerWidth);
+  let sh = Math.max(window.screen.height || 0, window.innerHeight);
+  let scale = Math.min(dpr, RES_MAX[0] / sw, RES_MAX[1] / sh);
+  // Phones and tablets: always landscape (the game has no portrait layout).
+  if (touchOnly()) {
+    if (sh > sw) [sw, sh] = [sh, sw];
+    scale = Math.min(scale, Math.sqrt(pixelBudget() / (sw * sh)));
+  }
+  const w = Math.max(RES_MIN[0], Math.round(sw * scale / 2) * 2);
+  const h = Math.max(RES_MIN[1], Math.round(sh * scale / 2) * 2);
+  return `${w}x${h}w32`;
+}
+
+let resTimer = 0;
+let resSent = '';
+function followStage() {
+  if (!followFrame) return;
+  clearTimeout(resTimer);
+  resTimer = setTimeout(sendResolution, RES_SETTLE_MS);
+}
+function sendResolution() {
+  if (!followFrame || KFX.state !== 'running') return;
+  // Not in the middle of a drag begun on the game.
+  if (mouseHeld) {
+    resTimer = setTimeout(sendResolution, RES_SETTLE_MS);
+    return;
+  }
+  const target = targetResolution();
+  if (!target || target.join() === resSent) return;
+  resSent = target.join();
+  Module._kfx_web_set_resolution(...target);
+}
+
+// The canvas is scaled with CSS to fit the stage, keeping the game's aspect
+// ratio: exactly when the game follows the frame, with bars while it
+// catches up, or where it stops following (the front end, extreme shapes,
+// older engines). Setting the CSS size (not the canvas resolution) keeps
+// SDL's mouse mapping exact.
 function fitCanvas() {
   const canvas = $('canvas');
   const stage = $('stage');
+  followStage();
   if (!canvas.width || !canvas.height) return;
-  // The framed stage takes the game's shape (site.css sizes it from --ar).
+  // Older engines: the framed stage takes the game's shape (site.css sizes
+  // it from --ar).
   $('shell').style.setProperty('--ar', (canvas.width / canvas.height).toFixed(4));
   const scale = Math.min(stage.clientWidth / canvas.width, stage.clientHeight / canvas.height);
   if (!(scale > 0)) return; // the play page is hidden
@@ -638,7 +730,11 @@ function mouseToGame(ev, leaving) {
   const y = ev.clientY;
   const near = x >= r.left - MOUSE_EDGE && x <= r.right + MOUSE_EDGE && y >= r.top - MOUSE_EDGE && y <= r.bottom + MOUSE_EDGE;
   const overStage = x >= s.left && x <= s.right && y >= s.top && y <= s.bottom;
-  const inside = !leaving && !document.querySelector('dialog[open]') && (mouseHeld || near || overStage);
+  // A button or link next to the game (the bar above it) is not the edge band:
+  // a pointer resting there would keep the view scrolling.
+  const t = ev.target;
+  const onControl = !!(t && t.closest && !$('stage').contains(t) && t.closest('button, a, input, select, .stage-bar, .topbar'));
+  const inside = !leaving && !document.querySelector('dialog[open]') && (mouseHeld || (near && !onControl) || overStage);
   const clamp = (v) => Math.min(Math.max(v, 0), 0.9999);
   point(clamp((x - r.left) / r.width), clamp((y - r.top) / r.height), inside ? 1 : 0);
 }

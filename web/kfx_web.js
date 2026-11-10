@@ -15,7 +15,9 @@
 // passes (-server, -connect CODE, -spectate), the /persist layout and the /api
 // routes the engine calls. Raise the number when a change here or in the
 // engine needs a page that knows about it, and add it to SUPPORTED_API in
-// web/kfx_versions.js once the page handles both.
+// web/kfx_versions.js once the page handles both. Engine exports the page
+// looks for before using them (kfx_web_mouse_point, kfx_web_set_resolution)
+// need no new number: without them the page keeps the older behaviour.
 
 addToLibrary({
   // Yield to the browser after each presented frame, so the canvas is shown

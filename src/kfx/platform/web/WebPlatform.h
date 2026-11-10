@@ -4,6 +4,7 @@
 
 #ifdef __EMSCRIPTEN__
 #include "bflib_basics.h"
+#include "bflib_video.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +30,11 @@ void web_input_apply_camera(struct Camera *cam);
  * replaces the lobby's own maximum while set. */
 void web_lobby_update(void);
 int web_lobby_max_players(int configured);
+/* The game's resolution follows its frame on the page (WebVideo.c): the
+ * modes for levels (kind 0) and the front end (kind 1) take the size the page
+ * asked for, and a level switches to it between frames. */
+TbScreenMode web_video_mode(int kind, TbScreenMode configured);
+void web_video_update(void);
 #ifdef __cplusplus
 }
 #endif
@@ -39,6 +45,8 @@ int web_lobby_max_players(int configured);
 #define KFX_WEB_CAMERA_INPUT(cam) web_input_apply_camera(cam)
 #define KFX_WEB_LOBBY_UPDATE() web_lobby_update()
 #define KFX_WEB_LOBBY_MAX_PLAYERS(configured) web_lobby_max_players(configured)
+#define KFX_WEB_VIDEO_MODE(kind, configured) web_video_mode(kind, configured)
+#define KFX_WEB_VIDEO_UPDATE() web_video_update()
 #else
 #define KFX_WEB_FRAME_YIELD() do {} while (0)
 #define KFX_WEB_LEVEL_RESULT(player, won) do {} while (0)
@@ -47,6 +55,8 @@ int web_lobby_max_players(int configured);
 #define KFX_WEB_CAMERA_INPUT(cam) do {} while (0)
 #define KFX_WEB_LOBBY_UPDATE() do {} while (0)
 #define KFX_WEB_LOBBY_MAX_PLAYERS(configured) (configured)
+#define KFX_WEB_VIDEO_MODE(kind, configured) (configured)
+#define KFX_WEB_VIDEO_UPDATE() do {} while (0)
 #endif
 
 #endif
