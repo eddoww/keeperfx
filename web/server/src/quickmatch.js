@@ -363,9 +363,11 @@ export class QuickMatch {
     for (const seat of seats.sort((a, b) => a.at - b.at)) {
       if (!waiting.length) break;
       const lobby = await this.lobby(seat.code);
-      // Just opened: the game sends its lobby details a moment after connecting.
-      if (!lobby && now - seat.at < SEAT_WARMUP_MS) continue;
-      if (!lobby || (lobby.phase && lobby.phase !== 'Lobby') || lobby.joinable === false) {
+      // Just opened: the game sends its lobby details a moment after connecting. The lobby is
+      // there (the Worker added the seat when it opened), so send keepers to it meanwhile:
+      // nothing else would match them up again until someone joins or leaves the queue.
+      if ((!lobby && now - seat.at >= SEAT_WARMUP_MS)
+        || (lobby && ((lobby.phase && lobby.phase !== 'Lobby') || lobby.joinable === false))) {
         await this.ctx.storage.delete(`qm:s:${seat.code}`);
         continue;
       }
