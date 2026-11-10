@@ -427,7 +427,29 @@ const char * get_string(TextStringId stridx)
     else if (stridx < GUI_STRINGS_START )
         return get_translation_file_string(stridx);
     else
+    {
+#ifdef __EMSCRIPTEN__
+        // The browser site takes its language files from upstream's packages,
+        // which lack the strings added on this branch: say them in English.
+        const char *text = gui_string(stridx - GUI_STRINGS_START);
+        if (text != NULL && *text != '\0')
+            return text;
+        switch (stridx)
+        {
+        case GUIStr_Autosaved: return "Autosaved";
+        case GUIStr_AutosaveTitle: return "Autosave";
+        case GUIStr_AutosaveLevelNumber: return "Level %d";
+        case GUIStr_OptionAutosaveOff: return "Autosave: off";
+        case GUIStr_OptionAutosaveMinutes: return "Autosave: every %d min";
+        case GUIStr_OptionAutosaveDesc: return "Autosave: How often the game saves itself while you play. LMB toggle.";
+        case GUIStr_NetAwaitingReturn: return "%s disconnected: waiting %d:%02d for them to return";
+        case GUIStr_NetAwaitingReturnPaused: return "%s disconnected: waiting %d:%02d for them to return (game paused)";
+        default: return text;
+        }
+#else
         return gui_string(stridx - GUI_STRINGS_START);
+#endif
+    }
 }
 
 const char * get_on_off_string(TbBool value)
