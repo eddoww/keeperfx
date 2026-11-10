@@ -23,6 +23,7 @@
 #include "bflib_netsession.h"
 #include "user_prefs.h"
 #include "ver_defs.h"
+#include "net_compat.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -80,6 +81,9 @@ enum NetMessageType {
     NETMSG_SPECTATOR_CONVERSION,
     NETMSG_LOBBY_SETTINGS,
     NETMSG_SPECTATOR_SEAT,
+    NETMSG_RESYNC_HASHES,   // client -> host: block hashes of the client's state when it saw a desync (NetCap_DeltaResync)
+    NETMSG_RESYNC_DELTA,    // host -> client: the blocks of the host's state that differ from those hashes
+    NETMSG_RESYNC_RESULT,   // client -> host: a delta could not be applied, send the full state
 };
 
 enum NetConnectionRole {
@@ -134,6 +138,8 @@ struct NetUser {
     enum NetUserProgress progress;
     int ack;
     struct GameVersionPacket version;
+    struct NetCompatInfo compat; // valid when compat_known
+    TbBool compat_known;
     uint32_t connected_at;
     enum NetSpectatorState spectator_state;
     uint8_t spectator_icon;
@@ -203,6 +209,10 @@ static inline TbBool net_versions_match(const struct GameVersionPacket *version_
         (version_a->build == version_b->build);
 }
 
+/** Whether both this game and user `id` have a capability (net_compat.h NetCap_*). */
+TbBool net_user_has_capability(NetUserId id, uint32_t capability);
+/** Whether two users' game versions can play together (net_compat.h). */
+enum NetCompatResult net_users_compat(const struct NetUser *a, const struct NetUser *b);
 TbError LbNetwork_Init(uint32_t srvcindex, uint32_t maxplayrs, struct TbNetworkUserInfo *locplayr, struct ServiceInitData *init_data);
 enum NetJoinRejection OnNewUser(NetUserId *assigned_id, enum NetConnectionRole role);
 void OnDroppedUser(NetUserId id, enum NetDropReason reason);

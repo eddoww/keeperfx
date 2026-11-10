@@ -115,6 +115,10 @@ void SendUserUpdate(NetUserId dest, NetUserId updated_user)
     write_pos += strlen(netstate.users[updated_user].name) + 1;
     memcpy(write_pos, &netstate.users[updated_user].version, sizeof(netstate.users[updated_user].version));
     write_pos += sizeof(netstate.users[updated_user].version);
+    if (netstate.users[updated_user].compat_known) {
+        memcpy(write_pos, &netstate.users[updated_user].compat, sizeof(netstate.users[updated_user].compat));
+        write_pos += sizeof(netstate.users[updated_user].compat);
+    }
     send_message_buffer(dest, write_pos);
 }
 

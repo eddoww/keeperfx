@@ -30,6 +30,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "net_lobby.h"
+#include "net_compat.h"
 #include <json-dom.h>
 #include "post_inc.h"
 
@@ -61,7 +62,10 @@ static SDL_Thread *resolve_thread;
 static char local_ipv4[MATCHMAKING_IP_MAX] = {0};
 static char local_ipv6[MATCHMAKING_IP_MAX] = {0};
 static PunchAddresses create_addresses;
-static const char list_request[] = "{\"action\":\"list\",\"version\":\"" VER_STRING "\"}";
+// netCompat (net_compat.h) lets the server match lobbies by compatibility rather than by exact version.
+#define NET_COMPAT_STRING_(o, p, s) #o "-" #p "/" #s
+#define NET_COMPAT_STRING(o, p, s) NET_COMPAT_STRING_(o, p, s)
+static const char list_request[] = "{\"action\":\"list\",\"version\":\"" VER_STRING "\",\"netCompat\":\"" NET_COMPAT_STRING(NET_PROTOCOL_OLDEST, NET_PROTOCOL_VERSION, NET_SIM_VERSION) "\"}";
 static Uint32 heartbeat_time;
 static int heartbeat_attempts;
 static Uint32 host_retry_time;
@@ -550,12 +554,14 @@ int matchmaking_punch(const char *lobby_id, const char *udp_ipv4, int udp_ipv4_p
     char request[SEND_BUFFER_SIZE];
     PunchAddresses published_addresses;
     load_published_public_ips(udp_ipv4, udp_ipv4_port, udp_ipv6_port, &published_addresses);
+    char compat[32];
+    net_compat_format(&net_local_compat, compat, sizeof(compat));
     SDL_LockMutex(mutex);
     if (!curl_handle) {
         SDL_UnlockMutex(mutex);
         return -1;
     }
-    snprintf(request, sizeof(request), "{\"action\":\"punch\",\"lobbyId\":\"%s\",\"myIpv4Port\":%d,\"myIpv6Port\":%d,\"myIpv4\":\"%s\",\"myIpv6\":\"%s\",\"version\":\"%d.%d.%d.%d\",\"role\":\"%s\",\"spectatorSupport\":1}", lobby_id, udp_ipv4_port, udp_ipv6_port, published_addresses.ipv4, published_addresses.ipv6, VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD, role);
+    snprintf(request, sizeof(request), "{\"action\":\"punch\",\"lobbyId\":\"%s\",\"myIpv4Port\":%d,\"myIpv6Port\":%d,\"myIpv4\":\"%s\",\"myIpv6\":\"%s\",\"version\":\"%d.%d.%d.%d\",\"netCompat\":\"%s\",\"role\":\"%s\",\"spectatorSupport\":1}", lobby_id, udp_ipv4_port, udp_ipv6_port, published_addresses.ipv4, published_addresses.ipv6, VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD, compat, role);
     VALUE response = {0};
     int received = websocket_exchange(request, "punch", &response);
     int result = -1;

@@ -83,6 +83,7 @@ void net_lobby_refresh_metadata(void)
     session.max_spectators = MAX_NET_SPECTATORS;
     session.spectator_count = net_lobby_spectator_count();
     snprintf(session.version, sizeof(session.version), "%d.%d.%d.%d", VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD);
+    net_compat_format(&net_local_compat, session.net_compat, sizeof(session.net_compat));
     struct LevelInformation *level = get_level_info(get_selected_level_number());
     if (netstate.locked && level) {
         session.max_players = min(session.max_players, max(level->players, 2));
@@ -254,12 +255,19 @@ TbError process_login_message(NetUserId source, char *read_pos, const char *end_
         LbNetLog("Login: assigned local user ID %d\n", (int)netstate.my_id);
         read_pos += 1;
         netstate.users[netstate.my_id].version = net_current_version;
+        netstate.users[netstate.my_id].compat = net_local_compat;
+        netstate.users[netstate.my_id].compat_known = true;
         const struct GameVersionPacket *server_version = (const struct GameVersionPacket *)read_pos;
         netstate.users[SERVER_ID].version = *server_version;
         read_pos += sizeof(*server_version);
         if (network_user_is_spectator(netstate.my_id)) {
             network_spectator_chat_visible = read_pos < end_pos && *read_pos != 0;
+            if (read_pos < end_pos) {
+                read_pos += 1;
+            }
         }
+        const char *ext_pos = read_pos;
+        netstate.users[SERVER_ID].compat_known = net_compat_read(&ext_pos, end_pos, &netstate.users[SERVER_ID].compat);
         return Lb_OK;
     }
     struct NetUser *user = &netstate.users[source];
@@ -297,17 +305,27 @@ TbError process_login_message(NetUserId source, char *read_pos, const char *end_
     }
     memcpy(&user->version, read_pos, sizeof(user->version));
     read_pos += sizeof(user->version);
-    if (network_user_is_spectator(source) && (read_pos >= end_pos || *read_pos != NetRole_Spectator || !net_versions_match(&user->version, &net_current_version))) {
+    if (network_user_is_spectator(source) && (read_pos >= end_pos || *read_pos != NetRole_Spectator)) {
         netstate.sp->drop_user(source, NetJoin_Version);
         return Lb_OK;
     }
-    const struct GameVersionPacket stable_version = {1, 4, 0, 5136};
-    if (!net_versions_match(&user->version, &net_current_version) && !net_versions_match(&user->version, &stable_version)) {
-        netstate.sp->drop_user(source, NetJoin_Version);
-        return Lb_OK;
-    }
+    user->compat_known = false;
     if (end_pos - read_pos >= 1 + sizeof(user->reconnect_token)) {
         memcpy(&user->reconnect_token, read_pos + 1, sizeof(user->reconnect_token));
+        const char *ext_pos = read_pos + 1 + sizeof(user->reconnect_token);
+        user->compat_known = net_compat_read(&ext_pos, end_pos, &user->compat);
+    }
+    enum NetCompatResult compat = net_compat_check(&net_local_compat, true, &net_current_version, &user->compat, user->compat_known, &user->version);
+    if (!net_compat_ok(compat)) {
+        // Builds from before the compatibility block: the stable release still
+        // gets in, so the lobby can show it the version mismatch.
+        const struct GameVersionPacket stable_version = {1, 4, 0, 5136};
+        if (network_user_is_spectator(source) || compat != NetCompat_Version || !net_versions_match(&user->version, &stable_version)) {
+            NETMSG("Rejecting user %d (%s): incompatible version, %s", (int)source, user->name,
+                compat == NetCompat_Simulation ? "different game rules" : compat == NetCompat_Protocol ? "different network protocol" : "different build");
+            netstate.sp->drop_user(source, net_compat_join_rejection(compat, user->compat_known));
+            return Lb_OK;
+        }
     }
     enum NetJoinRejection reason = net_lobby_join_rejection();
     if (network_user_is_spectator(source)) {
@@ -333,6 +351,7 @@ TbError process_login_message(NetUserId source, char *read_pos, const char *end_
     if (network_user_is_spectator(source)) {
         *reply_pos++ = net_config_info.spectator_chat;
     }
+    reply_pos = net_compat_write(reply_pos);
     send_message_buffer(source, reply_pos);
     SendNewUserUpdates(source);
     UpdateLocalPlayerInfo(source);
@@ -370,6 +389,11 @@ TbError process_user_update_message(NetUserId source, char *read_pos, const char
     strcpy(user->name, name);
     if (read_pos + sizeof(user->version) <= end_pos) {
         memcpy(&user->version, read_pos, sizeof(user->version));
+        read_pos += sizeof(user->version);
+        const char *ext_pos = read_pos;
+        if (user_id != netstate.my_id) {
+            user->compat_known = net_compat_read(&ext_pos, end_pos, &user->compat);
+        }
     }
     UpdateLocalPlayerInfo(user_id);
     return Lb_OK;
@@ -403,7 +427,7 @@ TbError LbNetwork_ExchangeLogin(char *player_name)
 {
     NETMSG("Logging in as %s", player_name);
     const uint64_t reconnect_token = local_reconnect_token();
-    if (1 + strlen(netstate.password) + 1 + strlen(player_name) + 1 + sizeof(net_current_version) + 1 + sizeof(reconnect_token) >= sizeof(netstate.msg_buffer)) {
+    if (1 + strlen(netstate.password) + 1 + strlen(player_name) + 1 + sizeof(net_current_version) + 1 + sizeof(reconnect_token) + sizeof(net_local_compat) >= sizeof(netstate.msg_buffer)) {
         ERRORLOG("Login credentials too long");
         return Lb_FAIL;
     }
@@ -417,6 +441,7 @@ TbError LbNetwork_ExchangeLogin(char *player_name)
     *write_pos++ = net_join_role;
     memcpy(write_pos, &reconnect_token, sizeof(reconnect_token));
     write_pos += sizeof(reconnect_token);
+    write_pos = net_compat_write(write_pos);
     send_message_buffer(SERVER_ID, write_pos);
     TbClockMSec wait_start_time = LbTimerClock();
     while (net_join_rejection == NetJoin_Accepted && LbTimerClock() - wait_start_time < TIMEOUT_JOIN_LOBBY) {
@@ -536,6 +561,8 @@ TbError LbNetwork_Create(char *plyr_name, uint32_t *plyr_num, void *optns)
         return Lb_FAIL;
     }
     netstate.users[netstate.my_id].version = net_current_version;
+    netstate.users[netstate.my_id].compat = net_local_compat;
+    netstate.users[netstate.my_id].compat_known = true;
     *plyr_num = netstate.my_id;
     UpdateLocalPlayerInfo(netstate.my_id);
     LbNetwork_EnableNewPlayers(1);

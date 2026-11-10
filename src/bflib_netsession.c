@@ -94,7 +94,9 @@ int net_session_metadata_json(const struct TbNetworkSessionNameEntry *session, c
     if (session->rejoin_open) {
         rejoin_open = "true";
     }
-    int used = snprintf(output, size, "\"name\":\"%s\",\"version\":\"%s\",\"phase\":\"%s\",\"joinable\":%s,\"maxPlayers\":%d,\"spectatorSupport\":%d,\"spectatorsEnabled\":%s,\"maxSpectators\":%d,\"spectatorCount\":%d,\"rejoinOpen\":%s,\"players\":[", lobby_name, version, session_phase_names[session->phase], joinable, session->max_players, session->spectator_support, spectators_enabled, session->max_spectators, session->spectator_count, rejoin_open);
+    char compat[sizeof(session->net_compat) * 6];
+    net_json_escape(compat, sizeof(compat), session->net_compat);
+    int used = snprintf(output, size, "\"name\":\"%s\",\"version\":\"%s\",\"netCompat\":\"%s\",\"phase\":\"%s\",\"joinable\":%s,\"maxPlayers\":%d,\"spectatorSupport\":%d,\"spectatorsEnabled\":%s,\"maxSpectators\":%d,\"spectatorCount\":%d,\"rejoinOpen\":%s,\"players\":[", lobby_name, version, compat, session_phase_names[session->phase], joinable, session->max_players, session->spectator_support, spectators_enabled, session->max_spectators, session->spectator_count, rejoin_open);
     for (int i = 0; i < session->player_count; i++) {
         if (used < 0 || used >= size) {
             return -1;
@@ -129,6 +131,7 @@ void net_session_parse_metadata(struct TbNetworkSessionNameEntry *session, const
     session->rejoin_open = 0;
     session->created_at = 0;
     session->version[0] = '\0';
+    session->net_compat[0] = '\0';
     memset(session->players, 0, sizeof(session->players));
     if (value_type(root) != VALUE_DICT) {
         return;
@@ -144,6 +147,11 @@ void net_session_parse_metadata(struct TbNetworkSessionNameEntry *session, const
         while (length > 0 && isspace((unsigned char)session->version[length - 1])) {
             session->version[--length] = '\0';
         }
+    }
+    const char *compat = value_string(value_dict_get(root, "netCompat"));
+    struct NetCompatInfo compat_info;
+    if (compat && net_compat_parse(compat, &compat_info)) {
+        snprintf(session->net_compat, sizeof(session->net_compat), "%s", compat);
     }
     const char *phase = value_string(value_dict_get(root, "phase"));
     for (int i = NetPhase_Lobby; phase && i <= NetPhase_Loading; i++) {
@@ -195,8 +203,22 @@ void net_session_parse_metadata(struct TbNetworkSessionNameEntry *session, const
     session->roster_known = 1;
 }
 
+static enum NetCompatResult net_session_compat(const struct TbNetworkSessionNameEntry *session)
+{
+    struct NetCompatInfo remote;
+    if (net_compat_parse(session->net_compat, &remote)) {
+        return net_compat_check(&net_local_compat, true, NULL, &remote, true, NULL);
+    }
+    char version[sizeof(session->version)];
+    snprintf(version, sizeof(version), "%d.%d.%d.%d", VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD);
+    return strcmp(session->version, version) == 0 ? NetCompat_Legacy : NetCompat_Version;
+}
+
 int net_session_incompatible(const struct TbNetworkSessionNameEntry *session)
 {
+    if (session->net_compat[0] != '\0') {
+        return !net_compat_ok(net_session_compat(session));
+    }
     int32_t major;
     int32_t minor;
     int32_t release;
@@ -210,7 +232,7 @@ int net_session_incompatible(const struct TbNetworkSessionNameEntry *session)
 enum NetJoinRejection net_session_join_rejection(const struct TbNetworkSessionNameEntry *session)
 {
     if (net_session_incompatible(session)) {
-        return NetJoin_Version;
+        return net_compat_join_rejection(net_session_compat(session), session->net_compat[0] != '\0');
     }
     if (session->phase == NetPhase_InGame) {
         return NetJoin_InGame;
@@ -231,10 +253,8 @@ enum NetJoinRejection net_session_spectator_rejection(const struct TbNetworkSess
     if (!session->spectator_support) {
         return NetJoin_SpectatorsUnsupported;
     }
-    char version[sizeof(session->version)];
-    snprintf(version, sizeof(version), "%d.%d.%d.%d", VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD);
-    if (strcmp(session->version, version) != 0) {
-        return NetJoin_Version;
+    if (!net_compat_ok(net_session_compat(session))) {
+        return net_compat_join_rejection(net_session_compat(session), session->net_compat[0] != '\0');
     }
     if (session->phase != NetPhase_InGame) {
         return NetJoin_SpectatorState;

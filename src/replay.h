@@ -68,6 +68,7 @@ struct PacketSaveHead {
     signed char recording_user;
     int8_t frontend_alliances;
     char user_names[MAX_NET_USERS][PLAYER_MP_NAME_LEN];
+    uint32_t net_sim_version; // NET_SIM_VERSION of the recording build, 0 if older than it
 };
 
 #pragma pack()

@@ -6227,3 +6227,9 @@ msgstr "%s disconnected: waiting %d:%02d for them to return"
 msgctxt "Network game message"
 msgid "%s disconnected: waiting %d:%02d for them to return (game paused)"
 msgstr "%s disconnected: waiting %d:%02d for them to return (game paused)"
+
+#. A player cannot join: their game version computes the game differently (another simulation version)
+#: guitext:1180
+msgctxt "Network game message"
+msgid "The host runs a game version with different game rules. Use the same version as the host."
+msgstr "The host runs a game version with different game rules. Use the same version as the host."

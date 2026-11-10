@@ -33,6 +33,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from netcompat import net_compat_key  # noqa: E402
+
 LOCAL = re.compile(r'^(?![a-z][a-z0-9+.-]*:|//|#)([^?#"]+)')  # a relative URL's path
 TAG_URL = re.compile(r'<(?:script|link|img|source)\b[^>]*?\b(?:src|href)="([^"]+)"')
 CSS_URL = re.compile(r'url\(\s*["\']?([^"\')]+)["\']?\s*\)')
@@ -106,6 +109,9 @@ def main():
     if os.path.isfile(os.path.join(site, "keeperfx.wasm")):
         engine = hashlib.sha1(read(site, "keeperfx.wasm")).hexdigest()[:12]
     html = re.sub(r'<meta name="kfx-engine" content="[^"]*">', f'<meta name="kfx-engine" content="{engine}">', html)
+    # The network compatibility key of the engine next to the page (web/kfx_versions.js compatOf()).
+    compat = net_compat_key(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")) if engine else ""
+    html = re.sub(r'<meta name="kfx-net-compat" content="[^"]*">', f'<meta name="kfx-net-compat" content="{compat}">', html)
     html = re.sub(r'<meta name="kfx-sw" content="[^"]*">', f'<meta name="kfx-sw" content="{"on" if sw_on else "off"}">', html)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)

@@ -70,6 +70,9 @@ import shutil
 import sys
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from netcompat import net_compat_key  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_FORMAT = 1
 CHANNELS = {
@@ -293,6 +296,8 @@ def cmd_add(args):
         "api": args.api or web_api_version(args.checkout),
         "features": sorted(f for f in args.features.split(",") if f) if args.features is not None
         else detect_features(args.checkout),
+        # Which builds play online together (src/net_compat.h); "" for older trees.
+        "netCompat": args.net_compat if args.net_compat is not None else net_compat_key(args.checkout),
         "engineBytes": os.path.getsize(wasm) + os.path.getsize(js),
         "dataFiles": len(manifest["files"]),
         "dataBytes": total,
@@ -478,6 +483,7 @@ def main():
     a.add_argument("--keep-count", type=int, default=3, help="builds each channel offers (default 3)")
     a.add_argument("--keep-referenced", metavar="URL",
                    help="prune, keeping the builds replays need: the site's /api/replays/builds, or 'none'")
+    a.add_argument("--net-compat", help="network compatibility key (default: from --checkout's src/net_compat.h)")
     a.add_argument("--features", help="comma-separated page features the engine has (default: found in --checkout)")
     a.add_argument("--lacks", help="comma-separated page features the engine lacks (default: --checkout's web/build-info.json)")
     a.add_argument("--saves", help="kind of saves, if not the alpha builds' (default: --checkout's web/build-info.json)")

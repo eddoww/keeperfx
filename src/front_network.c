@@ -745,7 +745,7 @@ static TbBool check_frontend_version_mismatch(void)
     if (action == NetAct_OpenLandView || action == NetAct_HostStartLevel) {
       start_requested = true;
     }
-    if (i != SERVER_ID && !net_versions_match(&host_user->version, &netstate.users[i].version) && (remote_id == -1 || i == my_player_number)) {
+    if (i != SERVER_ID && !net_compat_ok(net_users_compat(host_user, &netstate.users[i])) && (remote_id == -1 || i == my_player_number)) {
       remote_id = i;
     }
   }
@@ -759,6 +759,12 @@ static TbBool check_frontend_version_mismatch(void)
   }
   const struct NetUser *remote_user = &netstate.users[remote_id];
   char text[MESSAGE_TEXT_LEN];
+  if (net_users_compat(host_user, remote_user) == NetCompat_Simulation) {
+    snprintf(text, sizeof(text), "%s\n%s: %u\n%s: %u", net_different_rules_text(),
+        network_user_name(SERVER_ID), (unsigned)host_user->compat.sim, network_user_name(remote_id), (unsigned)remote_user->compat.sim);
+    create_frontend_error_box(text);
+    return true;
+  }
   snprintf(text, sizeof(text), "%s\n%s: %d.%d.%d.%d\n%s: %d.%d.%d.%d",
       get_string(GUIStr_VersionMismatch),
       network_user_name(SERVER_ID), (int)host_user->version.major, (int)host_user->version.minor, (int)host_user->version.release, (int)host_user->version.build,

@@ -484,10 +484,12 @@ deploy the Worker.
 
 The version comes from `version.mk` (major, minor, release) and the build
 number CMake is given (`-DBUILD_NUMBER`, `-DPACKAGE_SUFFIX`, see
-`ver_defs.h.in`). Without them a build says `1.4.0.0`, and online play then
-lets two different builds meet: the game refuses a join only when the
-version numbers differ (`net_versions_match`). Every build the site offers
-therefore carries upstream's own number.
+`ver_defs.h.in`). Without them a build says `1.4.0.0`. Which builds play
+online together no longer depends on that number but on the network
+protocol and simulation versions in `src/net_compat.h`
+(docs/multiplayer-compatibility.md); builds from before those versions are
+still matched by exact version number, so every build the site offers
+carries upstream's own number.
 
 ### What can be built
 
@@ -736,22 +738,27 @@ builds.
   off** says when the save was made by another version ("made with version
   1.4.0.5601, this is 1.4.0.5603"); it loads, with the game's own warning.
   Autosaves and cloud saves are the same files, so they behave the same.
-- **Online play** needs the same build on every side. A hosted lobby records
-  its build (and its version, which the game's own lobby lists compare: the
-  alpha's marks other versions incompatible and refuses them, 1.4's leaves
-  them out); the Lobbies page shows each lobby's version, and joining one on
-  another version reloads into that version first. Invite links carry
-  `&build=`, and older links without it resolve to the lobby's version. If
-  a player still reaches a lobby of another version, the game refuses: "The
-  host is using a different game version" (an alpha host), or, with a 1.4
-  host, it shows the version mismatch in the lobby and does not start the
-  game. Lobbies of a build the site no longer offers are shown but
-  not joinable. A lobby hosted with the engine next to the page records
-  `build=page`.
-- **Quick match** pairs only keepers on the same build (the page sends its
-  build with `qm-join`; seats keep the build of their lobby), so nobody is
-  sent to a lobby on another version. The "keepers looking" count is still
-  everyone's.
+- **Online play** needs builds that can play together: the same network
+  protocol range and simulation version (`netCompat`, "<oldest>-<protocol>/<sim>",
+  docs/multiplayer-compatibility.md). Each build in `index.json` records its
+  key (`web/publish-build.py` reads it from the build's `src/net_compat.h`;
+  the engine next to the page has the `kfx-net-compat` meta tag), and a hosted
+  lobby publishes it with its metadata. Joining a lobby whose key is
+  compatible with the running build needs no switch; otherwise the page
+  reloads into a compatible build (the lobby's own if the site offers it).
+  Lobbies, builds and pages without a key (older ones) need the exact build,
+  as before: a hosted lobby records its build, invite links carry `&build=`,
+  and older links without it resolve to the lobby's version. If a player
+  still reaches a lobby it cannot play with (the game's own lobby list shows
+  them all), the game refuses: "The host runs a game version with different
+  game rules", or "The host is using a different game version" (with a
+  1.4 host, the lobby shows the version mismatch and the game does not start). Lobbies of
+  a build the site no longer offers are shown but not joinable. A lobby
+  hosted with the engine next to the page records `build=page`.
+- **Quick match** pairs keepers who can play together: compatible keys
+  (`web/server/src/netcompat.js`), or the same build for pages without one
+  (the page sends `build` and `compat` with `qm-join`; seats keep those of
+  their lobby). The "keepers looking" count is still everyone's.
 - **Game data** is cached in the browser by content hash, so a switch only
   downloads the files that differ (3 files to start level 1 on 5601 after
   5603), and the cache keeps the data of the last few versions used.

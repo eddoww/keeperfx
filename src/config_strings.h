@@ -529,6 +529,7 @@ enum GUIStrings {
     GUIStr_OptionAutosaveDesc,
     GUIStr_NetAwaitingReturn,
     GUIStr_NetAwaitingReturnPaused,
+    GUIStr_NetDifferentRules,
     GuiStrEnd
 };
 

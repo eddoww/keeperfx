@@ -53,6 +53,16 @@
 
 static int32_t lobby_chat_text_width;
 
+/** "different game rules", or the plain version message with language files that predate it. */
+const char *net_different_rules_text(void)
+{
+    const char *text = get_string(GUIStr_NetDifferentRules);
+    if (text == NULL || text[0] == '\0') {
+        text = get_string(GUIStr_NetDifferentVersion);
+    }
+    return text;
+}
+
 const char *net_join_error_text(enum NetJoinRejection reason)
 {
     switch (reason) {
@@ -73,6 +83,10 @@ const char *net_join_error_text(enum NetJoinRejection reason)
         return get_string(GUIStr_NetSpectatorsFull);
     case NetJoin_SpectatorDesynced:
         return get_string(GUIStr_NetSpectatorDesynced);
+    case NetJoin_GameRules:
+        return net_different_rules_text();
+    case NetJoin_Protocol:
+        return get_string(GUIStr_NetDifferentVersion);
     default:
         return NULL;
     }
