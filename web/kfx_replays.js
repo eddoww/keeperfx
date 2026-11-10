@@ -185,8 +185,10 @@ const Replays = (() => {
   async function onLevelResult(result) {
     const choice = KFX.choice;
     if (!choice || choice.mode === 'replay' || choice.spectate) return;
+    // The level's recording is written every turn; anything older is another
+    // level (a loaded save game is not recorded).
     const r = await tagNew();
-    if (!r) return;
+    if (!r || Date.now() - r.mtime > 15000) return;
     const tag = { ...r.tag, result };
     const code = (window.Module && Module.kfxLobbyCode) || (choice.mode === 'join' ? choice.code : null);
     tag.players = [];
