@@ -27,8 +27,9 @@ Saves, settings, replays and screenshots are kept there too.
 
 The site around the game is one document with a page per URL fragment:
 `#/` (home), `#/play`, `#/lobbies`, `#/fame` (Hall of Fame, with
-`#/fame/levels/<campaign>/<level>` and `#/keeper/<name>`) and `#/guide`. The
-lobbies and the Hall of Fame need the site's server (see "Online play"); on
+`#/fame/levels/<campaign>/<level>` and `#/keeper/<name>`), `#/replays` (with
+`#/replay/<id>`), `#/watch/<CODE>` and `#/guide`. The lobbies, the Hall of
+Fame, replays and watching need the site's server (see "Online play"); on
 plain static hosting they are left out. While a game runs, links to the other
 pages open in a new tab.
 
@@ -176,6 +177,16 @@ When the site runs on its Worker (`web/server`, below), it has:
   the player's own browser, so this is an honour system: the server only
   checks that they are plausible and limits how many a player can send.
 
+- **Watching** live games: games in progress show under **Live now** on the
+  home and Lobbies pages, with the number of spectators, a **Watch** button
+  (the game's spectator mode, `-spectate -connect CODE`; joining halfway
+  through works, the spectator's game catches up first) and a watch link
+  `#/watch/<CODE>` to share. Players also find **Watch link** next to the
+  lobby code above the game. The host's lobby settings decide whether a game
+  takes spectators.
+- **Replays** (`#/replays`, see below): published games anyone can watch from
+  a link, linked from the Hall of Fame boards and keeper pages.
+
 Browser players play each other; desktop KeeperFX uses UDP, which browsers
 cannot.
 
@@ -203,6 +214,62 @@ How it fits together:
 - Passwords are stretched in the browser (PBKDF2-SHA256, 600,000 rounds) and
   the server keeps a salted hash of the result, so it never sees them.
 
+### Replays
+
+The game records every level it plays (`AUTOMATIC_REPLAYS=ON`, the default:
+`replays/{campaign,freeplay,multiplayer}/<date>_..._map<N>_v<version>.fxpkt`,
+the newest `MAX_REPLAYS` of each kind), and in the browser those files are
+kept in IndexedDB with the saves. A replay holds the start of the level and
+every keeper's orders, turn by turn; it is written as the game goes (flushed
+each turn), with a checksum of the game's state every turn. `-packetload
+<file>` plays one back: the game runs the level again from those orders and
+logs "Out of sync" when the state stops matching. So a replay only plays as
+it happened on the same engine with the same rules data (configs, creature
+and map files); any change to either makes it drift.
+
+On the site (`web/kfx_replays.js`, server side `web/server/src/replays.js`):
+
+- **Recording** is automatic, as above. The page tags each new recording with
+  its build id: the engine (a hash of `keeperfx.wasm`, the `kfx-engine` meta
+  tag from `web/stamp-version.py`) and the rules (a hash of the manifest
+  entries under `fxdata/`, `creatrs/`, `levels/`, `campgns/`, `multiplayer/`
+  other than pictures and sound). Recordings made before this feature have no
+  tag; they can be watched locally with a warning but not published.
+- **Publishing**: when a level ends, a toast over the game offers **Publish
+  replay** (signed-in players; the file as it is at that moment). Older
+  recordings are under "Recorded in this browser" on `#/replays`. The upload
+  carries the level, result, score, length, players (from the lobby, for
+  online games), game version and build id; it goes to R2 (`DATA` bucket,
+  `replays/<id>.fxpkt`) with a row in D1 (`replays`,
+  `migrations/0012_replays.sql`). The tavern announces it.
+- **Watching**: `#/replay/<id>` shows the replay and whether it matches the
+  site's current build. **Watch** starts the game with `-packetload
+  watch/<id>.fxpkt -q` (`KFX.start({mode: 'replay'})`); a first-time viewer is
+  asked for their Dungeon Keeper folder first and the replay then starts by
+  itself. When it ends the page offers to watch again. During playback the
+  page reads the game's log and says so if the game reports "Out of sync".
+- **Version drift**: a replay from another build is not started from its
+  page; it says why, offers the file (for the KeeperFX version named on the
+  page) and a "play it anyway" link. Results are never sent to the Hall of
+  Fame from a replay or while spectating.
+- **Limits** (vars in `wrangler.jsonc`): files up to `REPLAY_MAX_MB` (8 MB; a
+  short level is tens of KB, about 20 KB a minute early on, and the game's own
+  cap is `REPLAY_MAX_SIZE`, 32 MB), at most
+  `REPLAY_MAX_PER_USER` (40) replays and `REPLAY_USER_MB` (64 MB) per keeper,
+  `REPLAY_PER_HOUR` (12) uploads an hour, and `REPLAY_TOTAL_MB` (4 GB) for
+  all replays together, well inside R2's free 10 GB with the game data. The
+  same file is never stored twice for a keeper. The server checks the file is
+  a KeeperFX replay (`KFXS` magic and a `REPL` chunk) and that the details are
+  plausible; like the Hall of Fame, they come from the player's browser.
+  Keepers (and `ADMIN_USERS`) can remove their replays.
+- **Cost**: listing and opening a replay are one Worker request and a D1 read
+  each; the file is served by the Worker from R2 once per edge location and
+  then from Cloudflare's cache (`immutable`). Nothing polls: "Live now" is
+  drawn from the lobby list the page already keeps up to date through the
+  tavern. Spectators use the lobby relay like players: the host's game sends
+  each spectator its turns, which adds about one relay message per spectator
+  per turn to that game's Durable Object traffic.
+
 Traffic: a two-player game sends about 25 messages a second per player
 through the relay, which the Workers free plan (100,000 Durable Object requests
 a day, incoming WebSocket messages counted 20:1) covers for roughly ten hours of
@@ -225,7 +292,9 @@ npx wrangler deploy
 ```
 
 Run the `migrations apply` step again whenever `web/server/migrations` gains a
-file (the Hall of Fame tables are `0002_scores.sql`), before `deploy`.
+file (the Hall of Fame tables are `0002_scores.sql`, replays
+`0012_replays.sql`), before `deploy`. Replays are stored in the R2 bucket
+bound as `DATA`.
 
 For Discord sign-in, create an application at discord.com/developers with
 the redirect `https://<your site>/api/auth/discord/callback`, set
