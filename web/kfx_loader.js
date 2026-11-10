@@ -205,9 +205,11 @@ function createPlaceholders(manifest, dataBase, authoritative) {
 let resolveGameFiles;
 const gameFiles = new Promise((resolve) => { resolveGameFiles = resolve; });
 function indexGameFiles(manifest, dataBase) {
-  const urls = new Map(manifestUrls(manifest, dataBase).files.map(([rel, , url]) => [rel.toLowerCase(), url]));
+  const list = manifestUrls(manifest, dataBase).files;
+  const urls = new Map(list.map(([rel, , url]) => [rel.toLowerCase(), url]));
   resolveGameFiles({
     has: (rel) => urls.has(rel.toLowerCase()),
+    list: (prefix) => list.map(([rel]) => rel).filter((rel) => rel.toLowerCase().startsWith(prefix.toLowerCase())),
     read: (rel) => (urls.has(rel.toLowerCase()) ? fetchData(urls.get(rel.toLowerCase())) : Promise.reject(new Error(`No game file ${rel}`))),
   });
 }
@@ -1175,10 +1177,16 @@ async function boot() {
   await CloudSaves.idle(); // a sign-in on the start screen may still be bringing them in
   KFX.choice = choice;
   if (choice.mode === 'join') {
-    // The lobby may use workshop maps: install them first, as the host has them.
+    // The lobby may use workshop maps and mods: install them first, as the host has them.
     setState('starting');
     showPanel('loading');
-    try { await Workshop.prepareJoin(choice.code, setStatus); } catch (e) { console.warn(e); Site.toast(e.message, { bad: true, stage: true, ms: 9000 }); }
+    try {
+      await Workshop.prepareJoin(choice, setStatus);
+    } catch (e) {
+      console.warn(e);
+      if (e.fatal) { showExit(e.message); return; } // a mod the game would refuse to start without
+      Site.toast(e.message, { bad: true, stage: true, ms: 9000 });
+    }
   }
   setState('starting');
   showPanel(null);
@@ -1200,6 +1208,8 @@ async function boot() {
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
   args.push(...choiceArgs(choice));
+  // The mods for this game: mods/load_order.cfg (web/kfx_workshop.js).
+  args.push(...await Workshop.prepareStart(choice));
   if (choice.mode === 'join') {
     // A rejoin enters as a spectator; the host gives back the keeper this
     // browser held (web/kfx_rejoin.js).
@@ -1261,10 +1271,23 @@ async function showInvitation(code) {
     const players = Array.isArray(lobby.players) ? lobby.players : [];
     info.textContent = `${lobby.name || 'Lobby'} · ${players.length}/${lobby.maxPlayers || 4} keepers`
       + `${players.length ? ` (${players.join(', ')})` : ''}${lobby.phase && lobby.phase !== 'Lobby' ? ' · game in progress' : ''}`;
-    const workshop = Workshop.lobbyNote(lobby); // maps it uses, installed on joining
+    const workshop = Workshop.lobbyNote(lobby); // maps and mods it uses, installed on joining
     if (workshop) info.append(document.createElement('br'), workshop);
+    $('invited-join').textContent = Workshop.joinLabel(lobby, 'Join this lobby');
   } catch (e) { /* the code alone will do */ }
 }
+
+// The start screen's line about the player's mods, with a way to start without them.
+function renderModsFoot() {
+  Workshop.ready().then(() => {
+    const mods = Workshop.enabledMods;
+    $('mods-foot').hidden = !mods.length;
+    $('mods-foot-text').textContent = mods.length === 1 ? `Playing solo with the mod ${mods[0].name}. `
+      : `Playing solo with ${mods.length} mods. `;
+  });
+}
+document.addEventListener('kfx:mods', () => { if (KFX.state === 'ready') renderModsFoot(); });
+$('exit-nomods').addEventListener('click', () => KFX.start({ mode: 'play', nomods: true }, { confirmed: true }));
 
 function waitForStartChoice() {
   showPanel('start');
@@ -1276,6 +1299,8 @@ function waitForStartChoice() {
     setState('ready');
     setupStartExtras();
     $('start-button').addEventListener('click', () => Site.start({ mode: 'play' }));
+    $('nomods-button').addEventListener('click', () => Site.start({ mode: 'play', nomods: true }));
+    renderModsFoot();
     $('host-button').addEventListener('click', () => Site.openHost());
     $('invited-join').addEventListener('click', () => {
       if (window.Rejoin && Rejoin.code === invited) Rejoin.start();
@@ -1350,6 +1375,8 @@ function showExit(text) {
   const singleMap = KFX.choice && Array.isArray(KFX.choice.args) && KFX.choice.args.includes('-level');
   if (singleMap && /closed/.test(text)) text = `${KFX.choice.label || 'The map'} is over.`;
   $('exit-workshop').hidden = !singleMap;
+  // A game that ran with mods and did not end normally: offer one without them.
+  $('exit-nomods').hidden = !(KFX.mods && KFX.mods.length && !/closed|is over/.test(text));
   $('exit-text').textContent = text;
   showPanel('exited');
   setState('exited');

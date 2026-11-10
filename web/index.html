@@ -48,6 +48,7 @@
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.500" r="3.800"/><path d="M4.500 20.500c.8-4 3.800-6 7.500-6s6.700 2 7.500 6"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.500"/><path d="M12 7v5.500l3.500 2"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.500 6h6l2 2.500h9v10.500h-17z"/></symbol>
+    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M9.500 4.500a2 2 0 014 0v1.500H18v4.500h-1.500a2 2 0 000 4H18V19h-4.500v-1.500a2 2 0 00-4 0V19H5v-4.500h1.500a2 2 0 000-4H5V6h4.500z"/></symbol>
     <symbol id="i-map" viewBox="0 0 24 24"><path d="M3.500 6.500l5.500-2 6 2 5.500-2v13l-5.500 2-6-2-5.500 2zM9 4.500v13M15 6.500v13"/></symbol>
     <symbol id="i-film" viewBox="0 0 24 24"><rect x="3.500" y="4.500" width="17" height="15" rx="1.500"/><path d="M7.500 4.500v15M16.500 4.500v15M3.500 9h4M3.500 15h4M16.500 9h4M16.500 15h4M10.500 9.500l3.500 2.500-3.500 2.500z"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.700 0l3.200-3.200a4 4 0 00-5.700-5.700L12 6.300M14 10a4 4 0 00-5.700 0l-3.200 3.200a4 4 0 005.700 5.700L12 17.700"/></symbol>
@@ -252,6 +253,9 @@
             <div class="choice qm-choice" data-qm="choice" data-online hidden></div>
           </div>
           <p class="fine autosave-pick" id="autosave-pick"><label for="autosave-select">Autosave</label></p>
+          <p class="fine start-foot" id="mods-foot" hidden><svg class="icon"><use href="#i-puzzle"/></svg><span id="mods-foot-text"></span>
+            <a href="#/workshop/mine">My mods</a> ·
+            <button type="button" class="linklike" id="nomods-button">Start without mods</button></p>
           <p class="fine start-foot">The game loads its data as it needs it; the first start takes a little longer.
             <button type="button" class="linklike" id="forget-button">Forget my DK files</button></p>
         </section>
@@ -261,6 +265,7 @@
           <div class="row">
             <button type="button" class="btn primary" onclick="location.reload()">Start again</button>
             <a class="btn" href="#/workshop" id="exit-workshop" hidden>Back to the Workshop</a>
+            <button type="button" class="btn" id="exit-nomods" hidden>Start without mods</button>
             <button type="button" class="btn" onclick="downloadLog()">Download log</button>
           </div>
         </section>
@@ -342,9 +347,9 @@
   <div class="page-head">
     <div>
       <h1>Workshop</h1>
-      <p class="sub">Maps, map packs and campaigns made by the community, from the
+      <p class="sub">Maps, campaigns, mods and creatures made by the community, from the
         <a href="https://keeperfx.net/workshop" target="_blank" rel="noopener">KeeperFX Workshop</a>.
-        Add one to your game and play it right away, alone or online.</p>
+        Add one to your game with one click and play it right away, alone or online.</p>
     </div>
   </div>
   <div id="workshop-body" class="workshop-body"></div>
@@ -529,11 +534,25 @@
         never uploads them.</p>
     </details>
     <details data-online>
-      <summary>Can I play custom maps and campaigns?</summary>
-      <p>Yes: the <a href="#/workshop">Workshop</a> page lists the community's maps, map packs and campaigns from the
+      <summary>Can I play custom maps, campaigns and mods?</summary>
+      <p>Yes: the <a href="#/workshop">Workshop</a> page lists everything on the
         <a href="https://keeperfx.net/workshop" target="_blank" rel="noopener">KeeperFX Workshop</a>. <strong>Add to my
-        game</strong> keeps one in this browser and <strong>Play</strong> starts it. Multiplayer maps can be hosted online;
-        players who join get the same map installed for them. Mods, creatures and tools still need desktop KeeperFX.</p>
+        game</strong> keeps an item in this browser with one click and <strong>Play</strong> starts a map. Multiplayer maps
+        can be hosted online; players who join get the same map installed for them. Tools (map editors, launchers) are
+        programs for your computer and are only linked.</p>
+    </details>
+    <details data-online>
+      <summary>How do mods work here?</summary>
+      <p>Mods, creatures and other add-ons go in as a layer over the game: nothing of the game itself is replaced. Where an
+        item's instructions say to edit the game's files by hand ("add this creature to creature.cfg"), the page does it in
+        the mod layer for you. Under <a href="#/workshop/mine">My mods</a> you switch each one on or off and set their order
+        (when two change the same thing, the later one wins, and the page warns you). Changes apply from the next game.</p>
+      <p>Online, the host ticks which of their mods the lobby uses; the lobby list shows them, and joining offers
+        <strong>Install and join</strong>: you get the host's exact versions, only for that game, and your own set is back
+        afterwards. Mods that only change textures, sounds or music stay yours in any game. Quick match games are played
+        without mods.</p>
+      <p>If a mod breaks the game, <strong>Start without mods</strong> on the start screen (or under My mods) starts it once
+        with none of them.</p>
     </details>
     <details>
       <summary>How does the Hall of Fame count?</summary>
@@ -623,6 +642,10 @@
     </div>
     <p class="fine" id="host-plain-note">You pick the map, computer players and other settings in the game's lobby screen.
       Workshop multiplayer maps you added are offered to joiners automatically.</p>
+    <fieldset class="options host-mods" id="host-mods" hidden>
+      <legend>Mods for this lobby <small>(everyone who joins gets them, in this order)</small></legend>
+      <div id="host-mods-list"></div>
+    </fieldset>
     <div class="row end">
       <button type="submit" class="btn primary"><svg class="icon"><use href="#i-crown"/></svg>Open lobby</button>
     </div>
@@ -640,6 +663,7 @@
 
 <script src="kfx_account.js"></script>
 <script src="kfx_site.js"></script>
+<script src="kfx_wslayout.js"></script>
 <script src="kfx_workshop.js"></script>
 <script src="kfx_quickmatch.js"></script>
 <script src="kfx_cloudsaves.js"></script>

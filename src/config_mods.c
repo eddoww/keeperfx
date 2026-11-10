@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "game_legacy.h"
+#include "keeperfx.hpp"
 
 #include "post_inc.h"
 
@@ -23,6 +24,13 @@ static struct ModsConfig stored_mods_conf = {0};
 const struct ModsConfig *get_loaded_mods_conf(void)
 {
     static const struct ModsConfig empty_mods_conf = {0};
+#ifdef __EMSCRIPTEN__
+    // The browser version's page gives every player of a lobby the same mods,
+    // the host's exact versions, and starts the game with -mpmods; the check
+    // that all loaded files match the host's (net_filecheck.c) still applies.
+    if (start_params.mods_in_multiplayer)
+        return &stored_mods_conf;
+#endif
     if (network_is_active() || (game.game_kind == GKind_MultiGame))
         return &empty_mods_conf;
     return &stored_mods_conf;

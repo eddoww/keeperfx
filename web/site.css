@@ -591,6 +591,35 @@ select, .select {
 .ws-files li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 .ws-files li span:first-child { overflow-wrap: anywhere; }
 .ws-files small { color: var(--faint); }
+.ws-mod { display: grid; gap: 8px; padding: 12px; border-radius: 8px; background: rgba(0, 0, 0, .25); border: 1px solid var(--border); }
+.ws-mod .fine { margin: 0; }
+.ws-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; min-width: 0; }
+.ws-switch input { margin-top: 4px; accent-color: var(--gold); width: 18px; height: 18px; flex: none; }
+.ws-switch b, .ws-switch a { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.ws-switch small { display: block; font-size: 12.5px; color: var(--faint); }
+.ws-modlist { display: grid; gap: 8px; margin: 16px 0; }
+.ws-modrow { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: rgba(0, 0, 0, .25); border: 1px solid var(--border); }
+.ws-modrow .ws-switch { flex: 1; }
+.ws-modrow.off { opacity: .6; }
+.ws-modrow.clash { border-color: rgba(226, 86, 43, .55); }
+.ws-modnum { font: 700 13px/1 var(--body); color: var(--faint); min-width: 1.6em; text-align: right; }
+.ws-modmove { display: flex; gap: 4px; flex: none; }
+.ws-clashes { display: grid; gap: 8px; margin: 0 0 16px; }
+.ws-clashes h3 { font-size: 16px; }
+.ws-safe { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; padding: 14px 16px; border-radius: var(--radius); border: 1px dashed var(--border-hi); }
+.ws-safe b { display: block; }
+.ws-safe small { color: var(--muted); }
+.ws-lobby-note { display: inline-flex; flex-wrap: wrap; gap: 6px 16px; }
+.ws-lobby-note > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ws-names { font-style: normal; }
+.host-mods legend { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+.host-mods legend small { text-transform: none; letter-spacing: 0; }
+#host-mods-list { display: grid; gap: 8px; max-height: 240px; overflow-y: auto; }
+#mods-foot .icon { vertical-align: -3px; margin-right: 6px; color: var(--gold); }
+@media (max-width: 560px) {
+  .ws-modrow { flex-wrap: wrap; }
+  .ws-modmove { margin-left: auto; }
+}
 .host-map { margin-bottom: 6px; }
 .host-map p { color: var(--text); display: flex; gap: 8px; align-items: center; }
 .host-map .icon { color: var(--gold); }

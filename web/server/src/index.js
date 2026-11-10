@@ -10,9 +10,10 @@
 //   POST /api/scores, GET /api/scores/..., /api/keepers/<name>   Hall of Fame (scores.js)
 //   POST|GET /api/replays, GET|DELETE /api/replays/<id>[/file]   published replays (replays.js)
 //   GET|PUT|DELETE /api/saves[/file/<name>]   cloud saves of a signed-in player (saves.js)
-//   GET  /api/rooms/host[?unlisted=1][&workshop=<id>.<file>,...]
+//   GET  /api/rooms/host[?unlisted=1][&workshop=<id>.<file>[.m],...]
 //                                     WebSocket: host a new lobby (relay creates the code);
-//                                     `workshop`: items joiners need (shown with the lobby)
+//                                     `workshop`: items joiners need (shown with the lobby);
+//                                     ".m": a mod on for the lobby, in load order
 //        [&qm=<match>.<token>]        ... for a quick match: the tavern sends the joiners there
 //        [&qmseat=2|any&qmname=<n>]   ... a lobby that quick-match players may be sent to
 //   GET  /api/workshop/...            the KeeperFX Workshop, cached (workshop.js)
@@ -43,7 +44,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 5;
 const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
 
-const WORKSHOP_RE = /^\d{1,7}\.\d{1,9}(,\d{1,7}\.\d{1,9}){0,7}$/;
+const WORKSHOP_RE = /^\d{1,7}\.\d{1,9}(\.m)?(,\d{1,7}\.\d{1,9}(\.m)?){0,15}$/;
 
 function newCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));

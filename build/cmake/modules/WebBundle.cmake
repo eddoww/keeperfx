@@ -32,6 +32,7 @@ add_custom_target(web-site ALL
         "${CMAKE_SOURCE_DIR}/web/kfx_touch.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_account.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_site.js"
+        "${CMAKE_SOURCE_DIR}/web/kfx_wslayout.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_workshop.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_quickmatch.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_cloudsaves.js"
