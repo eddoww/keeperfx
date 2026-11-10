@@ -478,8 +478,8 @@ web/upstream-build.sh --work /tmp/kfx-upstream --builds-url https://keeper-data.
     --dk "/path/to/Dungeon Keeper" --upload        # without --upload it stops before publishing
 ```
 
-When the port no longer applies, rebase it by hand
-(`git rebase origin/master` on the port branch), fix, push; the next run
+When the port no longer merges with upstream, merge it by hand
+(`git merge origin/master` on the port branch), fix the conflicts, push; the next run
 builds from it.
 
 ## Online play

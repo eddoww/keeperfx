@@ -5,8 +5,8 @@
 #   1. find the upstream build: the newest alpha (or stable release) on
 #      keeperfx.net, or the one given;
 #   2. stop if the site already has it, built from this port (unless --force);
-#   3. rebase the port's commits onto that upstream commit in a scratch
-#      worktree: fails if they no longer apply;
+#   3. bring the port onto that upstream commit in a scratch worktree (merge
+#      a newer upstream in; rebase onto an unrelated one): fails on conflicts;
 #   4. compile it (version and build number as upstream's own build);
 #   5. package the game data: the latest complete release with that build's
 #      alpha patch laid over it, as desktop players have it;
@@ -117,7 +117,7 @@ if [ -n "$BUILDS_URL" ]; then
 fi
 
 # ---- 3. Apply the port ---------------------------------------------------------------
-# Rebased in a worktree of its own, then checked out in $SRC, where only the
+# Done in a worktree of its own, then checked out in $SRC, where only the
 # files that differ from the last run change (so a rerun compiles little).
 BASE="$(git merge-base "$PORT_SHA" "$UPSTREAM")"
 REBASE="$WORK/rebase"
@@ -129,7 +129,20 @@ else
     git worktree add -q --detach "$REBASE" "$PORT_SHA"
 fi
 cd "$REBASE"
-if ! git -c user.name=web-builds -c user.email=web-builds@localhost rebase --onto "$COMMIT" "$BASE" > "$WORK/rebase.log" 2>&1; then
+GIT_ID=(-c user.name=web-builds -c user.email=web-builds@localhost)
+if [ "$BASE" = "$(git rev-parse "$COMMIT")" ]; then
+    : # the port already sits on this upstream commit
+elif git merge-base --is-ancestor "$BASE" "$COMMIT"; then
+    # Upstream moved on: merge it in. (Not a rebase: the port's history has
+    # merges of its own, whose conflict resolutions a rebase would throw away.)
+    if ! git "${GIT_ID[@]}" merge --no-edit "$COMMIT" > "$WORK/rebase.log" 2>&1; then
+        CONFLICTS="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
+        git merge --abort || true
+        die 10 port-does-not-apply "The port does not merge with $VERSION ($COMMIT); conflicts in: $CONFLICTS" "$INFO_JSON"
+    fi
+elif ! git "${GIT_ID[@]}" rebase --onto "$COMMIT" "$BASE" > "$WORK/rebase.log" 2>&1; then
+    # An upstream commit the port is not based on (an older build, a release
+    # branch): try to carry the port's commits over.
     CONFLICTS="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
     git rebase --abort || true
     die 10 port-does-not-apply "The port's commits do not apply to $VERSION ($COMMIT); conflicts in: $CONFLICTS" "$INFO_JSON"

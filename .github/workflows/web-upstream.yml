@@ -2,7 +2,7 @@ name: Web Upstream Builds
 
 # Keeps the browser site's engine builds in step with upstream KeeperFX
 # (docs/web.md, "Game versions"): every few hours, look for a new alpha build
-# on keeperfx.net; if the site does not offer it yet, rebase this branch's
+# on keeperfx.net; if the site does not offer it yet, merge that upstream commit into this branch's
 # browser port onto that upstream commit, build it, smoke test it in a
 # headless browser and upload it to the R2 bucket next to the older builds
 # (web/upstream-build.sh). The site picks it up from builds/index.json; no
@@ -175,7 +175,7 @@ jobs:
         body="$msg
 
         Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        The site keeps offering its previous builds. If the port no longer applies, rebase it onto upstream master by hand (docs/web.md, \"Game versions\")."
+        The site keeps offering its previous builds. If the port no longer merges, merge upstream master into it by hand (docs/web.md, \"Game versions\")."
         title="Web build for the newest upstream ${{ inputs.channel || 'alpha' }} failed"
         number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
         if [ -n "$number" ]; then gh issue comment "$number" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
