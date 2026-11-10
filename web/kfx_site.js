@@ -389,12 +389,15 @@ const Site = (() => {
   let lobbies = null;      // null: not loaded yet
   let lobbiesFailed = false;
   let lobbyFetch = null;
+  let lobbiesAt = 0;       // when the list was last fetched
+  let lobbiesStale = false; // it changed while this tab was hidden
 
   function refreshLobbies() {
     if (!online) return Promise.resolve();
     if (!lobbyFetch) {
+      lobbiesStale = false;
       lobbyFetch = api('lobbies', { cache: 'no-store' })
-        .then((data) => { lobbies = data.lobbies || []; lobbiesFailed = false; })
+        .then((data) => { lobbies = data.lobbies || []; lobbiesFailed = false; lobbiesAt = Date.now(); })
         .catch(() => { lobbiesFailed = true; if (!lobbies) lobbies = []; })
         .finally(() => { lobbyFetch = null; renderLobbies(); });
     }
@@ -569,6 +572,7 @@ const Site = (() => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }
         if (msg.type === 'hello') {
+          if (lobbiesAt) { if (document.hidden) lobbiesStale = true; else refreshLobbies(); } // changes missed while away
           retry = 1000;
           lines = msg.history || [];
           me = msg.you;
@@ -589,7 +593,8 @@ const Site = (() => {
           lines = lines.filter((line) => line.id !== msg.id);
           render();
         } else if (msg.type === 'lobbies') {
-          refreshLobbies();
+          // A hidden tab waits until it is looked at again.
+          if (document.hidden) lobbiesStale = true; else refreshLobbies();
         } else if (msg.type === 'error') {
           toast(msg.error, { bad: true });
         }
@@ -622,7 +627,7 @@ const Site = (() => {
       input.value = '';
     });
 
-    return { connect, reconnect, send, get online() { return onlineCount; } };
+    return { connect, reconnect, send, get online() { return onlineCount; }, get live() { return !!ws && ws.readyState === 1; } };
   })();
 
   function scrollTavern() {
@@ -907,8 +912,12 @@ const Site = (() => {
     Tavern.connect();
     flushPending();
     refreshLobbies();
-    // A slow safety net; changes normally arrive through the tavern.
-    setInterval(() => { if (!document.hidden && current.view !== 'play') refreshLobbies(); }, 30000);
+    // The tavern says when the list changes, so nothing is fetched on a timer
+    // while it is connected. Without it: a slow poll.
+    setInterval(() => { if (!Tavern.live && !document.hidden && current.view !== 'play') refreshLobbies(); }, 120000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && (lobbiesStale || (!Tavern.live && Date.now() - lobbiesAt > 120000))) refreshLobbies();
+    });
   }
 
   // Back online after starting without a connection (web/kfx_offline.js):
@@ -984,6 +993,8 @@ const Site = (() => {
     tavernSend: (message) => Tavern.send(message),
     get online() { return online; },
     get lobbies() { return lobbies; },
+    // For the game's own lobby list (web/kfx_web.js): current while `live`.
+    get lobbyFeed() { return { live: Tavern.live && !lobbiesStale && !lobbiesFailed, lobbies, at: lobbiesAt }; },
     get view() { return current.view; },
     get current() { return current; },
   };

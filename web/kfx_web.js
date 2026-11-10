@@ -440,11 +440,20 @@ addToLibrary({
     return lengthBytesUTF8(t);
   },
 
-  // Lobby list: start a GET /api/lobbies; kfx_lobby_take gets the JSON.
+  // Lobby list: start a GET /api/lobbies; kfx_lobby_take gets the JSON. The page
+  // keeps the list current through the tavern connection (web/kfx_site.js), so
+  // while that is up the game's 10-second refresh costs no request.
   $kfxLobby: { pending: false, text: null },
   kfx_lobby_request__deps: ['$kfxLobby'],
   kfx_lobby_request: () => {
     if (kfxLobby.pending) return;
+    try {
+      const feed = typeof Site !== 'undefined' && Site.lobbyFeed;
+      if (feed && feed.live && feed.lobbies && Date.now() - feed.at < 300000) {
+        kfxLobby.text = JSON.stringify({ lobbies: feed.lobbies });
+        return;
+      }
+    } catch (e) { /* ask the server */ }
     kfxLobby.pending = true;
     fetch('/api/lobbies', { cache: 'no-store' })
       .then((r) => (r.ok ? r.text() : null))

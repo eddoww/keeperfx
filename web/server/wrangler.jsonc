@@ -60,7 +60,7 @@
     // The tavern chat on the site: "off" closes it (news lines stay).
     "CHAT": "on",
     // Account names, comma separated, that may remove tavern lines and mute players.
-    "ADMIN_USERS": "",
+    "ADMIN_USERS": "Vevionez",
     // Published replays (src/replays.js): largest file, per keeper count and
     // space, uploads per keeper per hour, and space for all replays together.
     "REPLAY_MAX_MB": "8",

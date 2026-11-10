@@ -61,7 +61,7 @@ jobs:
     outputs:
       needed: ${{ steps.check.outputs.needed }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ vars.KFX_PORT_BRANCH || github.ref }}
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ vars.KFX_PORT_BRANCH || github.ref }}
@@ -112,18 +112,18 @@ jobs:
         # Chromium for the smoke test (web/smoke-test.mjs), with its system libraries.
         npx --yes playwright@1 install --with-deps chromium
 
-    - uses: mymindstorm/setup-emsdk@v14
+    - uses: mymindstorm/setup-emsdk@v16
       with:
         version: ${{ env.EMSDK_VERSION }}
 
     - name: Cache wasm dependencies
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: work/deps/prefix
         key: web-deps-${{ env.EMSDK_VERSION }}-${{ hashFiles('web/build-deps.sh', 'web/lua51-luajit-compat.patch') }}
 
     - name: Cache the complete release
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: work/complete-*
         key: kfx-complete-v1.4.0
@@ -151,7 +151,7 @@ jobs:
 
     - name: Logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: web-upstream-logs
         path: |
