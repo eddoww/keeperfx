@@ -19,6 +19,12 @@ player, saves, campaign progress and settings also go to their account (see
   game alone. To leave fullscreen press F11 again, rest the pointer at the top
   edge for the exit button, or use Esc; Chrome and Edge leave Esc to the game
   there and exit when it is held.
+- The game draws at the size and shape of the space it has, in device pixels:
+  the frame (as large as the page allows, from 21:9 to 4:3), the whole tab or
+  the screen, and it follows a window being resized or a device being turned.
+  A level takes any shape from 3:4 to 32:9; the menus, the campaign map and
+  the movies stay between 4:3 and 16:9, the shapes they were drawn for, and
+  get black bars in a space of another shape (see "Resolution").
 - The game's hand follows the mouse without capturing it, so the pointer can
   leave the game for the page and Esc opens the game's menu at the first
   press. Pushing the pointer against the game's edge, or up to 24 pixels past
@@ -83,10 +89,12 @@ Start is the menu. The Guide page lists all buttons. A browser shows a
 controller to the page only after one of its buttons is pressed; the game
 takes it then, and when it is plugged in or out during play.
 
-**Resolution**: on a touch-only device the game renders in landscape at most
-about 1.2 megapixels (0.8 when the browser reports 2 GB of memory or less), for
-example 1612x744 on a 2532x1170 phone and 1314x914 on a 1180x820 iPad.
-`?cfg=INGAME_RES=...` still overrides it.
+**Resolution**: on a touch-only device the game renders at most about 1.2
+megapixels (0.8 when the browser reports 2 GB of memory or less), for example
+1612x744 on a 2532x1170 phone and 1314x914 on a 1180x820 iPad. Held upright, a
+level is drawn at 3:4 at the most (the game's panels scale with the width
+there). `?cfg=INGAME_RES=...` (or `FRONTEND_RES`) still overrides it, and then
+the game keeps that size.
 
 ### Differences from the desktop build
 
@@ -101,7 +109,9 @@ example 1612x744 on a 2532x1170 phone and 1314x914 on a 1180x820 iPad.
   from a desktop build whose scripts stored compiled functions may not load in
   the browser, or the other way round.
 - The display modes in `keeperfx.cfg` are replaced with windowed modes sized to
-  the screen (exact in fullscreen); the page scales the picture to its frame.
+  the game's frame, and the page changes them as the frame changes (see
+  "Resolution" under "How it works"). Builds from before this use the screen's
+  size, and the page scales that picture to its frame.
 - The mouse is not captured outside possession (the page writes
   `CAPTURE_CURSOR=OFF` unless the player chose Lock mouse; builds from before
   this keep it on). Keep `RELATIVE_MOUSE_MODE=ON` (the default): it is what
@@ -1018,6 +1028,38 @@ the redirect `https://<your site>/api/auth/discord/callback`, set
   locks it on the next click on the game, and the page says so.
   `kfx_web_mouse_capture` switches Lock mouse while a game runs. Toasts over
   the game sit at its top and only their buttons and links take clicks.
+- **Resolution**: the page asks the engine to draw at the size of the stage
+  (`kfx_web_set_resolution(game_w, game_h, front_w, front_h)` in
+  `src/kfx/platform/web/WebVideo.c`, called from "The game's resolution" in
+  `web/kfx_loader.js`), in device pixels, once the stage has kept its size for
+  350 ms (so a window being dragged doesn't switch every frame; CSS scaling
+  bridges the gap) and not while a button pressed on the game is held. Limits:
+  at least 640x480 (the classic size, which the panels fit; a smaller stage
+  gets a larger picture scaled down), at most 3840x2160, the touch pixel
+  budget above, even sizes. A level follows shapes from 3:4 to 32:9; past
+  them the page letterboxes. The engine keeps two windowed modes per use
+  (`WEB_GAME_A/B`, `WEB_FRONT_A/B`) and hands them out from
+  `get_game_vidmode()`, `get_frontend_vidmode()` and `get_movies_vidmode()`,
+  resizing the one that isn't on screen; a level or the front end therefore
+  opens at the latest size. In a level the switch happens at once, at the top
+  of the gameplay loop (`KFX_WEB_VIDEO_UPDATE` in `game_loop.c`), the way the
+  resolution key does it (`setup_screen_mode`, then `reinit_all_menus`): the
+  screen buffers, the GUI sprites and the sprite heap are reloaded, which
+  takes about one frame. Pause, possession, the map screen and open menus
+  carry on; a level still loading picks the size up when it starts. The front
+  end (menus, land view, lobby, statistics, movies) lays its screens out once
+  when they open, so it isn't switched while open: it gets a size between 4:3
+  and 16:9 the next time it opens, and the page scales it with bars
+  meanwhile. Resolution is local: drawing, the GUI and the mouse depend on it,
+  nothing synchronised between players does (players on different screens
+  already play together on the desktop). The framed stage takes the space the
+  page has (`site.css`: the column's width and the height under the bar,
+  between 21:9 and 4:3); Fill tab pins the frame to the visible tab
+  (`position: fixed`), not to `100vh`, which can be taller than what the
+  browser shows and left the picture lower than centred. The page uses the
+  hook only when the engine exports it and the player has no `INGAME_RES` or
+  `FRONTEND_RES` of their own; otherwise the resolution is the screen's, as
+  before, and the stage takes the game's shape (`.fixed-shape`).
 - **Touch input**: `web/kfx_touch.js` follows the fingers with touch events
   (they keep their coordinates under pointer lock, pointer events don't) and
   keeps them from SDL (capture listeners on `#stage` stop the touch pointer

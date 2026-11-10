@@ -247,7 +247,7 @@ button.mini-row { width: 100%; border: 0; background: none; font: inherit; text-
 /* ---- Play: the frame around the game ---------------------------------------- */
 
 #view-play { padding-top: 16px; }
-.shell { --ar: 1.7778; --chrome: calc(var(--topbar-h) + 16px + 46px + 44px + 24px); }
+.shell { --ar: 1.7778; --chrome: calc(var(--topbar-h) + 16px + 46px + 44px + 24px); --avail: max(280px, calc(100vh - var(--chrome))); }
 .stage-bar {
   display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 8px 0 14px;
   border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0;
@@ -270,13 +270,17 @@ button.mini-row { width: 100%; border: 0; background: none; font: inherit; text-
 
 .stage {
   position: relative; margin: 0 auto; overflow: hidden;
-  width: min(100%, calc((100vh - var(--chrome)) * var(--ar)));
-  min-width: min(100%, 560px);
-  aspect-ratio: var(--ar);
   background: #000 radial-gradient(ellipse at 50% 40%, #1c110b, #050302 75%);
   display: flex; align-items: center; justify-content: center;
 }
-.shell .stage-bar, .shell .stage-foot { width: min(100%, max(560px, calc((100vh - var(--chrome)) * var(--ar)))); margin: 0 auto; }
+/* The game follows its frame (web/kfx_loader.js, "The game's resolution"), so
+   the frame takes the space there is: the column's width and the height left
+   under the bar, but no wider than 21:9 and no taller than 4:3. */
+.stage { width: min(100%, calc(var(--avail) * 21 / 9)); min-width: min(100%, 560px); aspect-ratio: 4 / 3; max-height: var(--avail); }
+.shell .stage-bar, .shell .stage-foot { width: min(100%, max(560px, calc(var(--avail) * 21 / 9))); margin: 0 auto; }
+/* Older engines, or the player's own INGAME_RES: the frame takes the game's shape. */
+.shell.fixed-shape .stage { width: min(100%, calc(var(--avail) * var(--ar))); aspect-ratio: var(--ar); max-height: none; }
+.shell.fixed-shape :is(.stage-bar, .stage-foot) { width: min(100%, max(560px, calc(var(--avail) * var(--ar)))); }
 .stage { border-left: 1px solid var(--border); border-right: 1px solid var(--border); box-shadow: var(--shadow); }
 #canvas { display: block; background: #000; outline: none; image-rendering: pixelated; -webkit-user-select: none; user-select: none; }
 #canvas.smooth { image-rendering: auto; }
@@ -347,7 +351,7 @@ form.choice { cursor: default; }
 
 /* Fullscreen and "fill the tab" */
 .hud { display: none; }
-.stage:fullscreen { width: 100vw; height: 100vh; max-width: none; aspect-ratio: auto; border: 0; background: #000; }
+.shell .stage:fullscreen { width: 100vw; height: 100vh; max-width: none; max-height: none; aspect-ratio: auto; border: 0; background: #000; }
 .stage:fullscreen .hud {
   display: flex; align-items: center; gap: 14px; position: absolute; top: 0; left: 50%; z-index: 5;
   padding: 26px 10px 8px 16px; border-radius: 0 0 12px 12px;
@@ -361,9 +365,12 @@ body.theater { overflow: hidden; }
 body.theater .topbar, body.theater .footer, body.theater .stage-foot, body.theater #embers { display: none; }
 body.theater main { max-width: none; padding: 0; }
 body.theater #view-play { padding: 0; }
-body.theater .shell { --chrome: 46px; height: 100vh; display: flex; flex-direction: column; background: #000; }
-body.theater .stage-bar { width: 100%; border-radius: 0; border-width: 0 0 1px; }
-body.theater .stage { width: 100%; flex: 1; aspect-ratio: auto; border: 0; min-height: 0; background: #000; }
+/* The visible tab, whatever 100vh says (taller in some browsers, which left
+   more black above the picture than below), and wherever the page was scrolled. */
+body.theater .shell { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; background: #000; }
+body.theater .shell :is(.stage-bar, .stage) { width: 100%; }
+body.theater .stage-bar { border-radius: 0; border-width: 0 0 1px; }
+body.theater .shell .stage { flex: 1; aspect-ratio: auto; max-height: none; border: 0; min-height: 0; background: #000; }
 body.playing #embers { display: none; }
 body.in-play .footer { display: none; }
 
@@ -768,7 +775,7 @@ body.theater .qm-dock { display: none; }
   .cards { grid-template-columns: 1fr; }
   .panel { padding: 18px; }
   /* Before the game starts, let the frame grow with its panel instead of scrolling inside 16:9. */
-  .stage:has(> .pregame:not([hidden])) { aspect-ratio: auto; }
+  .shell .stage:has(> .pregame:not([hidden])) { aspect-ratio: auto; max-height: none; }
   .stage > .pregame:not([hidden]) { position: relative; inset: auto; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -866,7 +873,6 @@ body.input-touch.playing.game-possess .trail { top: 40%; }
 
 /* Fill the tab on a touch screen: the game alone, the side bar has the way out. */
 body.theater.input-touch .stage-bar { display: none; }
-body.theater.input-touch .shell { height: 100vh; height: 100dvh; }
 
 /* Held upright, the game is tiny: say so instead of showing the side bar. */
 @media (orientation: portrait) {
