@@ -1,0 +1,181 @@
+name: Web Upstream Builds
+
+# Keeps the browser site's engine builds in step with upstream KeeperFX
+# (docs/web.md, "Game versions"): every few hours, look for a new alpha build
+# on keeperfx.net; if the site does not offer it yet, rebase this branch's
+# browser port onto that upstream commit, build it, smoke test it in a
+# headless browser and upload it to the R2 bucket next to the older builds
+# (web/upstream-build.sh). The site picks it up from builds/index.json; no
+# deploy of the page is needed.
+#
+# A failure (the port no longer applies, the build breaks, the smoke test
+# fails) fails the run and opens or updates an issue in this repository; the
+# site keeps offering its previous builds.
+#
+# Needs, in this repository's settings:
+#   secrets.CLOUDFLARE_API_TOKEN   "Workers R2 Storage: Edit" on the account
+#   secrets.CLOUDFLARE_ACCOUNT_ID
+#   vars.KFX_BUILDS_URL            the deployed builds/, e.g. https://keeper-data.edwindejong.net/builds/
+#   vars.KFX_BUILDS_BUCKET         (optional) bucket name, default keeperfx-data
+#   vars.KFX_PORT_BRANCH           (optional) the branch with the browser port; default:
+#                                  the branch the workflow runs on. GitHub runs scheduled
+#                                  workflows from the default branch only, so this file
+#                                  must be there for the schedule to fire.
+# It runs only where KFX_BUILDS_URL is set, so upstream and other forks never run it.
+
+on:
+  schedule:
+    - cron: "23 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "alpha or stable"
+        default: alpha
+      commit:
+        description: "Upstream commit to build (empty: the newest build of the channel)"
+        default: ""
+      force:
+        description: "Build even if the site already has it"
+        type: boolean
+        default: false
+      default:
+        description: "Make this the site's default (a channel name or build id; empty: leave as is)"
+        default: ""
+
+concurrency:
+  group: web-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  EMSDK_VERSION: "7.0.0"
+
+jobs:
+  check:
+    name: "Look for a new upstream build"
+    if: vars.KFX_BUILDS_URL != ''
+    runs-on: ubuntu-24.04
+    outputs:
+      needed: ${{ steps.check.outputs.needed }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ vars.KFX_PORT_BRANCH || github.ref }}
+    - name: Fetch upstream
+      run: |
+        git remote add upstream https://github.com/dkfans/keeperfx.git
+        git fetch --quiet --tags upstream master
+    - id: check
+      name: Compare with the site
+      env:
+        CHANNEL: ${{ inputs.channel || 'alpha' }}
+        COMMIT: ${{ inputs.commit }}
+        FORCE: ${{ inputs.force }}
+        BUILDS_URL: ${{ vars.KFX_BUILDS_URL }}
+      run: |
+        set -eu
+        if [ "$FORCE" = true ] || [ -n "$COMMIT" ]; then echo "needed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+        latest=$(python3 web/upstream.py latest "$CHANNEL" --repo .)
+        commit=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["commit"] or "")' "$latest")
+        published=$(python3 web/upstream.py published "$BUILDS_URL" "$CHANNEL" --commit "$commit" --port "$(git rev-parse HEAD)")
+        echo "upstream: $latest"
+        echo "site: $published"
+        has=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["has"])' "$published")
+        if [ "$has" = True ]; then echo "needed=false" >> "$GITHUB_OUTPUT"; else echo "needed=true" >> "$GITHUB_OUTPUT"; fi
+
+  build:
+    name: "Build and publish"
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ vars.KFX_PORT_BRANCH || github.ref }}
+
+    - name: Fetch upstream
+      run: |
+        git remote add upstream https://github.com/dkfans/keeperfx.git
+        git fetch --quiet --tags upstream master
+
+    - name: Install tools
+      run: |
+        set -eux
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build python3 p7zip-full libpng-dev
+        # Chromium for the smoke test (web/smoke-test.mjs), with its system libraries.
+        npx --yes playwright@1 install --with-deps chromium
+
+    - uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: ${{ env.EMSDK_VERSION }}
+
+    - name: Cache wasm dependencies
+      uses: actions/cache@v4
+      with:
+        path: work/deps/prefix
+        key: web-deps-${{ env.EMSDK_VERSION }}-${{ hashFiles('web/build-deps.sh', 'web/lua51-luajit-compat.patch') }}
+
+    - name: Cache the complete release
+      uses: actions/cache@v4
+      with:
+        path: work/complete-*
+        key: kfx-complete-v1.4.0
+
+    - name: Wrangler (for the upload)
+      working-directory: web/server
+      run: npm ci --no-audit --no-fund
+
+    - name: Build, test and publish
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        JOBS: 4
+      run: |
+        set -eu
+        CHROMIUM=$(find ~/.cache/ms-playwright -path '*chrome-linux*/chrome' -type f | head -1)
+        export CHROMIUM
+        args=(--work work --deps "$PWD/work/deps/prefix" --upstream upstream/master
+              --builds-url "${{ vars.KFX_BUILDS_URL }}" --channel "${{ inputs.channel || 'alpha' }}"
+              --upload "${{ vars.KFX_BUILDS_BUCKET || 'keeperfx-data' }}")
+        [ -n "${{ inputs.commit }}" ] && args+=(--commit "${{ inputs.commit }}")
+        [ "${{ inputs.force }}" = true ] && args+=(--force)
+        [ -n "${{ inputs.default }}" ] && args+=(--default "${{ inputs.default }}")
+        web/upstream-build.sh "${args[@]}"
+
+    - name: Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-upstream-logs
+        path: |
+          work/*.log
+          work/result.json
+          work/layout/builds/index.json
+          work/layout/plan.json
+        if-no-files-found: ignore
+
+    - name: Summary
+      if: always()
+      run: |
+        [ -f work/result.json ] && { echo '```json'; cat work/result.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+
+    - name: Report a failure
+      if: failure()
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        msg=$(python3 -c 'import json; r=json.load(open("work/result.json")); print(f"**{r[\"status\"]}**: {r[\"message\"]}")' 2>/dev/null || echo "The run failed before it could say why.")
+        body="$msg
+
+        Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        The site keeps offering its previous builds. If the port no longer applies, rebase it onto upstream master by hand (docs/web.md, \"Game versions\")."
+        title="Web build for the newest upstream ${{ inputs.channel || 'alpha' }} failed"
+        number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+        if [ -n "$number" ]; then gh issue comment "$number" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

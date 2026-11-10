@@ -21,7 +21,8 @@ Commands:
       Add the build in <dir> (keeperfx.js, keeperfx.wasm and gamedata/ with
       manifest.json, as web/package-data.py makes it) to <layout>. Then prune:
       each channel keeps its newest --keep builds (and any build marked
-      "keep"); older ones move to "retired". A retired build's files are
+      "keep"); older ones move to "retired", as does a build of the same
+      version made from an older port. A retired build's files are
       deleted --grace-days later (players who started it just before may
       still be loading its data), together with the data no other build
       uses. Writes <layout>/plan.json: what web/upload-builds.sh must upload
@@ -229,9 +230,18 @@ def cmd_add(args):
     if args.keep:
         build["keep"] = True
     index["builds"].insert(0, build)
-    index["builds"].sort(key=lambda b: b["date"], reverse=True)
+    # Newest first: by upstream date, then (same upstream build, newer port) by publication.
+    index["builds"].sort(key=lambda b: (b["date"], b.get("published", "")), reverse=True)
     if args.default:
         index["default"] = args.default
+
+    # The same upstream build made again (a newer port): it replaces the old one.
+    for old in [b for b in index["builds"] if b is not build and b["channel"] == build["channel"]
+                and b["version"] == build["version"] and not b.get("keep")]:
+        index["builds"].remove(old)
+        index.setdefault("retired", []).append({"id": old["id"], "version": old["version"],
+                                                "channel": old["channel"], "retired": now_iso()})
+        print(f"{old['id']} is replaced by {build_id}")
 
     deletes = prune(layout, index, args.keep_count, args.grace_days)
     save_index(layout, index)
