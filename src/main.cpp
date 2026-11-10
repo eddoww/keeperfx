@@ -2058,6 +2058,14 @@ static short process_command_line(unsigned short argc, char *argv[])
   }
   start_params.selected_level_number = level_num;
   my_player_number = default_loc_player;
+#ifdef __EMSCRIPTEN__
+  // -level with -server or -connect only names the map the lobby starts once
+  // enough players are in (-waitusers): an ordinary multiplayer game, which
+  // ends in the level statistics and the menus. Single-level mode would close
+  // the game when the level ends, which in a browser leaves a dead page.
+  if (game_flags2 & (GF2_Connect | GF2_Server))
+      clear_flag(start_params.operation_flags, GOF_SingleLevel);
+#endif
 
   // Flags which skip the main menu should also skip the intro
   if (start_params.packet_load_enable

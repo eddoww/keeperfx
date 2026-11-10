@@ -11,7 +11,7 @@
 // the page only offers builds whose number it supports). The contract is what
 // the page and an engine expect of each other: the Module hooks used here and
 // in the loader (kfxFetchData, kfxLazyPending and node.kfxLazy, kfxHostQuery,
-// kfxOnHosting, kfxOnLevelResult, kfxOnFrame), the command line the loader
+// kfxOnHosting, kfxOnLevelResult, kfxOnFrame, kfxOnLobby), the command line the loader
 // passes (-server, -connect CODE, -spectate), the /persist layout and the /api
 // routes the engine calls. Raise the number when a change here or in the
 // engine needs a page that knows about it, and add it to SUPPORTED_API in
@@ -462,6 +462,23 @@ addToLibrary({
   kfx_web_level_result__deps: ['$UTF8ToString'],
   kfx_web_level_result: (jsonPtr) => {
     try { Module.kfxOnLevelResult?.(JSON.parse(UTF8ToString(jsonPtr))); } catch (e) { err(`KeeperFX: level result: ${e}`); }
+  },
+
+  // The game's online lobby screen, each frame (src/kfx/platform/web/WebLobby.c):
+  // Module.kfxOnLobby({players, maxPlayers, host, coloursConflict}) may return
+  // one order for the host's game: "say <text>", "start <pack> <level>" or
+  // "max <n>". Its first call also tells the page that this engine takes orders.
+  kfx_web_lobby_poll__deps: ['$stringToUTF8', '$lengthBytesUTF8'],
+  kfx_web_lobby_poll: (players, maxPlayers, host, flags, buf, cap) => {
+    let order = '';
+    try {
+      order = Module.kfxOnLobby?.({ players, maxPlayers, host: !!host, coloursConflict: !!(flags & 1) }) || '';
+    } catch (e) {
+      err(`KeeperFX: lobby: ${e}`);
+    }
+    if (typeof order !== 'string' || !order || lengthBytesUTF8(order) + 1 > cap) return 0;
+    stringToUTF8(order, buf, cap);
+    return lengthBytesUTF8(order);
   },
 
   // Lets the page show the code of a hosted lobby (invite link).

@@ -57,6 +57,7 @@
 #include "thing_list.h"
 #include <stddef.h>
 #include <SDL3/SDL.h>
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 
 #include <string.h>
@@ -959,6 +960,12 @@ void handle_autostart_multiplayer_messaging(void)
     }
     snprintf(local_state.mp_message_text, PLAYER_MP_MESSAGE_LEN, "%s:%d", camp, level);
     lbInkey = KC_RETURN;
+#ifdef __EMSCRIPTEN__
+    // Once: the browser keeps running after the level (see -level in main.cpp),
+    // and a lobby hosted later must not start this map again by itself.
+    autostart_multiplayer_campaign[0] = '\0';
+    autostart_multiplayer_level = 0;
+#endif
 }
 
 void frontnet_start_update(void)
@@ -978,6 +985,7 @@ void frontnet_start_update(void)
     }
 
     handle_autostart_multiplayer_messaging();
+    KFX_WEB_LOBBY_UPDATE();
 
     if ((net_number_of_messages <= 0) || (net_message_scroll_offset < 0))
     {

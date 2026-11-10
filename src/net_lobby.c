@@ -36,6 +36,7 @@
 #include "player_data.h"
 #include "config_settings.h"
 #include <SDL3/SDL.h>
+#include "kfx/platform/web/WebPlatform.h"
 #include "post_inc.h"
 /******************************************************************************/
 
@@ -124,7 +125,8 @@ void net_lobby_apply_settings(void)
     if (frontnet_service_selected(FrontendNetSvc_Skirmish)) {
         return;
     }
-    netstate.max_users = config->max_players;
+    netstate.max_users = KFX_WEB_LOBBY_MAX_PLAYERS(config->max_players);
+    net_lobby_max_players = netstate.max_users;
     net_lobby_refresh_metadata();
     send_remote_buffer(write_lobby_settings_message());
 }

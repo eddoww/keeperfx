@@ -21,6 +21,11 @@ void web_report_level_result(struct PlayerInfo *player, unsigned char won);
 struct Camera;
 TbBool web_input_cursor_inside(TbBool host_inside);
 void web_input_apply_camera(struct Camera *cam);
+/* The game's online lobby screen (WebLobby.c): each frame the page sees the
+ * lobby and may order a chat line, a level start or a player cap; the cap
+ * replaces the lobby's own maximum while set. */
+void web_lobby_update(void);
+int web_lobby_max_players(int configured);
 #ifdef __cplusplus
 }
 #endif
@@ -28,11 +33,15 @@ void web_input_apply_camera(struct Camera *cam);
 #define KFX_WEB_LEVEL_RESULT(player, won) web_report_level_result(player, won)
 #define KFX_WEB_CURSOR_INSIDE(inside) web_input_cursor_inside(inside)
 #define KFX_WEB_CAMERA_INPUT(cam) web_input_apply_camera(cam)
+#define KFX_WEB_LOBBY_UPDATE() web_lobby_update()
+#define KFX_WEB_LOBBY_MAX_PLAYERS(configured) web_lobby_max_players(configured)
 #else
 #define KFX_WEB_FRAME_YIELD() do {} while (0)
 #define KFX_WEB_LEVEL_RESULT(player, won) do {} while (0)
 #define KFX_WEB_CURSOR_INSIDE(inside) (inside)
 #define KFX_WEB_CAMERA_INPUT(cam) do {} while (0)
+#define KFX_WEB_LOBBY_UPDATE() do {} while (0)
+#define KFX_WEB_LOBBY_MAX_PLAYERS(configured) (configured)
 #endif
 
 #endif
