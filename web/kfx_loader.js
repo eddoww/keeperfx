@@ -136,7 +136,7 @@ async function pruneCache(validUrls) {
   try {
     for (const url of Versions.otherManifestUrls()) {
       const other = await (await fetch(url)).json();
-      for (const u of manifestUrls(other, new URL('.', url).href).urls) validUrls.add(u);
+      for (const u of manifestUrls(other, Versions.current.dataBase).urls) validUrls.add(u); // data/ is shared
     }
   } catch (e) {
     return; // keep everything rather than throw out what another version needs
