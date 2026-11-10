@@ -167,6 +167,7 @@ static const unsigned char user_preference_flags[UPref_Count] = {
     [UPref_MinimapZoom]           = UPF_ApplyOnLoad,
     [UPref_StartingComputerAssistantKind] = UPF_ApplyOnLoad,
     [UPref_ComputerAssistantDisabled] = UPF_ApplyOnLoad | UPF_ApplyOnTakeover,
+    [UPref_RejoinGraceTurns]      = 0,
 };
 
 void build_local_user_preferences(UserPreferences prefs)
@@ -181,6 +182,8 @@ void build_local_user_preferences(UserPreferences prefs)
     if (network_is_active() && network_is_host()) {
         prefs[UPref_Cheats] = net_config_info.cheats_enabled;
         prefs[UPref_ComputerAssistantDisabled] = !net_config_info.computer_assistant;
+        // in game turns, so every machine (and a replay) counts the same
+        prefs[UPref_RejoinGraceTurns] = rejoin_grace_seconds * turns_per_second;
     }
     prefs[UPref_SkipHeartZoom] = get_skip_heart_zoom_feature();
     prefs[UPref_StartingHighlightMode] = get_starting_highlight_mode();
@@ -789,6 +792,7 @@ void seat_network_user(NetUserId user, PlayerNumber plyr_idx, const UserPreferen
     struct PlayerInfo *player = get_player(plyr_idx);
     JUSTLOG("p:%d user %d took over from the computer", (int)plyr_idx, (int)user);
     player->allocflags &= ~(PlaF_CompCtrl | PlaF_Placeholder);
+    player->rejoin_deadline_turn = 0;
     if ((get_players_dungeon(player)->computer_enabled & 0x01) != 0) {
         toggle_computer_player(plyr_idx);
     }
@@ -817,6 +821,13 @@ static TbBool abandon_network_player(struct PlayerInfo *player)
         JUSTLOG("p:%d player %s departed", player->id_number, player->player_name);
         if (player->victory_state == VicS_Undecided) {
             player->allocflags |= PlaF_Placeholder;
+            // The host's grace (zero once the host itself is gone: nobody could seat them again).
+            // Processed in sync with the simulation, so every machine sets the same turn.
+            const GameTurnDelta grace = (GameTurnDelta)get_user_state(SERVER_ID)->prefs[UPref_RejoinGraceTurns];
+            player->rejoin_deadline_turn = (grace > 0) ? get_gameturn() + grace : 0;
+            if (grace > 0) {
+                JUSTLOG("p:%d still counts as an opponent until turn %lu", player->id_number, (unsigned long)player->rejoin_deadline_turn);
+            }
         }
     }
     resolve_placeholders();
@@ -950,6 +961,10 @@ static void remove_remote_users_after_host_lost(NetUserId local_user)
         if (user != local_user) {
             remove_user_from_game(user, NULL);
         }
+    }
+    // without a host nobody can return: dropped keepers stop counting at once
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++) {
+        get_player(plyr_idx)->rejoin_deadline_turn = 0;
     }
 }
 

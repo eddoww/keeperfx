@@ -142,6 +142,7 @@ enum ReplayTypes {
 extern TbBool replays_enabled;
 extern uint32_t max_replays[ReplTyp_Count];
 extern uint32_t replay_rewind_buffer_kb;
+extern uint32_t rejoin_grace_seconds;
 extern TbBool FLEE_BUTTON_DEFAULT;
 extern TbBool IMPRISON_BUTTON_DEFAULT;
 /******************************************************************************/

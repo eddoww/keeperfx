@@ -1001,6 +1001,7 @@ void redraw_display(void)
     }
 
     draw_paused_message(tx_units_per_px);
+    draw_rejoin_grace_messages(tx_units_per_px);
     if (game.armageddon_cast_turn != 0)
     {
         int i = 0;

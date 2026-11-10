@@ -111,6 +111,21 @@ TbBool player_is_placeholder(const struct PlayerInfo *player)
     return flag_is_set(player->allocflags, PlaF_Placeholder);
 }
 
+// a dropped human's placeholder, still counted as an opponent while its human
+// may come back (the host's rejoin grace, UPref_RejoinGraceTurns); game turns only
+TbBool placeholder_awaiting_return(const struct PlayerInfo *player)
+{
+    return player_is_placeholder(player) && (player->victory_state == VicS_Undecided)
+        && (player->rejoin_deadline_turn != 0) && (get_gameturn() < player->rejoin_deadline_turn);
+}
+
+GameTurnDelta placeholder_return_turns_left(const struct PlayerInfo *player)
+{
+    if (!placeholder_awaiting_return(player))
+        return 0;
+    return (GameTurnDelta)(player->rejoin_deadline_turn - get_gameturn());
+}
+
 TbBool player_is_seat(const struct PlayerInfo *player)
 {
     return flag_is_set(player->allocflags, PlaF_Seat);

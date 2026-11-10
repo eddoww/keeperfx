@@ -19,6 +19,7 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "player_data.h"
+#include "player_utils.h"
 #include "dungeon_data.h"
 #include "config.h"
 #include "config_campaigns.h"
@@ -82,15 +83,24 @@ void web_report_level_result(struct PlayerInfo *player, TbBool won)
     else if (is_freeplay_level(lvnum))
         kind = "freeplay";
 
+    // A dropped human's keeper (a placeholder, played by the computer) still
+    // counts as a human; keepersDropped says how many of them never came back,
+    // so a win by their absence (the rejoin grace ran out) can be told apart.
     int humans = 0;
     int keepers = 0;
+    int dropped = 0;
     for (PlayerNumber i = 0; i < PLAYERS_COUNT; i++) {
         struct PlayerInfo *other = get_player(i);
         if (!player_exists(other) || !player_is_keeper(i))
             continue;
         keepers++;
-        if ((other->allocflags & PlaF_CompCtrl) == 0)
+        if (player_is_placeholder(other)) {
             humans++;
+            if (other->victory_state == VicS_Undecided)
+                dropped++;
+        } else if ((other->allocflags & PlaF_CompCtrl) == 0) {
+            humans++;
+        }
     }
 
     APPEND("{\"won\":%s,\"version\":\"%d.%d.%d.%d\",\"campaign\":", won ? "true" : "false",
@@ -109,7 +119,7 @@ void web_report_level_result(struct PlayerInfo *player, TbBool won)
     APPEND(",\"stats\":{\"creatures\":%lu,\"goldMined\":%lu,\"battlesWon\":%lu,\"battlesLost\":%lu"
         ",\"keepersDestroyed\":%lu,\"roomsBuilt\":%lu,\"areaClaimed\":%lu,\"rockDug\":%lu"
         ",\"slaps\":%lu,\"researched\":%lu,\"trapsMade\":%lu,\"doorsMade\":%lu"
-        ",\"tortured\":%lu,\"sacrificed\":%lu,\"chickensEaten\":%lu,\"backsStabbed\":%lu}}",
+        ",\"tortured\":%lu,\"sacrificed\":%lu,\"chickensEaten\":%lu,\"backsStabbed\":%lu,\"keepersDropped\":%d}}",
         (unsigned long)st->num_creatures, (unsigned long)st->gold_mined,
         (unsigned long)st->battles_won, (unsigned long)st->battles_lost,
         (unsigned long)st->keepers_destroyed, (unsigned long)st->rooms_constructed,
@@ -117,6 +127,6 @@ void web_report_level_result(struct PlayerInfo *player, TbBool won)
         (unsigned long)st->num_slaps, (unsigned long)st->things_researched,
         (unsigned long)st->manufactured_traps, (unsigned long)st->manufactured_doors,
         (unsigned long)st->creatures_tortured, (unsigned long)st->creatures_sacrificed,
-        (unsigned long)st->chickens_eaten, (unsigned long)st->backs_stabbed);
+        (unsigned long)st->chickens_eaten, (unsigned long)st->backs_stabbed, dropped);
     kfx_web_level_result(json);
 }

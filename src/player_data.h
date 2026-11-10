@@ -185,6 +185,7 @@ struct PlayerInfo {
     unsigned char hand_idx; /* hand skin (powerhands.toml) */
     ThingModel special_digger; /* which creatures are imp-like */
     unsigned short generate_speed; /* portal creature frequency */
+    GameTurn rejoin_deadline_turn; /* a dropped human's placeholder counts as an opponent until this turn (0: not at all) */
 };
 
 #define PLAYER_NONE (-1)

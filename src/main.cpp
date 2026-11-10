@@ -242,7 +242,8 @@ TbBool all_dungeons_destroyed(const struct PlayerInfo *win_player)
     {
       if (i == win_plyr_idx)
         continue;
-      if (player_defeat_settled(i) || player_is_placeholder(get_player(i)))
+      // a dropped human's keeper stops counting once they can no longer come back
+      if (player_defeat_settled(i) || (player_is_placeholder(get_player(i)) && !placeholder_awaiting_return(get_player(i))))
         continue;
       if (!player_is_friendly_or_defeated(i,win_plyr_idx))
         return false;

@@ -43,6 +43,8 @@ TbBool player_has_lost(PlayerNumber plyr_idx);
 TbBool player_cannot_win(PlayerNumber plyr_idx);
 TbBool player_defeat_settled(PlayerNumber plyr_idx);
 TbBool player_is_placeholder(const struct PlayerInfo *player);
+TbBool placeholder_awaiting_return(const struct PlayerInfo *player);
+GameTurnDelta placeholder_return_turns_left(const struct PlayerInfo *player);
 TbBool player_is_seat(const struct PlayerInfo *player);
 TbBool human_victory_kernel_exists(void);
 TbBool placeholder_has_human_ally(const struct PlayerInfo *placeholder);
