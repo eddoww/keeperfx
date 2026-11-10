@@ -78,15 +78,22 @@ const Site = (() => {
   //   includes them.
   // `server` is true when the site runs on its Worker, which answers
   // site.json; plain static hosting has no online play, lobbies or records.
-  const config = (async () => {
+  // Without an answer (offline), dataUrl is the last one the server gave, so
+  // game data downloaded for offline play is still found.
+  async function loadConfig() {
     try {
       const resp = await fetch('site.json', { cache: 'no-cache' });
       const json = resp.ok && resp.headers.get('Content-Type')?.includes('json');
-      return { ...(json ? await resp.json() : {}), server: !!json };
-    } catch (e) {
-      return { server: false };
-    }
-  })();
+      if (json) {
+        const conf = await resp.json();
+        store.set('kfx.dataUrl', conf.dataUrl || '');
+        return { ...conf, server: true };
+      }
+    } catch (e) { /* offline, or no server */ }
+    const dataUrl = store.get('kfx.dataUrl', '');
+    return dataUrl ? { dataUrl, server: false } : { server: false };
+  }
+  const config = loadConfig();
   let online = false; // the site has its server
 
   // ---- Toasts -----------------------------------------------------------------

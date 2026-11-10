@@ -127,13 +127,15 @@ async function fetchOne(url) {
   }
 }
 
-// Drop cached files that are no longer in the current manifest.
-async function pruneCache(validUrls) {
+// Drop cached files that are no longer in the current manifest. dataOrigin:
+// also drop copies from any other origin (after site.json's dataUrl changed);
+// only given when the server itself said where the data is.
+async function pruneCache(validPaths, dataOrigin) {
   const cache = await openCache();
   if (!cache) return;
   for (const req of await cache.keys()) {
-    const path = new URL(req.url).pathname + new URL(req.url).search;
-    if (!validUrls.has(path)) cache.delete(req);
+    const url = new URL(req.url);
+    if (!validPaths.has(url.pathname + url.search) || (dataOrigin && url.origin !== dataOrigin)) cache.delete(req);
   }
 }
 
@@ -150,7 +152,8 @@ function exists(path) {
 
 // dataBase: where the data files are, e.g. gamedata/ next to the page or an
 // R2 bucket's public URL (site.json dataUrl). The manifest stays with the page.
-function createPlaceholders(manifest, dataBase) {
+// authoritative: dataBase comes from the server now (not remembered offline).
+function createPlaceholders(manifest, dataBase, authoritative) {
   const base = new URL(dataBase || 'gamedata/', location.href);
   const valid = new Set();
   let count = 0;
@@ -169,7 +172,7 @@ function createPlaceholders(manifest, dataBase) {
     count++;
   }
   Module.kfxLazyPending = count;
-  pruneCache(valid);
+  pruneCache(valid, authoritative ? base.origin : null);
 }
 
 // Download a lazy placeholder now (for files the loader itself edits).
@@ -547,7 +550,7 @@ async function boot() {
   const site = await Site.config;
   const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
   FS.mkdirTree(GAME_DIR);
-  createPlaceholders(manifest, site.dataUrl);
+  createPlaceholders(manifest, site.dataUrl, site.server);
   prefetch(manifest.prefetch || []); // in the background
 
   const dkUrl = params.get('dk') || site.dkUrl;
