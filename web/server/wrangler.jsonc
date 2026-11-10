@@ -33,6 +33,7 @@
   "r2_buckets": [
     // Game data (gamedata/), uploaded with web/upload-r2.sh, served to players
     // from the bucket's public domain (DATA_URL below), not through the Worker.
+    // Published replays are kept here too, under replays/ (src/replays.js).
     { "binding": "DATA", "bucket_name": "keeperfx-data" }
   ],
   "vars": {
@@ -43,6 +44,13 @@
     "CHAT": "on",
     // Account names, comma separated, that may remove tavern lines and mute players.
     "ADMIN_USERS": "",
+    // Published replays (src/replays.js): largest file, per keeper count and
+    // space, uploads per keeper per hour, and space for all replays together.
+    "REPLAY_MAX_MB": "8",
+    "REPLAY_MAX_PER_USER": "40",
+    "REPLAY_USER_MB": "64",
+    "REPLAY_PER_HOUR": "12",
+    "REPLAY_TOTAL_MB": "4096",
     // Set DISCORD_CLIENT_ID here and DISCORD_CLIENT_SECRET with
     // `wrangler secret put` to enable "Sign in with Discord".
     "DISCORD_CLIENT_ID": "1569473036711628843"
