@@ -527,6 +527,8 @@ enum GUIStrings {
     GUIStr_OptionAutosaveOff,
     GUIStr_OptionAutosaveMinutes,
     GUIStr_OptionAutosaveDesc,
+    GUIStr_NetAwaitingReturn,
+    GUIStr_NetAwaitingReturnPaused,
     GuiStrEnd
 };
 

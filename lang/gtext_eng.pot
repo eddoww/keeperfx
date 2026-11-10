@@ -6213,3 +6213,17 @@ msgstr "Autosave: every %d min"
 msgctxt "In-game interface description"
 msgid "Autosave: How often the game saves itself while you play. LMB toggle."
 msgstr "Autosave: How often the game saves itself while you play. LMB toggle."
+
+#. A player dropped out of the game; the time is how long the game still waits for them, in minutes and seconds
+#: guitext:1178
+#, c-format
+msgctxt "Network game message"
+msgid "%s disconnected: waiting %d:%02d for them to return"
+msgstr "%s disconnected: waiting %d:%02d for them to return"
+
+#. As the previous message, while the game is paused
+#: guitext:1179
+#, c-format
+msgctxt "Network game message"
+msgid "%s disconnected: waiting %d:%02d for them to return (game paused)"
+msgstr "%s disconnected: waiting %d:%02d for them to return (game paused)"
