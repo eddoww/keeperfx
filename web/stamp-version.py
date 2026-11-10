@@ -17,6 +17,10 @@ stylesheets, icons, fonts, the web app manifest and its icons, url()s in the
 stylesheets) and keeperfx.wasm, each with its SHA-256. --no-sw ships the
 service worker's kill switch instead: it unregisters itself and the page stops
 registering it (meta kfx-sw).
+
+It also writes the kfx-engine meta tag: a hash of keeperfx.wasm alone. A
+replay only plays back on the engine that recorded it (web/kfx_replays.js),
+and page-only changes must not count as a new engine.
 """
 import hashlib
 import json
@@ -77,7 +81,7 @@ def main():
     # it loads: a cached older loader with a newer page (or the reverse) is as
     # broken as a mismatched keeperfx.js/.wasm.
     template = re.sub(r'\?v=[0-9a-f]*"', '"', html)
-    template = re.sub(r'<meta name="kfx-(build|sw)" content="[^"]*">', r'<meta name="kfx-\1" content="">', template)
+    template = re.sub(r'<meta name="kfx-(build|sw|engine)" content="[^"]*">', r'<meta name="kfx-\1" content="">', template)
     files = shell_files(site, html)
     h = hashlib.sha1(template.encode("utf-8"))
     for name in files:
@@ -89,11 +93,14 @@ def main():
     html = STAMPABLE_SCRIPT.sub(rf'<script src="\1?v={build}"', html)
     html = STAMPABLE_STYLE.sub(rf'<link rel="stylesheet" href="\1?v={build}"', html)
     html = re.sub(r'<meta name="kfx-build" content="[^"]*">', f'<meta name="kfx-build" content="{build}">', html)
+    with open(os.path.join(site, "keeperfx.wasm"), "rb") as f:
+        engine = hashlib.sha1(f.read()).hexdigest()[:12]
+    html = re.sub(r'<meta name="kfx-engine" content="[^"]*">', f'<meta name="kfx-engine" content="{engine}">', html)
     html = re.sub(r'<meta name="kfx-sw" content="[^"]*">', f'<meta name="kfx-sw" content="{"on" if sw_on else "off"}">', html)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
     stamp_service_worker(site, html, files, build, sw_on)
-    print(f"build {build}{'' if sw_on else ' (service worker off)'}")
+    print(f"build {build}, engine {engine}{'' if sw_on else ' (service worker off)'}")
 
 
 def unstamp(sw_text):

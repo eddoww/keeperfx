@@ -96,7 +96,7 @@ export class Tavern extends DurableObject {
   async announce(event) {
     if (event.kind === 'lobbies') {
       this.broadcast({ type: 'lobbies' });
-    } else if (event.kind === 'lobby' || event.kind === 'victory') {
+    } else if (event.kind === 'lobby' || event.kind === 'victory' || event.kind === 'replay') {
       await this.addLine(event);
       if (event.kind === 'lobby') this.broadcast({ type: 'lobbies' });
     }

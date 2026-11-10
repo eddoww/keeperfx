@@ -47,6 +47,13 @@ struct SpectatorTurn {
 };
 
 #define SPECTATOR_TURN_BUFFER_SIZE 256
+#ifdef __EMSCRIPTEN__
+// A browser spectator downloads the level's data as it loads the level, so it
+// may take longer than PEER_TIMEOUT_MS to be ready for its snapshot.
+#define SPECTATOR_LOAD_TIMEOUT_MS 120000
+#else
+#define SPECTATOR_LOAD_TIMEOUT_MS PEER_TIMEOUT_MS
+#endif
 #define SPECTATOR_CONVERSION_REPLY_SIZE 2
 #define SPECTATOR_SEAT_REPLY_SIZE 3
 #define ALL_NET_CONNECTIONS_MASK ((UINT64_C(1) << MAX_NET_CONNECTIONS) - 1)
@@ -73,6 +80,9 @@ int32_t network_spectator_turn_count;
 static struct SpectatorTurn spectator_send_turn;
 static int32_t spectator_send_turn_pending;
 static SDL_Thread *spectator_resync_thread;
+// The snapshot was compressed without a thread (none could be created, as in
+// the browser build) and waits in spectator_resync_message.
+static TbBool spectator_resync_ready;
 static char *spectator_resync_message;
 static size_t spectator_resync_size;
 static struct SpectatorTurn spectator_resync_turns[SPECTATOR_TURN_BUFFER_SIZE];
@@ -260,14 +270,20 @@ static void begin_spectator_resync(void)
     spectator_resync_turn_count = 0;
     spectator_resync_thread = SDL_CreateThread(compress_spectator_resync, "spectator_resync", data);
     if (spectator_resync_thread == NULL) {
-        free(data);
+        // No thread: compress it here (this frees data). Otherwise the snapshot
+        // would be built and thrown away every frame and never reach anyone.
+        compress_spectator_resync(data);
+        spectator_resync_ready = true;
     }
 }
 
 static char *take_spectator_resync(void)
 {
-    SDL_WaitThread(spectator_resync_thread, NULL);
+    if (spectator_resync_thread != NULL) {
+        SDL_WaitThread(spectator_resync_thread, NULL);
+    }
     spectator_resync_thread = NULL;
+    spectator_resync_ready = false;
     char *message = spectator_resync_message;
     spectator_resync_message = NULL;
     return message;
@@ -496,7 +512,8 @@ void network_spectator_service(void)
         if (user->progress == USER_UNUSED || (user->progress == USER_LOGGEDIN && (id < MAX_NET_USERS || user->spectator_state == NetSpectator_Streaming))) {
             continue;
         }
-        if (LbTimerClock() - user->connected_at >= PEER_TIMEOUT_MS) {
+        const TbClockMSec timeout = (user->progress == USER_LOGGEDIN) ? SPECTATOR_LOAD_TIMEOUT_MS : PEER_TIMEOUT_MS;
+        if (LbTimerClock() - user->connected_at >= timeout) {
             netstate.sp->drop_user(id, NetJoin_Locked);
         }
     }
@@ -788,11 +805,13 @@ void network_spectator_send_snapshots(void)
             recipients |= UINT64_C(1) << id;
         }
     }
-    if (spectator_resync_thread == NULL) {
+    if (spectator_resync_thread == NULL && !spectator_resync_ready) {
         if (recipients != 0) {
             begin_spectator_resync();
         }
-        return;
+        if (!spectator_resync_ready) {
+            return;
+        }
     }
     char *message = take_spectator_resync();
     if (message != NULL) {
