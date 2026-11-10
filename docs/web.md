@@ -1232,8 +1232,9 @@ a request), plus one when the game's state changes while queued. A match costs
 the tavern one Durable Object request when the host's lobby opens, and the
 quick-match lobby another when its game starts and when it closes; sending a
 player to an open seat first asks that lobby whether it has room (one request).
-So a two-player match costs about three requests, against roughly 170 a
-minute of play for the game itself through the relay.
+So a two-player match costs about three requests, against roughly 135 a
+minute of play for the game itself through the relay (two players; see "How
+well online play copes" for three and four).
 
 ### Dropped connections
 
@@ -1282,10 +1283,11 @@ online game.
   (`{"type": "bye"}` on `pagehide`) and the lobby closes at once, as before.
   Joiners' pages say goodbye the same way, so a reload hands their keeper to
   the computer at once instead of holding everyone up for 15 s.
-- **Silent connections.** A page pings when it has sent nothing for 5 s
-  (from a worker's timer, which browsers do not slow down in background
-  tabs, so a hidden tab is never taken for gone); the runtime answers
-  without waking the Durable Object. A socket the relay has heard nothing
+- **Silent connections.** A page pings every 2 s (from a worker's timer,
+  which browsers do not slow down in background tabs, so a hidden tab is
+  never taken for gone); the runtime answers without waking the Durable
+  Object, and the answer also measures the page's round trip (see "How well
+  online play copes"). A socket the relay has heard nothing
   from for 15 s, and a page that has heard nothing for 15 s, count as
   dropped: a laptop that went to sleep without closing its connection.
 
@@ -1342,11 +1344,147 @@ and there was nothing left to rejoin.
 Cost: the link adds no messages while a game runs (the acknowledgements
 ride on the game's own frames). A page that only listens (a spectator) sends
 a bare acknowledgement every 128 frames or 5 s, about one message every
-five seconds; an idle page sends one ping per 5 s, answered by the runtime
-(an auto-response, which does not run the Durable Object). Each resume
+five seconds; a page sends one ping per 2 s, answered by the runtime
+(an auto-response, which does not run the Durable Object), and reports its
+round trip when it changed or every 10 s (one message). Each resume
 attempt is one request, each dropped host one alarm, each dropped player one
 storage write, and a page that remembers a game asks `/api/lobbies/<CODE>`
 when it opens (and at most every 10 s on navigation). Nothing polls.
+
+### How well online play copes, measured
+
+Online play in the browser was measured with a test rig (branch
+`net/web-robust-bench`, `tools/netbench/web/README.md`): two to four headless
+Chromium pages play a level through a local relay (`wrangler dev`), each
+behind its own impaired link (latency, jitter, TCP's head-of-line delay for a
+lost packet, a bandwidth cap, outages that stall or reset the connection), a
+slow computer, or a page that behaves as a hidden tab. Every keeper is
+played by the computer; each page reports turns per second, time spent waiting
+for others, input lag, the delay from a player's input to its effect, resyncs,
+desyncs and drops. "Before" is `web` at 8fb10fe54 (November 2026) with its
+relay; "after" adds the changes below.
+
+One game of 2000 turns per row (100 s at 20 turns a second), one run each,
+"before → after". Round trips are a joiner's to the host through the relay;
+"waiting" is the most any page spent waiting for others' turns; "input to
+effect" is the delay from a player's input to the turn it acts in; relay
+messages are what the Durable Object is billed for (20 count as one request).
+
+| Condition | Turns/s | Waiting (s) | Input lag (turns, avg) | Input to effect (ms, median) | Relay messages/s | Bytes/s per link, up |
+|---|---|---|---|---|---|---|
+| clean (2 players) | 20.01 → 20.01 | 0.3 → 0.5 | 0.97 → 0.97 | 51 → 51 | 52.4 → 44.7 | 2455 → 643 |
+| 50 ms round trip | 20.00 → 20.01 | 8.0 → 0.6 | 1.26 → 0.97 | 59 → 51 | 61.2 → 44.8 | 4087 → 659 |
+| 150 ms | 19.88 → 19.91 | 2.3 → 1.7 | 3.73 → 2.31 | 200 → 102 | 53.3 → 45.0 | 2630 → 690 |
+| 300 ms | 19.58 → 19.63 | 5.1 → 3.2 | 6.45 → 4.19 | 349 → 202 | 54.7 → 44.4 | 2878 → 707 |
+| 150 ms, jitter 40 ms | 19.86 → 19.89 | 1.9 → 1.6 | 3.82 → 2.92 | 200 → 151 | 52.8 → 44.7 | 2497 → 697 |
+| 150 ms, 3% loss | 19.46 → 18.86 | 4.5 → 10.6 (4.7 in another run) | 8.52 → 8.26 | 450 → 449 | 52.5 → 43.9 | 2425 → 786 |
+| joiner at 48 kbit/s, 100 ms | 19.92 → 20.00 | 1.4 → 1.0 | 2.19 → 1.12 | 100 → 51 | 52.3 → 44.7 | 2434 → 662 |
+| 2 s outage | 19.45 → 19.45 | 3.2 → 3.3 | 0.97 → 0.97 | 51 → 51 | 52.2 → 43.8 | 2403 → 635 |
+| 10 s outage | 17.79 → 17.79 | 12.9 → 13.1 | 0.97 → 0.97 | 51 → 50 | 51.8 → 41.2 | 2247 → 589 |
+| 20 s outage | 16.69 → 16.68 | 20.3 → 20.3 | 0.97 → 0.97 | 51 → 51 | 53.6 → 40.3 | 2116 → 573 |
+| 10 s outage, connection reset | 18.20 → 18.20 | 10.5 → 10.6 | 0.97 → 0.97 | 51 → 51 | 51.6 → 41.8 | 2273 → 608 |
+| slow joiner (+60 ms a turn) | 15.00 → 15.00 | 119.8 → 124.4 | 11.23 → 1.91 | 861 → 197 | 57.9 → 40.0 | 4334 → 1470 |
+| joiner's tab hidden for 40 s | 14.42 → 19.86 | 51.4 → 0.9 | 0.97 → 0.97 | 55 → 51 | 53.9 → 44.3 | 3488 → 658 |
+| host's tab hidden for 40 s | 14.46 → 19.94 | 41.0 → 1.1 | 0.97 → 0.97 | 55 → 50 | 51.8 → 44.8 | 3369 → 664 |
+| 2 forced desyncs (delta resync) | 19.84 → 19.82 | 0.5 → 0.5 | 0.97 → 0.97 | 51 → 51 | 52.4 → 44.4 | 2668 → 893 |
+| same, joiner at 128 kbit/s | 19.10 → 19.14 | 4.4 → 4.6 | 1.88 → 1.63 | 101 → 99 | 51.5 → 43.6 | 2703 → 949 |
+| 3 players, 100 ms | 19.79 → 19.82 | 2.1 → 2.1 | 2.92 → 2.91 | 150 → 150 | 163.2 → 105.1 | 4262 → 957 |
+| 4 players, 100 ms | 19.78 → 19.81 | 2.1 → 2.1 | 2.92 → 2.92 | 150 → 150 | 332.8 → 145.6 | 4794 → 955 |
+| drawing (SwiftShader) | 19.94 → 19.97 | 0.7 → 0.6 | 1.17 → 0.97 | 50 → 50 | 53.4 → 44.7 | 2579 → 658 |
+| drawing, 150 ms | 19.75 → 19.84 | 2.2 → 1.6 | 3.80 → 2.68 | 200 → 150 | 53.4 → 44.9 | 2599 → 683 |
+
+Every game finished in sync. For comparison the desktop build over UDP
+(`tools/netbench`) settles on 1, 2 and 4 turns at 50, 150 and 300 ms.
+
+Reading it:
+
+- **Outages** were already survived (the resumable links); the game stops
+  for as long as the network is gone, which nothing can avoid in lockstep. A
+  connection that stays up waits for TCP's next retransmission (in the rig's
+  model of it, 12.6 s after a 10 s outage); after 15 s of silence the page
+  resumes over a new connection instead, so a 20 s outage stops the game for
+  20 s.
+- **Loss** is the weak spot of a TCP transport: a lost packet holds up
+  everything behind it until it is resent (the rig models it as 200 ms plus
+  the round trip). At 3% that happens every second or two, and the game
+  covers it with a long input lag or waits. Those delays are real, so the cap
+  allows them. Only an unordered transport would fix it (WebRTC data channels
+  between players, or WebTransport datagrams, which Durable Objects don't
+  offer); the desktop build over UDP stays at 1 turn with 5% loss.
+- **Drawing**: the test machine draws with software GL, which is slower than
+  any real GPU; a frame takes long enough that even a clean link needs 1-2
+  turns. With a GPU expect the no-drawing rows.
+
+What changed (engine, `src/kfx/platform/web/NetWebSP.c` and `web/kfx_web.js`,
+and relay, `web/server/src/room.js`):
+
+- **Round trips over the relay.** The engine's input lag control and turn
+  timing use the round trip to each player (`GetPing`), which only ENet
+  measured: in the browser it was 0. So the host's cap on the input lag
+  (`input_lag_network_cap`) never applied (a slow computer pushed the input
+  lag to its maximum of 12 turns, 600 ms), and a joiner's clock ran a one-way
+  delay behind the host's, which roughly doubled the input lag the game
+  settled on (4 turns instead of 2 at 150 ms). Now each page measures its own
+  round trip to the relay every 2 s (the "ping" the relay's runtime answers
+  without waking the Durable Object; the time comes from the message event,
+  so a busy page doesn't inflate it) and reports it (`{"type": "rtt", "ms",
+  "var"}`); the relay passes a joiner's to the host and the host's to the
+  joiners as a `PEER_RTT` frame (op 14), and `GetPing` is the sum of both ends'
+  (`web_net_ping`). The lobby and the in-game panel show the ping too.
+- **Waiting without spinning.** A page only receives messages while the game
+  yields to the browser. A game waiting for a late packet drew a frame at
+  most once per turn and spun in between, so a packet that had already
+  arrived waited for the next frame (and a core burned meanwhile). It now
+  sleeps until the next message arrives (`web_net_wait`, `kfx_net_wait`:
+  Asyncify sleep woken by the WebSocket's message event) whenever it did not
+  present a frame. The network waits in `NetWebSP.c` (resyncs, the lobby)
+  sleep the same way instead of polling every millisecond.
+- **Hidden tabs keep their pace.** Browsers wake a hidden tab's timers at
+  most once a second, and a game in a background tab woke from a timer for
+  every frame and sleep: it played one or two turns a second, and lockstep
+  held everyone else to that pace for as long as the tab stayed hidden.
+  Sleeps (`emscripten_sleep`, which `SDL_Delay` uses) and a hidden tab's
+  frames now wake from a worker's timer, which is not throttled. The game
+  keeps drawing in the background, at most 40 frames a second. A tab the
+  browser freezes or discards entirely (after a long time hidden, or to save
+  memory) still stops; then the relay's silence check and the host's
+  15 s wait hand its keeper to the computer, as for a dropped connection.
+- **Less traffic.** The WebSocket links never lose a message, so the engine's
+  repair history (each player's last 40 turns, compressed, five times a
+  second, against UDP packet loss) is only sent while a game waits for
+  packets or starts (where a peer may not have been ready). That cut the
+  bytes on a link by three quarters. With three or four players the host sent
+  its own turn and each player's relayed turn once per recipient; a relay
+  that announces `MULTICAST` (op 15, listed in its link message as `"ops":
+  [15]`) now gets one message for them all (`sendmsg_multi`, a new optional
+  `NetSP` member). The relay is billed per incoming message (20 count as
+  one request), so this more than halves the cost of a four-player game (333 → 146
+  messages a second; a two-player game went from 52 to 45, about 135
+  requests a minute).
+
+**Compatibility.** Nothing in the game's own messages changed, and the
+simulation is untouched, so `NET_PROTOCOL_VERSION` and `NET_SIM_VERSION` stay
+as they are: builds with and without these changes play together. Between
+page and relay, everything new is optional: the relay sends `PEER_RTT` only to
+pages that report their own round trip, and `MULTICAST` only exists for
+engines that saw it in the link message. Engines published before (alphas,
+the stable 1.4 port) never report a round trip and never see either op, so a
+new relay serves them as before; a new engine on an old relay gets no round
+trips (the cap stays off, as before) and sends one message per recipient.
+Checked with the rig
+(`compat.mjs`; a game of two or three, 45 s of play, turns flowing on every
+page): the stable 1.4 port and the published alpha 5603 on the new relay;
+an engine from before as host with a new joiner, and a new host with an old
+and a new joiner (MULTICAST to an old joiner); three new engines on the old
+relay (one message per recipient, no round trips); a spectator joining a
+running game on the new relay.
+
+**Not measured**: real browsers' hidden-tab throttling (headless Chromium
+cannot hide a page; the rig applies Chrome's documented rules itself, see
+`hidden.js`), Chrome's stronger throttling after five hidden minutes and tab
+freezing, Firefox and Safari, Cloudflare's own network and Durable Object
+placement (the rig's relay runs locally), and real GPUs (the test machine
+renders with SwiftShader, so the drawing rows show a slow computer).
 
 ### Running the Worker
 
@@ -1414,8 +1552,11 @@ the redirect `https://<your site>/api/auth/discord/callback`, set
 - **Main loop**: the game keeps its own blocking loop. Asyncify lets it pause:
   after each presented frame it waits for the browser's next animation frame
   (`kfx_web_frame_yield` in `web/kfx_web.js`), and `SDL_Delay` sleeps the same
-  way. The OpenGL renderer's render thread runs inline on the game thread
-  (`RenderThreadManager`).
+  way (`emscripten_sleep`, replaced there); in a hidden tab both wake from a
+  worker's timer, which browsers do not throttle. A game waiting for the
+  network sleeps until the next message arrives (`kfx_net_wait`). The page
+  only gets network messages while the game yields. The OpenGL renderer's
+  render thread runs inline on the game thread (`RenderThreadManager`).
 - **Graphics**: the OpenGL renderer runs on WebGL 2. Its GLSL 3.30 shaders are
   rewritten to GLSL ES 3.00 at compile time (`GLResourceMapper.cpp`), and the
   GL 3.1-3.3 functions WebGL 2 has are loaded by hand (`GLFunctions.cpp`).
