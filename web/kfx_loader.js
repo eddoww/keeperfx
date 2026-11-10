@@ -508,9 +508,16 @@ function focusGame() {
     $('canvas').focus({ preventScroll: true });
   }
 }
+// Space is special: while the game takes text SDL leaves it to the browser,
+// whose own action for Space on a page is to scroll it, and in some browsers
+// more than that (Vivaldi's "fast forward" follows a link when the page cannot
+// scroll further, which opened the Hall of Fame in a new tab on every space
+// typed into the game's chat). So Space never keeps its browser action during
+// a game, wherever the focus is; the character is passed on to the game.
+const spaceForGame = (ev) => (ev.key === ' ' || ev.code === 'Space') && !pageKeeps(ev.target);
 for (const type of ['keydown', 'keypress', 'keyup']) {
   window.addEventListener(type, (ev) => {
-    if (KFX.state !== 'running' || !ev.isTrusted || !strayFocus(ev.target)) return;
+    if (KFX.state !== 'running' || !ev.isTrusted || !(strayFocus(ev.target) || spaceForGame(ev))) return;
     ev.preventDefault(); // SDL still gets the key: it listens further on
     if (type !== 'keydown') return;
     $('canvas').focus({ preventScroll: true });
@@ -725,6 +732,29 @@ function persistNow() {
 }
 let fsReady = false;
 
+// Vivaldi's "fast forward": Space pressed on a page that cannot scroll further
+// makes the browser click the link it takes for "the next page" (one marked
+// rel="next", else a link whose text reads like "more" or "next"). On this
+// site that was the "More" link to the Hall of Fame, on every Space pressed in
+// the game, opened in a new tab because a game was running. The browser does
+// not look at whether the page handled the key, so while a game runs it is
+// given a "next page" that goes nowhere: the Play page itself.
+function fastForwardGuard(on) {
+  let a = $('ffw-guard');
+  if (on && !a) {
+    a = document.createElement('a');
+    a.id = 'ffw-guard';
+    a.rel = 'next';
+    a.href = '#/play';
+    a.hidden = true;
+    a.tabIndex = -1;
+    a.setAttribute('aria-hidden', 'true');
+    document.body.prepend(a);
+  } else if (!on && a) {
+    a.remove();
+  }
+}
+
 // What the rest of the page (web/kfx_site.js) sees of the game.
 //   state: loading | setup (waiting for DK files) | ready (start screen) |
 //          starting | running | exited | failed
@@ -808,6 +838,7 @@ function setState(state) {
   $('stage-title').textContent = title;
   $('stage-dot').className = `dot ${dot}`;
   $('btn-leave').hidden = state !== 'running';
+  fastForwardGuard(state === 'running' || state === 'starting');
   document.dispatchEvent(new CustomEvent('kfx:state', { detail: state }));
 }
 
