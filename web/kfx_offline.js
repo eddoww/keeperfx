@@ -359,7 +359,7 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
       const g = gc.byId.get(`campaign:${camp}`);
       const file = gc.manifest.files.find(([rel]) => rel === `campgns/${camp}.cfg`);
       if (!g || !file) continue;
-      const url = fileUrls(gc.base, file[0], file[1], file[2], file[3])[0][0];
+      const url = fileUrls(gc.base, file[0], file[1], file[2], file[3], gc.manifest.layout === 'cas')[0][0];
       try {
         const resp = (cache && await cache.match(url)) || await fetch(url);
         const m = /^\s*NAME\s*=\s*(.+?)\s*$/m.exec(await resp.text());
