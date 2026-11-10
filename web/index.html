@@ -87,6 +87,9 @@
     </div>
   </div>
 
+  <!-- Quick match (web/kfx_quickmatch.js draws every [data-qm]) -->
+  <section class="slab qm" id="qm-home" data-qm="card" data-online hidden></section>
+
   <div class="counters" id="counters" data-online hidden>
     <div><b id="count-online">1</b><span>online now</span></div>
     <div><b id="count-lobbies">0</b><span>open lobbies</span></div>
@@ -210,6 +213,7 @@
                 spellcheck="false" aria-label="Lobby code"><button class="btn small">Join</button></span>
               <a href="#/lobbies" class="fine">or browse open lobbies</a>
             </form>
+            <div class="choice qm-choice" data-qm="choice" data-online hidden></div>
           </div>
           <p class="fine start-foot">The game loads its data as it needs it; the first start takes a little longer.
             <button type="button" class="linklike" id="forget-button">Forget my DK files</button></p>
@@ -260,6 +264,7 @@
   </div>
   <div class="lobby-layout">
     <div>
+      <section class="slab qm" data-qm="card" data-online hidden></section>
       <div id="lobby-list" class="lobby-list" aria-live="polite"></div>
       <p class="lobby-discord"><svg class="icon"><use href="#i-chat"/></svg>Looking for opponents? Keepers arrange games on the
         <a href="https://discord.gg/Bx989fdcXe" target="_blank" rel="noopener">Keeper Klan Discord</a>.</p>
@@ -442,9 +447,11 @@
 </dialog>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="qm-dock" id="qm-dock" aria-live="polite" hidden></div>
 
 <script src="kfx_account.js"></script>
 <script src="kfx_site.js"></script>
+<script src="kfx_quickmatch.js"></script>
 <script src="kfx_loader.js"></script>
 <script src="keeperfx.js" async></script>
 </body>
