@@ -507,12 +507,15 @@ let fsReady = false;
 // What the rest of the page (web/kfx_site.js) sees of the game.
 //   state: loading | setup (waiting for DK files) | ready (start screen) |
 //          starting | running | exited | failed
-//   start(choice): start the game as {mode: 'play' | 'host' | 'join', code,
-//          spectate, lobbyName, unlisted, args, workshop, label}. Before the
-//          start screen it is kept for then; once a game runs it restarts the
-//          page into the new one. `args`: extra command line arguments (a
-//          workshop map: -campaign ... -level ...); `workshop`: item ids a
-//          hosted lobby offers (web/kfx_workshop.js); `label`: what is starting.
+//   start(choice, {confirmed}): start the game as {mode: 'play' | 'host' | 'join',
+//          code, spectate, lobbyName, unlisted, args, workshop, label, qm,
+//          qmseat, qmname}. Before the start screen it is kept for then; once a
+//          game runs it restarts the page into the new one, after asking unless
+//          `confirmed`. Returns false if the player said no. `args`: extra
+//          command line arguments (a workshop map: -campaign ... -level ...);
+//          `workshop`: item ids a hosted lobby offers (web/kfx_workshop.js);
+//          `label`: what is starting; qm*: quick match (web/kfx_quickmatch.js).
+//   reload(): restart the page to the start screen (saves first).
 //   gameFiles: promise of {has(rel), read(rel)} over the game's data files.
 //   mounted: true once /kfx is set up (workshop installs can show up there);
 //   started: true once the game itself runs (it has read its map packs).
@@ -527,18 +530,24 @@ var KFX = { // var: the site script reaches it as window.KFX
   choice: null,
   pending: null,
   resolveChoice: null,
-  start(choice) {
+  start(choice, { confirmed = false } = {}) {
     if (this.state === 'ready' && this.resolveChoice) {
       this.resolveChoice(choice);
     } else if (this.state === 'loading' || this.state === 'setup') {
       this.pending = choice;
     } else {
-      if (this.state === 'running' && !confirm('Leave the current game and start this one?')) return;
+      if (this.state === 'running' && !confirmed && !confirm('Leave the current game and start this one?')) return false;
       try { sessionStorage.setItem(START_KEY, JSON.stringify(choice)); } catch (e) { /* starts on the start screen */ }
-      leaving = true;
+      this.reload();
+    }
+    return true;
+  },
+  reload() {
+    leaving = true;
+    persistNow().finally(() => {
       location.href = `${location.pathname}#/play`;
       location.reload();
-    }
+    });
   },
 };
 const STATE_TITLES = {
@@ -640,6 +649,7 @@ async function boot() {
     if (choice.unlisted) query.set('unlisted', '1');
     const offered = Workshop.hostOffer(choice);
     if (offered) query.set('workshop', offered);
+    for (const key of ['qm', 'qmseat', 'qmname']) if (choice[key]) query.set(key, String(choice[key]));
     Module.kfxHostQuery = query.toString();
     args.push('-server');
   }

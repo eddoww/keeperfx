@@ -589,6 +589,40 @@ details p { margin: 8px 0 0; }
 .account-me { text-align: center; }
 .account-me .avatar { margin: 0 auto 12px; }
 
+/* ---- Quick match (web/kfx_quickmatch.js) ------------------------------------ */
+
+.qm { padding: 18px 22px; margin: 0 0 20px; background: radial-gradient(600px 160px at 0 0, rgba(226, 86, 43, .1), transparent 70%), rgba(26, 19, 14, .85); }
+.qm, .qm-choice { display: flex; align-items: center; gap: 14px 24px; flex-wrap: wrap; }
+.qm-text { flex: 1 1 320px; min-width: 0; }
+.qm-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.qm.active, .qm-choice.active { border-color: var(--gold-lo); box-shadow: 0 0 0 1px rgba(227, 171, 69, .2), 0 0 28px rgba(226, 86, 43, .14); }
+.qm-head { display: flex; align-items: center; gap: 10px; font: 700 18px/1.2 var(--display); letter-spacing: .04em; color: var(--text); }
+.qm-head .icon { width: 22px; height: 22px; color: var(--gold); }
+.qm-head b { font: inherit; }
+.qm p, .qm-choice p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+.qm p.qm-note, .qm-choice p.qm-note { font-size: 13px; color: var(--faint); }
+.seg button { padding: 7px 12px; font: 600 13px/1.2 var(--body); color: var(--muted); background: none; border: 0; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border-hi); }
+.seg button.current { background: rgba(227, 171, 69, .16); color: var(--gold-hi); }
+.qm-clock { font-variant-numeric: tabular-nums; }
+.spinner.small { width: 18px; height: 18px; border-width: 2px; }
+/* On the start screen: a strip across the choice tiles. */
+.qm-choice { grid-column: 1 / -1; cursor: default; flex-direction: row; }
+.qm-choice .qm-head { font-size: 17px; }
+.qm-choice .qm-head .icon { width: 26px; height: 26px; }
+.qm-choice p { font-size: 13.5px; }
+/* The state on pages without a panel, and below the game. */
+.qm-dock {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 59;
+  display: flex; align-items: center; gap: 10px; width: max-content; max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 8px 8px 14px; border-radius: 10px; font-size: 14px; color: var(--muted);
+  background: rgba(20, 14, 10, .96); border: 1px solid var(--gold-lo); box-shadow: var(--shadow); animation: toast-in .25s ease-out;
+}
+.qm-dock b { color: var(--gold-hi); }
+.qm-dock > .icon { color: var(--gold); }
+.qm-dock .tool { flex: none; }
+body.theater .qm-dock { display: none; }
+
 /* ---- Footer ---------------------------------------------------------------- */
 
 .footer { border-top: 1px solid var(--border); padding: 26px 20px 34px; text-align: center; background: rgba(8, 5, 4, .7); }

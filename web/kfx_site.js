@@ -321,12 +321,12 @@ const Site = (() => {
     return /^[A-Z0-9]{4,8}$/.test(code) ? code : null;
   };
 
-  /** choice: {mode: 'play' | 'host' | 'join', code, spectate, lobbyName, unlisted} */
-  function start(choice) {
-    if (!window.KFX) return;
+  /** choice: {mode: 'play' | 'host' | 'join', code, spectate, lobbyName, unlisted}; see KFX.start. */
+  function start(choice, options) {
+    if (!window.KFX) return false;
     if (!Account.user && keeperName()) store.set('kfx.name', keeperName());
     if (location.hash !== '#/play') location.hash = '#/play';
-    KFX.start(choice);
+    return KFX.start(choice, options);
   }
 
   // A workshop map to host with (web/kfx_workshop.js): {label, players, args, workshop}.
@@ -349,7 +349,7 @@ const Site = (() => {
   }
 
   function join(code, spectate) {
-    start({ mode: 'join', code, spectate: !!spectate });
+    return start({ mode: 'join', code, spectate: !!spectate });
   }
 
   // ---- Lobbies ----------------------------------------------------------------
@@ -502,7 +502,9 @@ const Site = (() => {
     }
 
     function send(message) {
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify(message));
+      if (!ws || ws.readyState !== 1) return false;
+      ws.send(JSON.stringify(message));
+      return true;
     }
 
     function connect() {
@@ -541,6 +543,8 @@ const Site = (() => {
         } else if (msg.type === 'error') {
           toast(msg.error, { bad: true });
         }
+        // Other parts of the page listen too (quick match: web/kfx_quickmatch.js).
+        document.dispatchEvent(new CustomEvent('kfx:tavern', { detail: msg }));
       };
       socket.onclose = () => {
         if (ws !== socket) return;
@@ -568,7 +572,7 @@ const Site = (() => {
       input.value = '';
     });
 
-    return { connect, reconnect, get online() { return onlineCount; } };
+    return { connect, reconnect, send, get online() { return onlineCount; } };
   })();
 
   function scrollTavern() {
@@ -887,6 +891,8 @@ const Site = (() => {
 
   return {
     config, toast, start, join, openHost, openAccount, keeperName, codeOf, route, h, icon,
+    tavernSend: (message) => Tavern.send(message),
     get online() { return online; },
+    get view() { return current.view; },
   };
 })();

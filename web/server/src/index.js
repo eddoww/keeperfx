@@ -11,6 +11,8 @@
 //   GET  /api/rooms/host[?unlisted=1][&workshop=<id>.<file>,...]
 //                                     WebSocket: host a new lobby (relay creates the code);
 //                                     `workshop`: items joiners need (shown with the lobby)
+//        [&qm=<match>.<token>]        ... for a quick match: the tavern sends the joiners there
+//        [&qmseat=2|any&qmname=<n>]   ... a lobby that quick-match players may be sent to
 //   GET  /api/workshop/...            the KeeperFX Workshop, cached (workshop.js)
 //   GET  /api/rooms/<CODE>?role=player|spectator   WebSocket: join a lobby
 //   GET  /site.json                   page settings (dataUrl: where game data lives)
@@ -42,7 +44,7 @@ function roomStub(env, code) {
   return env.ROOMS.get(env.ROOMS.idFromName(code));
 }
 
-async function hostRoom(request, env) {
+async function hostRoom(request, env, ctx) {
   const user = await currentUser(request, env);
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = newCode();
@@ -56,10 +58,25 @@ async function hostRoom(request, env) {
     url.searchParams.set('code', code);
     if (user) url.searchParams.set('user', user.username);
     if (unlisted) url.searchParams.set('unlisted', '1');
+    const asked = new URL(request.url).searchParams;
+    if (asked.get('qm') || asked.get('qmseat')) url.searchParams.set('qm', '1'); // quick match: tell the tavern when it ends
     const resp = await roomStub(env, code).fetch(new Request(url, request));
+    if (resp.status === 101) quickMatchHosted(request, env, ctx, code, user);
     if (resp.status !== 409) return resp; // 409: code already in use, pick another
   }
   return json({ error: 'Could not create a lobby, try again.' }, { status: 503 });
+}
+
+// Quick match (quickmatch.js, in the tavern): tell it about a lobby it asked for.
+function quickMatchHosted(request, env, ctx, code, user) {
+  const params = new URL(request.url).searchParams;
+  const qm = params.get('qm');
+  const seat = params.get('qmseat');
+  if (!qm && !seat) return;
+  const tavern = env.TAVERN.get(env.TAVERN.idFromName('tavern'));
+  const name = user ? user.username : (params.get('qmname') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16);
+  ctx.waitUntil((qm ? tavern.quickmatchHosted(qm.slice(0, 64), code) : tavern.quickmatchSeat(code, seat, name))
+    .catch((e) => console.error('quickmatch', e)));
 }
 
 async function joinRoom(request, env, code) {
@@ -112,7 +129,7 @@ async function handleApi(request, env, ctx, path) {
     return handleScores(request, env, ctx, path);
   }
   if (path.startsWith('workshop/')) return handleWorkshop(request, env, ctx, path.slice(9));
-  if (path === 'rooms/host') return hostRoom(request, env);
+  if (path === 'rooms/host') return hostRoom(request, env, ctx);
   const room = path.match(/^rooms\/([A-Za-z0-9]+)$/);
   if (room) return joinRoom(request, env, room[1]);
   return json({ error: 'Not found' }, { status: 404 });

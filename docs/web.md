@@ -164,6 +164,14 @@ When the site runs on its Worker (`web/server`, below), it has:
   A host gets a five-letter code and an invite link (`?join=CODE`) in the bar
   above the game. The start screen offers the same choices, and the game's own
   Multiplayer → Online screen lists the public lobbies too.
+- **Find a game** (quick match), on the home page, the lobbies page and the
+  start screen: choose **2 keepers** or **Any size** (2 to 4) and wait; the
+  panel shows how long, and everyone sees how many keepers are looking. When
+  others are found, one of them (preferably one whose game is ready on the
+  start screen) gets an unlisted lobby opened for them, and the others join it
+  by themselves: nobody types a code. The host then picks the map and presses
+  Start in the game's lobby screen, as in any lobby; the page says so. Details
+  below, under "Quick match".
 - **The tavern**, on the lobbies page: who has the site open, a chat for
   signed-in players, and news lines (a lobby opened, someone won a level). Set
   `CHAT` to `off` in `wrangler.jsonc` to close the chat; names in
@@ -194,7 +202,9 @@ How it fits together:
   and tells them when the lobby list changes.
 - On the page, `web/kfx_loader.js` starts the game (`window.KFX`),
   `web/kfx_site.js` is everything around it: the pages, sign-in, lobbies,
-  tavern and records, and `web/kfx_workshop.js` is the workshop.
+  tavern and records, `web/kfx_workshop.js` is the workshop, and
+  `web/kfx_quickmatch.js` is Find a game; its server side is
+  `web/server/src/quickmatch.js`, which runs inside the tavern.
 - In the game, `src/kfx/platform/web/NetWebSP.c` is the network transport
   (`struct NetSP`, as `bflib_enet.cpp` is for UDP) over that WebSocket, and
   `NetMatchmakingWeb.c` is the lobby list and lobby publishing. The game's
@@ -269,6 +279,47 @@ Every request to keeperfx.net carries a `KeeperFX-Web/1.0` User-Agent naming
 this site. Screenshots load from keeperfx.net directly. Do not give the
 `keeperfx-workshop` bucket a public domain: files must only go out while
 keeperfx.net offers them.
+
+### Quick match
+
+The queue lives in the tavern Durable Object and uses the WebSocket every page
+already has open to it, so it needs no new connection, no polling and no
+binding: queued players are marked on their sockets' hibernation attachments
+(closing the tab takes a player out of the queue), and matches and open seats
+are kept in the tavern's storage. The protocol is described at the top of
+`quickmatch.js`.
+
+- Matching happens whenever someone joins or leaves the queue, oldest first.
+  **2 keepers** pairs with anyone; **Any size** players are grouped together
+  (up to 4), or with a 2-keeper player when no one else is there. A match
+  needs one player who can host: a player without their Dungeon Keeper files
+  yet can queue and join (the game starts once the files are added) but is
+  never made host, so two such players are not matched with each other.
+- The host's page starts the game with an unlisted lobby
+  (`/api/rooms/host?unlisted=1&qm=<match>.<token>`). As soon as that lobby
+  exists the Worker tells the tavern, which sends its code to the others; they
+  are never told to join a lobby that is not there yet.
+- A player whose game is running (they queued, then played solo meanwhile) is
+  asked before it is left; the page reloads and picks the match up again.
+- If the host leaves, fails to open the lobby, or takes too long (the others
+  give up after three minutes), the others go back in the queue in their old
+  place. If everyone else leaves before the lobby opens, the host's lobby is
+  kept open for the next player who looks.
+- An **Any size** lobby with room keeps taking quick-match players until its
+  game starts. After 90 seconds alone in the queue a player is offered to
+  open a public lobby instead; it is listed as usual, and quick match sends
+  the next players to it.
+- The start is not automated. The game can start a hosted lobby by itself
+  (`-server -waitusers N -level L`), but `-level` puts it in single-level mode,
+  which quits the game when the level ends; the host picks the map instead.
+
+Cost on the free plan: queueing is one WebSocket message per player (1/20 of
+a request), plus one when the game's state changes while queued. A match costs
+the tavern one Durable Object request when the host's lobby opens, and the
+quick-match lobby another when its game starts and when it closes; sending a
+player to an open seat first asks that lobby whether it has room (one request).
+So a two-player match costs about three requests, against roughly 170 a
+minute of play for the game itself through the relay.
 
 ### Running the Worker
 
