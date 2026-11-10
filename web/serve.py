@@ -49,7 +49,7 @@ def main():
             self.send_header("Cache-Control", "no-cache")
             # So another local site can use this one's gamedata/ as its dataUrl
             # (never the DK files under /dk/).
-            if self.path.startswith("/gamedata/"):
+            if self.path.startswith(("/gamedata/", "/builds/", "/data/")):
                 self.send_header("Access-Control-Allow-Origin", "*")
             super().end_headers()
 

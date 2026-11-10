@@ -42,7 +42,9 @@ const Replays = (() => {
     if (!buildPromise) {
       buildPromise = (async () => {
         // With selectable game versions (web/kfx_versions.js) the engine is the
-        // chosen build, and its data list is that build's.
+        // chosen build, and its data list is that build's. (That script comes
+        // after this one.)
+        await new Promise((r) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', r, { once: true }) : r()));
         const version = typeof Versions !== 'undefined' ? await Versions.ready.catch(() => null) : null;
         const multi = version && !version.legacy;
         const engine = multi ? version.id : ENGINE;
@@ -227,9 +229,24 @@ const Replays = (() => {
     return `watch/${replay.id}.fxpkt`;
   }
 
+  /** The game version that recorded a replay, if this site can still run it
+   * and it is not the one running (web/kfx_versions.js forReplay()). */
+  function otherBuild(build, mine) {
+    if (!build || build === mine || typeof Versions === 'undefined') return null;
+    const b = Versions.forReplay(build);
+    return b && Versions.current && b.id !== Versions.current.id ? b : null;
+  }
+
   /** replay: {id, title} (published) or {local: path, title}; build: what recorded it. */
   async function watch(replay, build, force) {
     const mine = await buildId();
+    // Recorded with another version this site still has: watch it on that one
+    // (the page reloads into it and starts the replay there).
+    const there = !force && otherBuild(build, mine);
+    if (there) {
+      Site.start({ mode: 'replay', build: there.id, replay: { ...replay, build, mismatch: false } });
+      return;
+    }
     if (!force && build !== mine) {
       if (replay.id) { location.hash = `#/replay/${replay.id}`; return; }
       if (!confirm(build
@@ -301,6 +318,10 @@ const Replays = (() => {
 
   function compatBadge(build, mine) {
     if (!mine || build === mine) return null;
+    if (otherBuild(build, mine)) {
+      const b = Versions.forReplay(build);
+      return h('span', { class: 'pill plain', title: 'Recorded with another version of the game; watching switches to it' }, b.legacy ? 'other version' : b.version || 'other version');
+    }
     return h('span', { class: 'pill warn', title: 'Recorded by another version of the game' }, 'older version');
   }
 
@@ -398,7 +419,8 @@ const Replays = (() => {
     }
     const mine = await buildId();
     if (token !== listToken) return;
-    const same = r.build === mine;
+    const there = otherBuild(r.build, mine);
+    const same = r.build === mine || !!there;
     const stat = (value, label) => h('div', {}, h('b', {}, value), h('span', {}, label));
     const watchBtn = h('button', { class: 'btn primary big', type: 'button', disabled: !same,
       onclick: () => watch({ id: r.id, title: r.title }, r.build) }, icon('play'), 'Watch the replay');
@@ -412,7 +434,10 @@ const Replays = (() => {
         try { await api(`replays/${r.id}`, { method: 'DELETE' }); location.hash = '#/replays'; } catch (e) { Site.toast(e.message, { bad: true }); }
       } }, icon('trash'), 'Remove'));
     }
-    const compat = same
+    const compat = there
+      ? h('p', { class: 'compat ok' }, icon('bolt'), `Recorded with ${there.legacy ? 'an earlier version of the game' : there.title}, which this site still has: `
+        + 'watching switches to it, so it plays back exactly as it happened.')
+      : same
       ? h('p', { class: 'compat ok' }, icon('bolt'), 'Recorded with the game this site runs now, so it plays back exactly as it happened.')
       : h('div', { class: 'compat bad' },
         h('p', {}, h('b', {}, 'Recorded with an earlier version of the game. '),

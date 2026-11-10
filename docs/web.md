@@ -130,7 +130,7 @@ the game keeps that size.
 | `?renderer=software` | `RENDERER` setting (`opengl` or `software`) |
 | `?cfg=KEY=VALUE;KEY=VALUE` | Override any `keeperfx.cfg` line |
 | `?dk=<url>` | Import the DK files from a folder served at `<url>` instead of asking (lower-case names: `data/main.pal`, `sound/atmos1.sbk`, ..., plus optional `keeper02.ogg` ... `keeper07.ogg`) |
-| `?build=<id \| version \| channel>` | Run that game version for this visit, e.g. `?build=alpha`, `?build=1.4.0.5603` (see "Game versions") |
+| `?build=<id \| version \| channel>` | Run that game version for this visit, e.g. `?build=alpha`, `?build=1.4.0.5603`; `?build=page` runs the engine next to the page (see "Game versions") |
 | `?join=CODE` | An invite: the start screen offers to join that lobby (`&spectate` to watch); without `?build` the page picks the lobby's version |
 | `?autostart` | Skip the start screen; with `?join=CODE` or `?host` (`&unlisted`) go straight online |
 | `?debug` | Log each game data download to the console |
@@ -333,7 +333,11 @@ run time):
 | Speech in other languages | `sound/speech_*.dat` and campaign speech folders not in the game's language | about 175 MB |
 | Everything | all of it | about 532 MB |
 
-(MB here are MiB, as the page shows them.) A download can be paused and
+(MB here are MiB, as the page shows them.) With game versions on (see "Game
+versions") the essentials also count the version's engine (about 9 MB), a
+file the data list names under several paths is counted once (the shared data
+is stored by content), and the dialog says which version the data is for;
+Everything is then about 546 MB. A download can be paused and
 resumed, carries on after a reload, and tops itself up when a new release
 changes data files. It checks `navigator.storage.estimate()` first and asks
 for persistent storage (`navigator.storage.persist()`); installed apps get it
@@ -389,6 +393,46 @@ the server without a reload, even during a game.
   server names a different data origin, copies from the old one are pruned.
 - Plain static hosting works the same (no `site.json`: no online features,
   and nothing to queue). Service workers need HTTPS (or `localhost`).
+
+### Offline play with game versions
+
+With several game versions (next section) the engine is not next to the
+page but in `builds/<id>/` on the data bucket, and the page reads
+`builds/index.json` to choose one. Offline neither is reachable, so:
+
+- **The index**: the last `builds/index.json` that loaded is kept in
+  `localStorage` (`kfx.buildsIndex`, with its URL). When the index cannot be
+  reached (offline, a timeout, a server error) the page uses that copy; when
+  the server says there is none (404, or `site.json` without `buildsUrl`) the
+  copy is forgotten.
+- **The engine**: each start online puts the running version's
+  `keeperfx.js`, `keeperfx.wasm` and `manifest.json` into the cache
+  `keeperfx-engines` (`Versions.cacheEngine()`, from the browser's HTTP
+  cache, so no second download), and `sw.js` answers any
+  `builds/<id>/keeperfx.js|.wasm|manifest.json` from there first, on this
+  origin or the bucket's (they never change). The cache keeps the versions
+  used lately (three), the others are deleted.
+- **Which version starts offline**: the usual choice (below); if that
+  version's engine is not on the device, the newest one used lately that is,
+  with a note ("... is not on this device, so this offline start uses ...");
+  if none is, the engine next to the page (which the worker precaches). The
+  version dialog offline greys out the versions not on the device.
+- **The data**: downloads go to `keeperfx-gamedata` by content hash, as for
+  a single build. The player's wanted groups are remembered, so when the
+  default moves to a newer alpha the next visit with a connection tops them up
+  for the new version: only the files that changed (2 to 4 MB per alpha so
+  far) plus its engine. Data used only by versions no longer used lately is
+  dropped at the next start (the loader keeps the files of the current
+  version and of the last three used). The offline dialog lists what is kept
+  for **Other game versions** (their engines and files) with a Remove button;
+  **Free the space** also removes the engines.
+- Offline, `site.json` does not answer either; the builds URL is the one
+  stored with the index.
+
+Tested in headless Chromium with the Worker and the builds bucket both
+stopped: a chosen version started offline and played level 1; with that
+version's engine removed, the next version on the device started; with no
+engine on the device, the engine next to the page.
 - Not tested: Safari (iOS/macOS) and Firefox. iOS keeps a home screen app's
   storage separate from Safari's, so the data is downloaded again there.
 
@@ -398,6 +442,25 @@ The site can offer several builds of the game side by side: the newest
 alpha, older alphas that lobbies or invites still use, and a stable release
 once one can be built (below). Players pick one on the start screen or with
 the version button in the game's frame bar; the page remembers the choice.
+
+On keeper.edwindejong.net this is switched on by the Worker var `BUILDS_URL`
+(`https://keeper-data.edwindejong.net/builds/`). Everyone gets the newest
+alpha unless they picked a version; a pick of the newest of a kind keeps
+following it, a pick of an older build stays on that build. Old builds stay
+available so old replays play on the engine that recorded them (see "Keeping
+builds"). **Rollback**: set `BUILDS_URL` to `""` in `web/server/wrangler.jsonc`
+and deploy the Worker; pages then run the engine next to them again, as before
+(the page forgets its stored index and the engines it kept for offline
+starts). Nothing in the bucket needs to change either way.
+
+Before switching it on, the published builds should be ones made by
+`publish-build.py` from this page's era: a build without `"features"` in
+`index.json` (any build published before them) gets a page without
+Continue and without Workshop mods online (see "Engine features"). The
+first published build (alpha 5603, port 271c857) predates both and is
+correctly treated so; rebuild the default with the current port before going
+live (`web/upstream-build.sh --force`, or the workflow with *force*), then
+deploy the Worker.
 
 ### How upstream publishes KeeperFX
 
@@ -462,9 +525,8 @@ data/<hash>[.partN]               game data, stored once by content hash
 One build's data is 4,808 distinct files, 538 MiB (5,660 paths: many are
 the same file). The next build adds its engine (8.6 MiB) and only the files
 that differ: 21 files, 2 MiB from alpha 5601 to 5603; about 100 files,
-4 MiB across five weeks of alphas. Each channel keeps its newest three
-builds (`--keep-count`) plus any marked `keep`; older ones are retired and,
-14 days later, deleted with the data no other build uses.
+4 MiB across five weeks of alphas. See "Keeping builds" for which builds
+stay.
 
 The page stays on the Worker (static assets: a few dozen files), the builds
 and data go to the R2 bucket. The Worker's static assets would fit two or
@@ -495,13 +557,56 @@ locally; in production every data file would then be a Worker request). A
 site without `builds/index.json` runs the one engine next to the page, as a
 plain CMake build makes it. Locally: `web/serve.py <page> --layout <layout>`.
 
+### Keeping builds
+
+Replays only play back on the build that recorded them, so builds are not
+thrown away lightly:
+
+- `publish-build.py add` prunes only when given `--keep-referenced <url>`:
+  the site's `/api/replays/builds` (`web/server/src/replays.js`), which lists
+  the engine builds published replays were recorded with. Then each channel
+  offers its newest three builds (`--keep-count`), plus any marked `keep`
+  and the default; an older build a replay needs stays in `index.json` as
+  `"archived": true` (the page runs it for a replay, a lobby or a link that
+  names it, but does not offer it in the version dialog); the rest are
+  retired and, 14 days later, deleted with the data no other build uses. If
+  the URL does not answer, `add` stops rather than delete what a replay
+  needs. `--keep-referenced none` prunes without asking.
+- Without `--keep-referenced` nothing is pruned: every build stays offered.
+- The workflow passes it when the repository variable `KFX_SITE_URL` is set
+  (`web/upstream-build.sh --site`); it is not set yet, so for now every
+  build is kept. Cost: each new alpha adds its engine (8.6 MiB) and the
+  data files that changed (2 to 4 MiB so far), about 10 to 13 MiB a build;
+  with upstream at about 110 alphas a month (the workflow builds at most one
+  every four hours) that is up to about 1.3 GB a month in R2, whose free tier
+  is 10 GB. Set `KFX_SITE_URL=https://keeper.edwindejong.net` once that
+  matters; archived builds then cost only their own files.
+
+### Engine features
+
+Some page features need the engine's help, and older builds lack it. Each
+build records them in `index.json` (`"features"`, found in the source tree
+it was built from by `publish-build.py`, or `--features a,b`), and the page
+asks `Versions.supports(name)`; a build without the list has none of them,
+and the engine next to the page has all the page knows:
+
+| Feature | Needs | Without it |
+|---|---|---|
+| `loadgame` | `-loadgame` (autosave's Continue) | the start screen shows no Continue box (the game's own Continue Game still works) |
+| `mpmods` | `-mpmods` (Workshop mods online) | lobbies are hosted and joined without the player's mods (an engine without `-mpmods` refused the whole command line) |
+
+Engine exports the page checks for itself (autosave, resolution, mouse,
+`kfxOnLobby` for quick match's automatic start) need no entry.
+
 ### Choosing and switching
 
 `web/kfx_versions.js` decides which build a visit runs: `?build=` in the
 address, else the version of the lobby an invite (`?join=CODE`) leads to,
 else the player's choice (a channel, which follows its newest build, or one
 exact build), else `index.json`'s `default` (a channel or build id; `alpha`
-now). The start screen shows the version, what changed upstream (the
+now, so the newest alpha). If the index cannot be loaded, is empty or lists
+no build this page can run, the page runs the engine next to it (the site's
+own build), so a fault in the bucket never stops the site. The start screen shows the version, what changed upstream (the
 commits since the previous build, linked to their pull requests) and a
 dialog to switch; the frame bar shows it too. Switching reloads the page
 into the other build. During a game the page asks first; the game is lost
@@ -528,7 +633,10 @@ builds.
   that old. Fields a version moves can be lost (5603 moved the things in a
   keeper's hand), so before a different build first runs the page copies the
   saves to `/persist/backups/<previous build>` (the last three); the version
-  dialog can put them back.
+  dialog can put them back. The start screen's **Continue where you left
+  off** says when the save was made by another version ("made with version
+  1.4.0.5601, this is 1.4.0.5603"); it loads, with the game's own warning.
+  Autosaves and cloud saves are the same files, so they behave the same.
 - **Online play** needs the same build on every side. A hosted lobby records
   its build; the Lobbies page shows each lobby's version, and joining one on
   another version reloads into that version first. Invite links carry
@@ -536,12 +644,22 @@ builds.
   a player still reaches a lobby of another version (the game's own lobby
   list shows them all), the game refuses: "The host is using a different
   game version". Lobbies of a build the site no longer offers are shown but
-  not joinable.
+  not joinable. A lobby hosted with the engine next to the page records
+  `build=page`.
+- **Quick match** pairs only keepers on the same build (the page sends its
+  build with `qm-join`; seats keep the build of their lobby), so nobody is
+  sent to a lobby on another version. The "keepers looking" count is still
+  everyone's.
 - **Game data** is cached in the browser by content hash, so a switch only
   downloads the files that differ (3 files to start level 1 on 5601 after
   5603), and the cache keeps the data of the last few versions used.
 - **Hall of Fame** results record the version that played them (shown with
   recent games). The boards are shared by all versions.
+- **Replays** record the build (below, "Replays"); watching one loads that
+  build when the site still has it.
+- **Workshop** items are data, so they work with every version; Workshop
+  mods in online lobbies need an engine with `-mpmods` (see "Engine
+  features").
 
 ### Following upstream automatically
 
@@ -740,9 +858,16 @@ On the site (`web/kfx_replays.js`, server side `web/server/src/replays.js`):
   asked for their Dungeon Keeper folder first and the replay then starts by
   itself. When it ends the page offers to watch again. During playback the
   page reads the game's log and says so if the game reports "Out of sync".
-- **Version drift**: a replay from another build is not started from its
-  page; it says why, offers the file (for the KeeperFX version named on the
-  page) and a "play it anyway" link. Results are never sent to the Hall of
+- **Other game versions**: with game versions on, the engine part of a
+  recording's tag is the build id (`1.4.0.5603-18d8d4c5.<rules>`). Watching a
+  replay recorded with another build the site still has (offered or
+  archived, or the engine next to the page) reloads the page into that build
+  and plays it there (`KFX.start({mode: 'replay', build})`); the replay's
+  page says so. `GET /api/replays/builds` lists the builds published replays
+  need, for the builds pipeline (see "Keeping builds").
+- **Version drift**: a replay from a build the site no longer has is not
+  started from its page; it says why, offers the file (for the KeeperFX
+  version named on the page) and a "play it anyway" link. Results are never sent to the Hall of
   Fame from a replay or while spectating.
 - **Limits** (vars in `wrangler.jsonc`): files up to `REPLAY_MAX_MB` (8 MB; a
   short level is tens of KB, about 20 KB a minute early on, and the game's own

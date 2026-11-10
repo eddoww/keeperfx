@@ -17,6 +17,10 @@ name: Web Upstream Builds
 #   secrets.CLOUDFLARE_ACCOUNT_ID
 #   vars.KFX_BUILDS_URL            the deployed builds/, e.g. https://keeper-data.edwindejong.net/builds/
 #   vars.KFX_BUILDS_BUCKET         (optional) bucket name, default keeperfx-data
+#   vars.KFX_SITE_URL              (optional) the site, e.g. https://keeper.edwindejong.net: old
+#                                  builds are then pruned (3 offered per channel), except those
+#                                  its published replays need, which stay archived. Without it
+#                                  no build is ever deleted (about 10 MB per build in R2).
 #   vars.KFX_PORT_BRANCH           (optional) the branch with the browser port; default:
 #                                  the branch the workflow runs on. GitHub runs scheduled
 #                                  workflows from the default branch only, so this file
@@ -147,6 +151,7 @@ jobs:
         [ -n "${{ inputs.commit }}" ] && args+=(--commit "${{ inputs.commit }}")
         [ "${{ inputs.force }}" = true ] && args+=(--force)
         [ -n "${{ inputs.default }}" ] && args+=(--default "${{ inputs.default }}")
+        [ -n "${{ vars.KFX_SITE_URL }}" ] && args+=(--site "${{ vars.KFX_SITE_URL }}")
         web/upstream-build.sh "${args[@]}"
 
     - name: Logs

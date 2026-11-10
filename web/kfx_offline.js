@@ -6,7 +6,11 @@
 //   - an Offline indicator, and what works without a connection;
 //   - "Offline play": downloads game data into the loader's own cache
 //     (keeperfx-gamedata, see web/kfx_loader.js), grouped so a player can take
-//     the essentials, single campaigns or everything.
+//     the essentials, single campaigns or everything. On a site with several
+//     game versions (web/kfx_versions.js) that is the data of the version this
+//     page runs, plus its engine (keeperfx-engines, Versions.cacheEngine()); a
+//     newer default version is topped up on the next visit with a connection
+//     (only the files that changed: data is shared by content hash).
 'use strict';
 
 var Offline = (() => { // var: the loader and site scripts reach it as window.Offline
@@ -15,6 +19,7 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
   const DATA_CACHE = 'keeperfx-gamedata'; // web/kfx_loader.js CACHE_NAME
   const SHELL_PREFIX = 'keeperfx-shell-'; // web/sw.js
   const META_CACHE = 'keeperfx-meta'; // web/sw.js
+  const ENGINE_CACHE = 'keeperfx-engines'; // web/kfx_versions.js, web/sw.js
   const PART_SIZE = 24 * 1024 * 1024; // web/package-data.py
   const ORIGINAL = 'keeporig'; // the original campaign, part of the essentials
   // The game's language codes (the [speech] sections of campgns/*.cfg).
@@ -153,6 +158,11 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
     });
     watch(reg.installing);
     reg.addEventListener('updatefound', () => watch(reg.installing));
+    // The game version this page runs starts offline too, as the engine next to
+    // the page does (the worker precaches that one).
+    if (typeof Versions !== 'undefined' && navigator.onLine) {
+      Versions.ready.then(() => Versions.cacheEngine()).catch((e) => console.warn('Engine not kept for offline starts', e));
+    }
     if (reg.waiting && navigator.serviceWorker.controller) onUpdate(true);
     setInterval(() => { if (navigator.onLine) reg.update().catch(() => {}); }, 60 * 60 * 1000);
   }
@@ -246,6 +256,8 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
   // The chosen game version when the site offers several (web/kfx_versions.js),
   // else null: one engine next to the page with gamedata/.
   async function gameVersion() {
+    // kfx_versions.js comes after this script: wait until every page script has run.
+    await new Promise((r) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', r, { once: true }) : r()));
     const version = typeof Versions !== 'undefined' ? await Versions.ready.catch(() => null) : null;
     return version && !version.legacy ? version : null;
   }
@@ -327,7 +339,17 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
       if (!byId.has(id)) byId.set(id, { id, name, note, urls: [], bytes: 0, files: 0 });
       return byId.get(id);
     };
-    group('essentials', 'Essentials', 'The game, its menus and sounds, and the original campaign');
+    const ess = group('essentials', 'Essentials', 'The game, its menus and sounds, and the original campaign');
+    // The engine of this version (cached by Versions.cacheEngine(), not with the data).
+    const engine = new Set();
+    if (version) {
+      const [js, wasm, list] = ['keeperfx.js', 'keeperfx.wasm', 'manifest.json'].map((n) => new URL(n, version.base).href);
+      ess.urls.push([js, 0], [wasm, version.engineBytes || 0], [list, 0]);
+      ess.bytes += version.engineBytes || 0;
+      for (const u of [js, wasm, list]) engine.add(u);
+    }
+    // A content-addressed data list names one file under several paths: each
+    // download is counted (and fetched) once, in the first group that has it.
     const byUrl = new Map();
     for (const [rel, size, hash, parts] of manifest.files) {
       const id = kind(rel);
@@ -335,14 +357,16 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
       const g = group(id, camp || (id === 'maps' ? 'Free play and multiplayer maps' : 'Speech in other languages'),
         camp ? 'Campaign' : (id === 'maps' ? 'The levels outside the campaigns, for free play and skirmish' : 'For playing in another language'));
       const urls = fileUrls(base, rel, size, hash, parts, cas);
+      g.files++;
+      const main = fileUrl(base, rel, hash, cas).href;
+      if (byUrl.has(main) || byUrl.has(urls[0][0])) continue;
       g.urls.push(...urls);
       g.bytes += size;
-      g.files++;
-      byUrl.set(fileUrl(base, rel, hash, cas).href, { group: g, rel });
+      byUrl.set(main, { group: g, rel });
       for (const [u] of urls) byUrl.set(u, { group: g, rel });
     }
     const list = sortGroups([...byId.values()]);
-    groupsCache = { manifest, key, base, list, byId, byUrl, camps, total: list.reduce((n, g) => n + g.bytes, 0) };
+    groupsCache = { manifest, key, base, list, byId, byUrl, camps, engine, version, total: list.reduce((n, g) => n + g.bytes, 0) };
     nameCampaigns(groupsCache);
     return groupsCache;
   }
@@ -371,15 +395,41 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
     renderDialog();
   }
 
+  /** URLs of everything kept: game data, and the engines of game versions. */
   async function cachedUrls() {
-    const cache = await caches.open(DATA_CACHE);
-    return new Set((await cache.keys()).map((r) => r.url));
+    const keys = async (name) => ((await caches.has(name)) ? (await (await caches.open(name)).keys()).map((r) => r.url) : []);
+    return new Set([...await keys(DATA_CACHE), ...await keys(ENGINE_CACHE)]);
   }
 
   function groupStatus(g, have) {
     let done = 0;
-    for (const [u, n] of g.urls) if (have.has(u)) done += n;
-    return { done, total: g.bytes, complete: done >= g.bytes };
+    let missing = 0;
+    for (const [u, n] of g.urls) if (have.has(u)) done += n; else missing++;
+    return { done, total: g.bytes, complete: missing === 0 };
+  }
+
+  /** Data kept for other game versions (not in this version's list): {urls, bytes, known}.
+   * Sizes come from those versions' data lists where this browser still has them. */
+  async function otherVersionsData(gc) {
+    const cache = await caches.open(DATA_CACHE);
+    const urls = (await cache.keys()).map((r) => r.url).filter((u) => !gc.byUrl.has(u));
+    const sizes = new Map();
+    if (gc.version && urls.length) {
+      for (const url of Versions.otherManifestUrls()) {
+        try {
+          const other = await (await fetch(url)).json();
+          for (const [rel, size, hash, parts] of other.files) {
+            for (const [u, n] of fileUrls(gc.version.dataBase, rel, size, hash, parts, other.layout === 'cas')) sizes.set(u, n);
+          }
+        } catch (e) { /* not kept: sizes unknown */ }
+      }
+    }
+    let bytes = 0;
+    let known = 0;
+    for (const u of urls) if (sizes.has(u)) { bytes += sizes.get(u); known++; }
+    const engines = gc.version ? (await Versions.cachedEngines()).filter((e) => e.id !== gc.version.id) : [];
+    bytes += engines.reduce((n, e) => n + e.bytes, 0);
+    return { urls, bytes, known, engines };
   }
 
   // ---- Downloading ---------------------------------------------------------------------
@@ -452,12 +502,14 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
     const queue = [];
     try {
       const gc = await groups();
+      // This version's engine, so the page can start it offline.
+      if (gc.version) await Versions.cacheEngine();
       const have = await cachedUrls();
       const ids = dl.want.includes('everything') ? gc.list.map((g) => g.id) : dl.want;
       const seen = new Set();
       for (const id of ids) {
         for (const [u, n] of gc.byId.get(id)?.urls || []) {
-          if (!have.has(u) && !seen.has(u)) { seen.add(u); queue.push([u, n]); }
+          if (!have.has(u) && !seen.has(u) && !gc.engine.has(u)) { seen.add(u); queue.push([u, n]); }
         }
       }
       dl.total = queue.reduce((n, [, bytes]) => n + bytes, 0);
@@ -499,8 +551,16 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
     if (ids === 'all') {
       urls = (await cache.keys()).map((r) => r.url);
       dl.want = [];
+      await caches.delete(ENGINE_CACHE);
+    } else if (ids === 'other') {
+      // Data and engines kept for other game versions.
+      const other = await otherVersionsData(gc);
+      urls = other.urls;
+      const engines = await caches.open(ENGINE_CACHE);
+      const mine = new Set(gc.engine);
+      for (const req of await engines.keys()) if (!mine.has(req.url)) await engines.delete(req);
     } else {
-      urls = ids.flatMap((id) => (gc.byId.get(id)?.urls || []).map(([u]) => u));
+      urls = ids.flatMap((id) => (gc.byId.get(id)?.urls || []).map(([u]) => u)).filter((u) => !gc.engine.has(u));
       const want = dl.want.includes('everything') ? gc.list.map((g) => g.id) : dl.want;
       dl.want = want.filter((id) => !ids.includes(id));
     }
@@ -639,6 +699,10 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
         const essS = rows.get('essentials');
         const allDone = [...rows.values()].every((s) => s.complete);
         const doneBytes = [...rows.values()].reduce((n, s) => n + s.done, 0);
+        if (gc.version) {
+          off.append(h('p', { class: 'fine' }, 'For the game version this page runs, ', h('b', {}, gc.version.title),
+            '. When a newer one becomes the default, your next visit with a connection downloads only the files that changed.'));
+        }
         off.append(h('p', { class: `app-state${essS.complete ? ' ok' : ''}` },
           essS.complete
             ? (allDone ? 'Ready offline: everything is on this device.' : 'Ready for offline solo play: the essentials are on this device.')
@@ -674,6 +738,20 @@ var Offline = (() => { // var: the loader and site scripts reach it as window.Of
               wanted ? 'Queued' : 'Download')));
         }
         off.append(more);
+        // Kept for other game versions (switching back, older replays and lobbies).
+        if (gc.version) {
+          const other = await otherVersionsData(gc);
+          if (token !== renderToken) return;
+          const n = other.urls.length + other.engines.length;
+          if (n) {
+            const unknown = other.urls.length - other.known;
+            off.append(h('div', { class: 'dl-row' },
+              h('div', { class: 'dl-name' }, h('b', {}, 'Other game versions'),
+                h('small', {}, `Engines and files of versions you used lately${other.engines.length ? ` (${other.engines.map((e) => e.title).join(', ')})` : ''}`)),
+              h('span', { class: 'dl-size' }, unknown ? `${mb(other.bytes)} + ${unknown} files` : mb(other.bytes)),
+              h('button', { type: 'button', class: 'btn small', disabled: dl.active, onclick: () => remove('other') }, 'Remove')));
+          }
+        }
         // Storage.
         const est = await navigator.storage?.estimate?.().catch(() => null);
         const persisted = await navigator.storage?.persisted?.().catch(() => false);
