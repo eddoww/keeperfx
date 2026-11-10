@@ -43,12 +43,17 @@ extern int kfx_net_send_text(const char *text);
 extern int kfx_net_next(void *buf, int cap);
 extern int kfx_net_next_text(char *buf, int cap);
 extern void kfx_net_hosting(const char *code);
+extern int kfx_net_rtt(int *variance);
 
 // Frame ops, see web/server/src/room.js.
 enum {
     OP_SEND = 1, OP_DATA = 1, OP_BROADCAST = 2, OP_ACCEPT = 3, OP_REJECT = 4, OP_KICK = 5,
     OP_CONNECT = 6, OP_DISCONNECT = 7, OP_ACCEPTED = 8, OP_CLOSING = 9,
-    OP_LINK_DOWN = 10, OP_LINK_UP = 11,
+    OP_LINK_DOWN = 10, OP_LINK_UP = 11, OP_HOST_DOWN = 12, OP_HOST_UP = 13,
+    // PEER_RTT(conn, ms u16, variance u16): the other end's round trip to the
+    // relay (each page measures its own, web/kfx_web.js); conn 0 is the host's.
+    // Relays from before it never send it; engines from before it ignore it.
+    OP_PEER_RTT = 14,
 };
 #define RELAY_HOST_LEFT 255
 #define MAX_RELAY_CONN 256
@@ -73,6 +78,10 @@ static uint16_t conn_user[MAX_RELAY_CONN];
 static uint8_t user_conn[MAX_NET_CONNECTIONS];
 // Host side: when a joiner's socket dropped (LINK_DOWN), 0 while connected.
 static TbClockMSec conn_down_at[MAX_RELAY_CONN];
+// Round trips to the relay reported by the other end (PEER_RTT), 0: unknown.
+// Host side per joined connection; a joiner keeps the host's in slot 0.
+static uint16_t conn_rtt[MAX_RELAY_CONN];
+static uint16_t conn_rtt_var[MAX_RELAY_CONN];
 // Incoming messages per source user.
 static struct QueuedMsg *queue_head[MAX_NET_CONNECTIONS];
 static struct QueuedMsg *queue_tail[MAX_NET_CONNECTIONS];
@@ -120,6 +129,8 @@ static void reset_state(void)
     for (int c = 0; c < MAX_RELAY_CONN; c++) {
         conn_user[c] = NO_USER;
         conn_down_at[c] = 0;
+        conn_rtt[c] = 0;
+        conn_rtt_var[c] = 0;
     }
     room_code[0] = '\0';
     server_dropped = false;
@@ -152,6 +163,15 @@ static void client_lost_server(void)
     report_drop(SERVER_ID, NETDROP_DISCONNECT);
 }
 
+static void note_peer_rtt(const unsigned char *f, int len)
+{
+    if (len < 6)
+        return;
+    int conn = f[1];
+    conn_rtt[conn] = (uint16_t)(f[2] | (f[3] << 8));
+    conn_rtt_var[conn] = (uint16_t)(f[4] | (f[5] << 8));
+}
+
 static void handle_host_frame(const unsigned char *f, int len,
     enum NetJoinRejection (*new_user)(NetUserId *assigned_id, enum NetConnectionRole role))
 {
@@ -164,6 +184,8 @@ static void handle_host_frame(const unsigned char *f, int len,
         if (reason == NetJoin_Accepted && id < MAX_NET_CONNECTIONS) {
             conn_user[conn] = id;
             conn_down_at[conn] = 0;
+            conn_rtt[conn] = 0;
+            conn_rtt_var[conn] = 0;
             user_conn[id] = (uint8_t)conn;
             LbNetLog("Web: connection %d accepted as user %d\n", conn, (int)id);
             send_frame(OP_ACCEPT, conn, NULL, 0);
@@ -200,6 +222,9 @@ static void handle_host_frame(const unsigned char *f, int len,
             conn_down_at[conn] = 0;
             LbNetLog("Web: user %d reconnected\n", (int)conn_user[conn]);
         }
+        break;
+    case OP_PEER_RTT:
+        note_peer_rtt(f, len);
         break;
     default:
         break;
@@ -241,6 +266,9 @@ static void handle_client_frame(const unsigned char *f, int len)
     case OP_CLOSING:
         if (len > 2 && f[2] < NetJoin_Count)
             net_join_rejection = (enum NetJoinRejection)f[2];
+        break;
+    case OP_PEER_RTT:
+        note_peer_rtt(f, len);
         break;
     default:
         break;
@@ -500,6 +528,32 @@ static void web_reassign_user(NetUserId old_id, NetUserId new_id)
     user_conn[old_id] = 0;
     if (conn)
         conn_user[conn] = new_id;
+}
+
+/**
+ * Round trip between this game and user `id`'s, in ms; 0 if not known.
+ * Everything goes through the relay, so it is the sum of both ends' round
+ * trips to it: each page measures its own and the relay passes it on
+ * (PEER_RTT). A host gets it for each joiner; a joiner only for the host,
+ * which is all it talks to (as with ENet).
+ */
+uint32_t web_net_ping(int id, uint32_t *variance)
+{
+    int own_var = 0;
+    int own = kfx_net_rtt(&own_var);
+    int conn = -1;
+    if (role == WEB_CLIENT && id == SERVER_ID)
+        conn = 0;
+    else if (role == WEB_HOST && id >= 0 && id < MAX_NET_CONNECTIONS && user_conn[id])
+        conn = user_conn[id];
+    if (conn < 0 || own <= 0 || conn_rtt[conn] == 0) {
+        if (variance)
+            *variance = 0;
+        return 0;
+    }
+    if (variance)
+        *variance = (uint32_t)own_var + conn_rtt_var[conn];
+    return (uint32_t)own + conn_rtt[conn];
 }
 
 const char *web_net_room_code(void)

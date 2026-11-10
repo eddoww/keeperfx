@@ -12,6 +12,15 @@
 //                    LINK_DOWN(conn) LINK_UP(conn)
 //   relay  -> joiner DATA(0, data) ACCEPTED(0) CLOSING(0, reason u8)
 //                    HOST_DOWN(0, seconds u8) HOST_UP(0)
+//   relay  -> both   PEER_RTT(conn, ms u16, variance u16)  (conn 0: the host's)
+//
+// Round trips: each page measures its own round trip to the relay (a "ping"
+// answered by the runtime) and reports it as {"type": "rtt", "ms", "var"}.
+// The relay passes a joiner's to the host (PEER_RTT with the joiner's conn)
+// and the host's to the joiners (conn 0), so each game knows the round trip
+// to the other through the relay (NetWebSP.c, web_net_ping). Only pages that
+// report their own get PEER_RTT: engines from before it neither send nor
+// expect it.
 //
 // A refused or kicked joiner gets CLOSING with the game's NetJoinRejection,
 // then its socket is closed (code 4000 + reason). When the host leaves, the
@@ -54,7 +63,7 @@ import { DurableObject } from 'cloudflare:workers';
 export const OP = {
   SEND: 1, BROADCAST: 2, ACCEPT: 3, REJECT: 4, KICK: 5,
   DATA: 1, CONNECT: 6, DISCONNECT: 7, ACCEPTED: 8, CLOSING: 9,
-  LINK_DOWN: 10, LINK_UP: 11, HOST_DOWN: 12, HOST_UP: 13,
+  LINK_DOWN: 10, LINK_UP: 11, HOST_DOWN: 12, HOST_UP: 13, PEER_RTT: 14,
 };
 const HOST_LEFT = 255;
 const MAX_CONN = 250;
@@ -106,6 +115,9 @@ export class Room extends DurableObject {
     // sockets' attachments after hibernation, without the unacknowledged frames.
     this.links = new Map();
     this.lastSilenceCheck = 0;
+    // Round trips reported by the pages (memory only: they report again every few seconds).
+    this.hostRtt = null;          // [ms, var]
+    this.peerRtts = new Map();    // conn -> [ms, var], joiners that report theirs
     // Answered by the runtime itself: keeps idle pages' connections checked for free.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
@@ -444,6 +456,10 @@ export class Room extends DurableObject {
         ws.serializeAttachment({ ...info, bye: true });
         return;
       }
+      if (message.startsWith('{"type":"rtt"')) {
+        this.reportRtt(info, message);
+        return;
+      }
       if (info.host) await this.hostText(info, message);
       return;
     }
@@ -490,6 +506,7 @@ export class Room extends DurableObject {
           peer.serializeAttachment({ ...peer.deserializeAttachment(), bye: true });
           peer.close(4000 + reason, op === OP.KICK ? 'dropped' : 'rejected');
         }
+        this.peerRtts.delete(conn);
         // A dropped player the host gave up waiting for: their seat is free.
         for (const link of [...this.links.values()]) {
           if (!link.host && link.conn === conn) await this.forgetLink(link);
@@ -501,6 +518,33 @@ export class Room extends DurableObject {
       }
       default:
         break;
+    }
+  }
+
+  /** A page's round trip to the relay: passed to the other end (see "Round trips"). */
+  reportRtt(info, text) {
+    let msg;
+    try { msg = JSON.parse(text); } catch (e) { return; }
+    const ms = Math.max(1, Math.min(65535, Math.round(Number(msg.ms) || 0)));
+    const v = Math.max(0, Math.min(65535, Math.round(Number(msg.var) || 0)));
+    if (!Number(msg.ms)) return;
+    const rtt = (conn, r) => frame(OP.PEER_RTT, conn, new Uint8Array([r[0] & 255, r[0] >> 8, r[1] & 255, r[1] >> 8]));
+    if (info.host) {
+      const first = !this.hostRtt;
+      this.hostRtt = [ms, v];
+      for (const conn of this.peerRtts.keys()) {
+        const peer = this.peer(conn);
+        if (peer && peer.deserializeAttachment().accepted) this.sendTo(peer, rtt(0, this.hostRtt));
+      }
+      // A host that just started reporting gets the joiners' it missed.
+      if (first) for (const [conn, r] of this.peerRtts) this.toHost(rtt(conn, r));
+    } else if (info.accepted) {
+      const first = !this.peerRtts.has(info.conn);
+      this.peerRtts.set(info.conn, [ms, v]);
+      if (this.hostRtt) {
+        this.toHost(rtt(info.conn, [ms, v]));
+        if (first) this.toPeer(info.conn, rtt(0, this.hostRtt));
+      }
     }
   }
 
@@ -526,6 +570,7 @@ export class Room extends DurableObject {
     if (info.host) {
       await this.endLobby(info.code);
     } else {
+      this.peerRtts.delete(info.conn);
       this.toHost(frame(OP.DISCONNECT, info.conn));
     }
   }
