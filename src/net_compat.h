@@ -29,8 +29,8 @@
  *         loaded values or defaults);
  *       - a changed default in the shipped rules/configs does NOT need a
  *         bump: data files are compared at level start (net_filecheck.c);
- *       - the guard: tools/netbench/simcompat.sh plays a recorded game with
- *         two builds; if they desync, the simulation changed.
+ *       - the guard: two builds that play a game against each other must not
+ *         desync (docs/multiplayer-compatibility.md).
  *
  *     Optional features are capability flags (NetCap_*): both sides announce
  *     theirs and use only what both have, so a newer build can still play
