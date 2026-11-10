@@ -2,7 +2,7 @@
    game, the Saves dialog and the question about this browser's saves. */
 
 .cloud-status { margin-left: auto; gap: 7px; font-weight: 500; color: var(--faint); }
-.cloud-status + .stage-tools { margin-left: 0; }
+.cloud-status:not([hidden]) + .stage-tools { margin-left: 0; }
 .cloud-status .dot { width: 7px; height: 7px; }
 .cloud-status .icon { width: 15px; height: 15px; }
 .cloud-status[data-state="synced"] { color: var(--muted); }
