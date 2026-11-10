@@ -1,7 +1,7 @@
 # WebBundle.cmake - assembles the browser build into <build>/site/, ready to
 # serve as static files (see docs/web.md).
 #
-#   web-site target (all) -> site/index.html, site.css, kfx_*.js, fonts/, keeperfx.js/.wasm
+#   web-site target (all) -> site/index.html, site.css, kfx_*.js, fonts/, vendor/, keeperfx.js/.wasm
 #   web-gamedata target   -> site/gamedata/ (+ manifest.json) from the dirs in
 #                            -DKFX_WEB_GAMEDATA_SRC="<complete release>;<pkg>",
 #                            later dirs laid over earlier ones
@@ -22,6 +22,7 @@ add_custom_target(web-site ALL
         "${CMAKE_SOURCE_DIR}/web/kfx_loader.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_account.js"
         "${CMAKE_SOURCE_DIR}/web/kfx_site.js"
+        "${CMAKE_SOURCE_DIR}/web/kfx_workshop.js"
         "${CMAKE_SOURCE_DIR}/web/site.css"
         "${CMAKE_SOURCE_DIR}/web/_headers"
         "${CMAKE_SOURCE_DIR}/web/404.html"
@@ -29,6 +30,8 @@ add_custom_target(web-site ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/res/keeperfx_icon256-24bpp.png" "${KFX_WEB_SITE}/icon.png"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/web/fonts" "${KFX_WEB_SITE}/fonts"
+    # libarchive.js unpacks workshop downloads (web/kfx_workshop.js), loaded on demand.
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/web/vendor" "${KFX_WEB_SITE}/vendor"
     # Make the page request this exact keeperfx.js/.wasm pair (cache safety).
     COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/web/stamp-version.py" "${KFX_WEB_SITE}"
     DEPENDS keeperfx

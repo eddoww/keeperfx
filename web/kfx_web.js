@@ -74,6 +74,10 @@ addToLibrary({
     if (kfxNet.ws) { try { kfxNet.ws.close(); } catch (e) {} }
     const path = UTF8ToString(pathPtr);
     const url = new URL(`/api/${path}`, location.href);
+    // Joining from the game's own lobby list: the page checks the lobby's
+    // workshop maps (web/kfx_workshop.js).
+    const joining = path.match(/^rooms\/([A-Za-z0-9]+)/);
+    if (joining && joining[1] !== 'host') Module.kfxOnJoining?.(joining[1]);
     // The page's host options (unlisted lobby), see web/kfx_loader.js.
     if (path === 'rooms/host' && Module.kfxHostQuery) url.search = Module.kfxHostQuery;
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';

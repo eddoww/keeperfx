@@ -1,4 +1,4 @@
-// The site around the game: pages (home, lobbies, Hall of Fame, guide), the
+// The site around the game: pages (home, lobbies, workshop, Hall of Fame, guide), the
 // sign-in dialog, the tavern chat, and sending level results to the records.
 // The game itself is started by web/kfx_loader.js (window.KFX).
 //
@@ -101,7 +101,7 @@ const Site = (() => {
 
   // ---- Views ------------------------------------------------------------------
 
-  const VIEWS = ['home', 'play', 'lobbies', 'fame', 'guide'];
+  const VIEWS = ['home', 'play', 'lobbies', 'workshop', 'fame', 'guide'];
   const OLD_ANCHORS = { how: 'guide', online: 'guide', controls: 'guide', faq: 'guide', credits: 'home' };
   let current = { view: '', parts: [] };
 
@@ -114,7 +114,7 @@ const Site = (() => {
     if (OLD_ANCHORS[view]) { parts.unshift(view); view = OLD_ANCHORS[view]; }
     if (view === 'keeper') { parts.unshift('keeper'); view = 'fame'; }
     if (!VIEWS.includes(view)) view = 'home';
-    if (!online && (view === 'lobbies' || view === 'fame')) view = 'home';
+    if (!online && (view === 'lobbies' || view === 'fame' || view === 'workshop')) view = 'home';
     return { view, parts };
   }
 
@@ -138,6 +138,7 @@ const Site = (() => {
     if (next.view === 'home') refreshHome();
     if (next.view === 'lobbies') { refreshLobbies(); scrollTavern(); }
     if (next.view === 'fame') renderFame(next.parts);
+    if (next.view === 'workshop' && typeof Workshop !== 'undefined') Workshop.render(next.parts); // web/kfx_workshop.js
     if (next.view === 'guide' && next.parts[0]) $(next.parts[0])?.scrollIntoView();
     if (next.view === 'play') window.dispatchEvent(new Event('resize')); // the stage just got a size
     Embers.update();
@@ -328,9 +329,21 @@ const Site = (() => {
     KFX.start(choice);
   }
 
-  function openHost() {
+  // A workshop map to host with (web/kfx_workshop.js): {label, players, args, workshop}.
+  let hostMap = null;
+
+  function openHost(map) {
+    hostMap = map && map.args ? map : null;
     const who = keeperName() || 'Keeper';
     $('host-name').value = store.get('kfx.lobbyName', '') || `${who}'s dungeon`;
+    $('host-map').hidden = !hostMap;
+    $('host-plain-note').hidden = !!hostMap;
+    if (hostMap) {
+      $('host-map-name').textContent = hostMap.label;
+      const select = $('host-wait');
+      select.replaceChildren(...Array.from({ length: hostMap.players - 1 }, (_, i) => h('option', { value: i + 2 }, `${i + 2} keepers`)));
+      select.value = String(hostMap.players);
+    }
     $('host-dialog').showModal();
     $('host-name').select();
   }
@@ -380,6 +393,8 @@ const Site = (() => {
       h('span', {}, icon('users'), `${players.length}/${max} keepers`),
     ];
     if (l.mapName) meta.push(h('span', {}, icon('map'), l.mapName));
+    const workshop = typeof Workshop !== 'undefined' && Workshop.lobbyNote(l);
+    if (workshop) meta.push(workshop);
     if (l.spectatorsEnabled) meta.push(h('span', {}, icon('eye'), `${l.spectatorCount || 0} watching`));
     if (l.hostAccount) meta.push(h('span', {}, icon('crown'), 'hosted by ', keeperLink(l.hostAccount)));
     if (l.createdAt) meta.push(h('span', {}, icon('clock'), `opened ${ago(l.createdAt * 1000)}`));
@@ -854,7 +869,13 @@ const Site = (() => {
     const lobbyName = $('host-name').value.replace(/["\\\u0000-\u001f]/g, '').trim().slice(0, 40);
     store.set('kfx.lobbyName', lobbyName);
     $('host-dialog').close();
-    start({ mode: 'host', lobbyName, unlisted: ev.target.visibility.value === 'unlisted' });
+    const choice = { mode: 'host', lobbyName, unlisted: ev.target.visibility.value === 'unlisted' };
+    if (hostMap) {
+      // The game starts the map by itself once this many keepers are in the lobby.
+      Object.assign(choice, { args: [...hostMap.args, '-waitusers', String(Number($('host-wait').value) || 2)],
+        workshop: hostMap.workshop, label: hostMap.label });
+    }
+    start(choice);
   });
   $('keeper-name').addEventListener('change', () => { if (!Account.user && keeperName()) store.set('kfx.name', keeperName()); });
   // Clicking the dark area around a dialog closes it.
@@ -864,5 +885,8 @@ const Site = (() => {
 
   init();
 
-  return { config, toast, start, join, openHost, openAccount, keeperName, codeOf, get online() { return online; } };
+  return {
+    config, toast, start, join, openHost, openAccount, keeperName, codeOf, route, h, icon,
+    get online() { return online; },
+  };
 })();

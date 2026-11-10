@@ -7,6 +7,8 @@
 //              (see web/kfx_web.js and src/kfx/platform/web/WebFileSystem.c).
 //   /persist   IndexedDB-backed, survives reloads. Holds the player's DK files
 //              (dk/), music, saves, replays and screenshots; /kfx links to them.
+// Workshop items the player installed (web/kfx_workshop.js) keep their files
+// in an IndexedDB of their own and appear in /kfx as lazy placeholders too.
 'use strict';
 
 // From docs/files_required_from_original_dk.txt: the only files KeeperFX
@@ -82,6 +84,7 @@ function openCache() {
 // ask for the same file.
 const inFlight = new Map();
 function fetchData(url) {
+  if (url.startsWith(Workshop.URL_PREFIX)) return Workshop.readFile(url); // installed workshop item
   let p = inFlight.get(url);
   if (!p) {
     p = fetchDataOnce(url).finally(() => inFlight.delete(url));
@@ -170,6 +173,19 @@ function createPlaceholders(manifest, dataBase) {
   }
   Module.kfxLazyPending = count;
   pruneCache(valid);
+}
+
+// The game's own data files by path, for the workshop installer (it reads
+// the map pack files it bases its own on, and must not replace any of them).
+let resolveGameFiles;
+const gameFiles = new Promise((resolve) => { resolveGameFiles = resolve; });
+function indexGameFiles(manifest, dataBase) {
+  const base = new URL(dataBase || 'gamedata/', location.href);
+  const urls = new Map(manifest.files.map(([rel, , hash]) => [rel.toLowerCase(), new URL(`${encodeURI(rel)}?v=${hash}`, base).href]));
+  resolveGameFiles({
+    has: (rel) => urls.has(rel.toLowerCase()),
+    read: (rel) => (urls.has(rel.toLowerCase()) ? fetchData(urls.get(rel.toLowerCase())) : Promise.reject(new Error(`No game file ${rel}`))),
+  });
 }
 
 // Download a lazy placeholder now (for files the loader itself edits).
@@ -477,25 +493,38 @@ function offerNewScreenshots() {
   }
 }
 
-let syncing = false;
-async function persistNow() {
-  if (syncing || typeof FS === 'undefined') return;
-  syncing = true;
-  try { await syncfs(false); } catch (e) { console.warn('Saving to browser storage failed', e); }
-  syncing = false;
+let syncing = null;
+function persistNow() {
+  if (typeof FS === 'undefined' || !fsReady) return Promise.resolve();
+  if (syncing) return syncing;
+  syncing = syncfs(false)
+    .catch((e) => { console.warn('Saving to browser storage failed', e); })
+    .finally(() => { syncing = null; });
+  return syncing;
 }
+let fsReady = false;
 
 // What the rest of the page (web/kfx_site.js) sees of the game.
 //   state: loading | setup (waiting for DK files) | ready (start screen) |
 //          starting | running | exited | failed
 //   start(choice): start the game as {mode: 'play' | 'host' | 'join', code,
-//          spectate, lobbyName, unlisted}. Before the start screen it is kept
-//          for then; once a game runs it restarts the page into the new one.
+//          spectate, lobbyName, unlisted, args, workshop, label}. Before the
+//          start screen it is kept for then; once a game runs it restarts the
+//          page into the new one. `args`: extra command line arguments (a
+//          workshop map: -campaign ... -level ...); `workshop`: item ids a
+//          hosted lobby offers (web/kfx_workshop.js); `label`: what is starting.
+//   gameFiles: promise of {has(rel), read(rel)} over the game's data files.
+//   mounted: true once /kfx is set up (workshop installs can show up there);
+//   started: true once the game itself runs (it has read its map packs).
 // Changes are announced as a `kfx:state` event on document; `kfx:hosting`
 // (lobby code or null) and `kfx:result` (a level's end) come from the game.
 const START_KEY = 'kfx.start';
 var KFX = { // var: the site script reaches it as window.KFX
   state: 'loading',
+  gameFiles,
+  mounted: false,
+  started: false,
+  choice: null,
   pending: null,
   resolveChoice: null,
   start(choice) {
@@ -537,6 +566,16 @@ function takeStoredChoice() {
   }
 }
 
+// Extra command line arguments from a start choice: plain words only.
+function choiceArgs(choice) {
+  try {
+    const args = Array.isArray(choice.args) ? choice.args.map(String) : [];
+    return args.length <= 12 && args.every((a) => /^[-\w./]{1,80}$/.test(a)) ? args : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 async function boot() {
   setStatus('Opening browser storage…');
   FS.mkdir('/persist');
@@ -548,7 +587,11 @@ async function boot() {
   const manifest = await (await fetch('gamedata/manifest.json', { cache: 'no-cache' })).json();
   FS.mkdirTree(GAME_DIR);
   createPlaceholders(manifest, site.dataUrl);
+  indexGameFiles(manifest, site.dataUrl);
+  fsReady = true;
   prefetch(manifest.prefetch || []); // in the background
+  try { await Workshop.mountAll(); } catch (e) { console.warn('Workshop items could not be loaded', e); }
+  KFX.mounted = true;
 
   const dkUrl = params.get('dk') || site.dkUrl;
   if (!haveDkFiles() && dkUrl) {
@@ -562,6 +605,13 @@ async function boot() {
   await Account.ready;
   const choice = takeStoredChoice() || KFX.pending
     || (params.has('autostart') ? startChoiceFromUrl() : await waitForStartChoice());
+  KFX.choice = choice;
+  if (choice.mode === 'join') {
+    // The lobby may use workshop maps: install them first, as the host has them.
+    setState('starting');
+    showPanel('loading');
+    try { await Workshop.prepareJoin(choice.code, setStatus); } catch (e) { console.warn(e); Site.toast(e.message, { bad: true, stage: true, ms: 9000 }); }
+  }
   setState('starting');
   showPanel(null);
   applyNetworkSettings(choice);
@@ -580,15 +630,21 @@ async function boot() {
   fixPointerEnter($('canvas'));
   FS.chdir(GAME_DIR);
   const args = (params.get('args') || '').split(' ').filter(Boolean);
+  args.push(...choiceArgs(choice));
   if (choice.mode === 'join') {
     if (choice.spectate) args.push('-spectate');
     args.push('-connect', choice.code);
     showLobbyCode(choice.code);
   } else if (choice.mode === 'host') {
-    Module.kfxHostQuery = choice.unlisted ? 'unlisted=1' : '';
+    const query = new URLSearchParams();
+    if (choice.unlisted) query.set('unlisted', '1');
+    const offered = Workshop.hostOffer(choice);
+    if (offered) query.set('workshop', offered);
+    Module.kfxHostQuery = query.toString();
     args.push('-server');
   }
   setState('running');
+  KFX.started = true;
   Module.callMain(args);
 }
 
@@ -620,6 +676,8 @@ async function showInvitation(code) {
     const players = Array.isArray(lobby.players) ? lobby.players : [];
     info.textContent = `${lobby.name || 'Lobby'} · ${players.length}/${lobby.maxPlayers || 4} keepers`
       + `${players.length ? ` (${players.join(', ')})` : ''}${lobby.phase && lobby.phase !== 'Lobby' ? ' · game in progress' : ''}`;
+    const workshop = Workshop.lobbyNote(lobby); // maps it uses, installed on joining
+    if (workshop) info.append(document.createElement('br'), workshop);
   } catch (e) { /* the code alone will do */ }
 }
 
@@ -708,6 +766,10 @@ function showExit(text) {
   if (document.fullscreenElement) document.exitFullscreen();
   document.body.classList.remove('theater');
   showLobbyCode(null);
+  // A workshop map started by itself (-level): the game closes when it ends.
+  const singleMap = KFX.choice && Array.isArray(KFX.choice.args) && KFX.choice.args.includes('-level');
+  if (singleMap && /closed/.test(text)) text = `${KFX.choice.label || 'The map'} is over.`;
+  $('exit-workshop').hidden = !singleMap;
   $('exit-text').textContent = text;
   showPanel('exited');
   setState('exited');
@@ -730,6 +792,7 @@ var Module = {
   thisProgram: `${GAME_DIR}/keeperfx`,
   kfxFetchData: fetchData,
   kfxOnHosting: onHosting,
+  kfxOnJoining: (code) => Workshop.checkJoin(code),
   kfxOnLevelResult: (result) => document.dispatchEvent(new CustomEvent('kfx:result', { detail: result })),
   print: (text) => console.log(text),
   printErr: (text) => console.warn(text),

@@ -51,6 +51,7 @@
   <nav class="nav" aria-label="Site">
     <a href="#/play" data-route="play"><svg class="icon"><use href="#i-play"/></svg>Play</a>
     <a href="#/lobbies" data-route="lobbies" data-online><svg class="icon"><use href="#i-users"/></svg>Lobbies<span class="badge" id="nav-lobby-count" hidden></span></a>
+    <a href="#/workshop" data-route="workshop" data-online><svg class="icon"><use href="#i-map"/></svg>Workshop</a>
     <a href="#/fame" data-route="fame" data-online><svg class="icon"><use href="#i-trophy"/></svg><span class="long">Hall of&nbsp;</span>Fame</a>
     <a href="#/guide" data-route="guide"><svg class="icon"><use href="#i-book"/></svg>Guide</a>
   </nav>
@@ -219,6 +220,7 @@
           <h2 id="exit-text">KeeperFX has closed.</h2>
           <div class="row">
             <button type="button" class="btn primary" onclick="location.reload()">Start again</button>
+            <a class="btn" href="#/workshop" id="exit-workshop" hidden>Back to the Workshop</a>
             <button type="button" class="btn" onclick="downloadLog()">Download log</button>
           </div>
         </section>
@@ -276,6 +278,21 @@
       <p class="fine tavern-note" id="tavern-note"></p>
     </aside>
   </div>
+</section>
+
+<!-- =============================== Workshop =============================== -->
+<section class="view" id="view-workshop" hidden>
+  <div class="page-head">
+    <div>
+      <h1>Workshop</h1>
+      <p class="sub">Maps, map packs and campaigns made by the community, from the
+        <a href="https://keeperfx.net/workshop" target="_blank" rel="noopener">KeeperFX Workshop</a>.
+        Add one to your game and play it right away, alone or online.</p>
+    </div>
+  </div>
+  <div id="workshop-body" class="workshop-body"></div>
+  <p class="fine ws-foot">Workshop items are made by their authors and hosted on keeperfx.net; this site fetches them from
+    there for you and credits each one. Ratings, comments and new uploads live on keeperfx.net.</p>
 </section>
 
 <!-- ============================= Hall of Fame ============================= -->
@@ -374,6 +391,13 @@
         its own to give away. They stay on your computer: the page reads them from the folder you choose and
         never uploads them.</p>
     </details>
+    <details data-online>
+      <summary>Can I play custom maps and campaigns?</summary>
+      <p>Yes: the <a href="#/workshop">Workshop</a> page lists the community's maps, map packs and campaigns from the
+        <a href="https://keeperfx.net/workshop" target="_blank" rel="noopener">KeeperFX Workshop</a>. <strong>Add to my
+        game</strong> keeps one in this browser and <strong>Play</strong> starts it. Multiplayer maps can be hosted online;
+        players who join get the same map installed for them. Mods, creatures and tools still need desktop KeeperFX.</p>
+    </details>
     <details>
       <summary>How does the Hall of Fame count?</summary>
       <p>When you win a level while signed in, your game reports the score, the time and the level statistics.
@@ -434,7 +458,13 @@
       <label class="option"><input type="radio" name="visibility" value="unlisted">
         <span><b><svg class="icon"><use href="#i-lock"/></svg>Invite only</b><small>Not listed; only your code or link gets in.</small></span></label>
     </fieldset>
-    <p class="fine">You pick the map, computer players and other settings in the game's lobby screen.</p>
+    <div id="host-map" class="host-map" hidden>
+      <p><svg class="icon"><use href="#i-map"/></svg>Map: <b id="host-map-name"></b></p>
+      <label class="field">Start the game when the lobby has
+        <select id="host-wait" class="select"></select></label>
+    </div>
+    <p class="fine" id="host-plain-note">You pick the map, computer players and other settings in the game's lobby screen.
+      Workshop multiplayer maps you added are offered to joiners automatically.</p>
     <div class="row end">
       <button type="submit" class="btn primary"><svg class="icon"><use href="#i-crown"/></svg>Open lobby</button>
     </div>
@@ -445,6 +475,7 @@
 
 <script src="kfx_account.js"></script>
 <script src="kfx_site.js"></script>
+<script src="kfx_workshop.js"></script>
 <script src="kfx_loader.js"></script>
 <script src="keeperfx.js" async></script>
 </body>
