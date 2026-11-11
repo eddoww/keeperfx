@@ -42,6 +42,10 @@ void userdirs_migrate(void);
 const char *userdirs_get(enum UserDirKind kind);
 /** True when the user's files are kept in the game folder. */
 TbBool userdirs_is_portable(void);
+/** True when the user's data folder is not the game folder. It is then searched before the game folder for game
+ *  files, so players can add maps, campaigns, mods and the original game's files there. */
+TbBool userdirs_has_user_layer(void);
+
 /** dst = folder of the kind + "/" + fname. Returns dst, which is empty if it doesn't fit. */
 char *userdirs_path(char *dst, size_t dst_size, enum UserDirKind kind, const char *fname);
 /** The file of the player's options and keys: settings.toml in the config folder, or save/settings.toml in a

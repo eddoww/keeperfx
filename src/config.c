@@ -1428,10 +1428,11 @@ static char *build_file_path(char *dst, size_t dst_size, const char *mdir, const
 
 /**
  * Internal helper: Resolve a file path with bounds checking to prevent buffer overflow.
- * The files the game writes (saves, screenshots, replays) are in the user's data folder, the others in the game
- * folder. Returns an empty dst if the constructed path would exceed dst_size.
+ * The files the game writes (saves, screenshots, replays) are in the user's data folder. Other files are looked
+ * for there first, when it isn't the game folder, and then in the game folder; see FileLayer.
+ * Returns an empty dst if the constructed path would exceed dst_size.
  */
-static char *_resolve_file_path_internal(char *dst, size_t dst_size,
+static char *_resolve_file_path_internal(char *dst, size_t dst_size, enum FileLayer layer,
                                           const char *mod_dir, short fgroup,
                                           const char *fname)
 {
@@ -1444,7 +1445,56 @@ static char *_resolve_file_path_internal(char *dst, size_t dst_size,
   }
   if (file_group_is_users(fgroup))
       return build_file_path(dst, dst_size, userdirs_get(UsrDir_Data), mod_dir, sdir, fname);
-  return build_file_path(dst, dst_size, game_root, mod_dir, sdir, fname);
+  if (!userdirs_has_user_layer() || (layer == FLayer_Game))
+      return build_file_path(dst, dst_size, game_root, mod_dir, sdir, fname);
+  if (layer == FLayer_User)
+      return build_file_path(dst, dst_size, userdirs_get(UsrDir_Data), mod_dir, sdir, fname);
+  // FLayer_Any. A pattern names no one file: callers that list files use find_first_file_in_group().
+  if ((fname != NULL) && (strpbrk(fname, "*?") != NULL))
+      return build_file_path(dst, dst_size, game_root, mod_dir, sdir, fname);
+  char user_path[FULLPATH_SIZE];
+  build_file_path(user_path, sizeof(user_path), userdirs_get(UsrDir_Data), mod_dir, sdir, fname);
+  build_file_path(dst, dst_size, game_root, mod_dir, sdir, fname);
+  if ((user_path[0] == '\0') || !LbFileExists(user_path))
+      return dst;
+  // A folder that is in both places is named by its game path, which the existing callers expect to hold the
+  // game's files; only a folder that the user alone has (a campaign or mod they added) is named by its user path.
+  if (((fname == NULL) || (fname[0] == '\0')) && (dst[0] != '\0') && LbFileExists(dst))
+      return dst;
+  if (strlen(user_path) >= dst_size) {
+      ERRORMSG("Path construction would overflow: %s", user_path);
+      dst[0] = '\0';
+      return dst;
+  }
+  strcpy(dst, user_path);
+  return dst;
+}
+
+char *prepare_file_path_buf_in(char *dst, int dst_size, enum FileLayer layer, const char *mod_dir, short fgroup, const char *fname)
+{
+  return _resolve_file_path_internal(dst, dst_size, layer, mod_dir, fgroup, fname);
+}
+
+struct TbFileFind *find_first_file_in_group(const char *mod_dir, short fgroup, const char *pattern, struct TbFileEntry *fentry)
+{
+  char user_spec[FULLPATH_SIZE];
+  char game_spec[FULLPATH_SIZE];
+  // For the groups the game writes, this is the user's folder.
+  _resolve_file_path_internal(game_spec, sizeof(game_spec), FLayer_Game, mod_dir, fgroup, pattern);
+  if (!userdirs_has_user_layer() || file_group_is_users(fgroup))
+  {
+      if (game_spec[0] == '\0')
+          return NULL;
+      return LbFileFindFirst(game_spec, fentry);
+  }
+  _resolve_file_path_internal(user_spec, sizeof(user_spec), FLayer_User, mod_dir, fgroup, pattern);
+  const char *specs[2];
+  int count = 0;
+  if (user_spec[0] != '\0')
+      specs[count++] = user_spec;
+  if (game_spec[0] != '\0')
+      specs[count++] = game_spec;
+  return LbFileFindFirstInAll(specs, count, fentry);
 }
 
 TbBool load_cached_file(short fgroup, const char *fname, void *buffer, unsigned long len)
@@ -1486,18 +1536,18 @@ char *prepare_cache_file_path(char *dst, int dst_size, short fgroup, const char 
 char *get_game_file_path(short fgroup, const char *fname)
 {
   static char ffullpath[FULLPATH_SIZE];
-  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), NULL, fgroup, fname);
+  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), FLayer_Any, NULL, fgroup, fname);
 }
 
 /**
  * Public API: Get path for a mod-overlaid file.
  * Returns pointer to internal static buffer, or NULL if path construction failed.
- * mod_dir: the mod subdirectory within keeper_runtime_directory, or NULL for no overlay.
+ * mod_dir: the mod subdirectory within the game or user data folder, or NULL for no overlay.
  */
 char *get_mod_file_path(const char *mod_dir, short fgroup, const char *fname)
 {
   static char ffullpath[FULLPATH_SIZE];
-  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), mod_dir, fgroup, fname);
+  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), FLayer_Any, mod_dir, fgroup, fname);
 }
 
 /**
@@ -1513,13 +1563,13 @@ char *get_game_file_path_fmt(short fgroup, const char *fmt_str, ...)
   va_end(val);
   
   static char ffullpath[FULLPATH_SIZE];
-  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), NULL, fgroup, fname);
+  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), FLayer_Any, NULL, fgroup, fname);
 }
 
 /**
  * Public API: Get path for a mod-overlaid file with formatted filename.
  * Returns pointer to internal static buffer, or NULL if path/format construction failed.
- * mod_dir: the mod subdirectory within keeper_runtime_directory, or NULL for no overlay.
+ * mod_dir: the mod subdirectory within the game or user data folder, or NULL for no overlay.
  */
 char *get_mod_file_path_fmt(const char *mod_dir, short fgroup, const char *fmt_str, ...)
 {
@@ -1530,7 +1580,7 @@ char *get_mod_file_path_fmt(const char *mod_dir, short fgroup, const char *fmt_s
   va_end(val);
   
   static char ffullpath[FULLPATH_SIZE];
-  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), mod_dir, fgroup, fname);
+  return _resolve_file_path_internal(ffullpath, sizeof(ffullpath), FLayer_Any, mod_dir, fgroup, fname);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1539,7 +1589,7 @@ char *get_mod_file_path_fmt(const char *mod_dir, short fgroup, const char *fmt_s
 
 char *prepare_file_path_buf_mod(char *dst, int dst_size, const char *mod_dir, short fgroup, const char *fname)
 {
-  return _resolve_file_path_internal(dst, dst_size, mod_dir, fgroup, fname);
+  return _resolve_file_path_internal(dst, dst_size, FLayer_Any, mod_dir, fgroup, fname);
 }
 
 char *prepare_file_path_mod(const char *mod_dir, short fgroup, const char *fname)

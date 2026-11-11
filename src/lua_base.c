@@ -138,22 +138,35 @@ void close_lua_script()
 }
 
 
+/** Adds the "?" pattern of a group's folder to a package.path; the user's folder first, when it has one. */
+static void add_lua_search_path(char *path, size_t path_size, short fgroup, const char *pattern)
+{
+    char dir[FULLPATH_SIZE];
+    for (int layer = FLayer_User; layer <= FLayer_Game; layer++)
+    {
+        if ((layer == FLayer_User) && !userdirs_has_user_layer())
+            continue;
+        prepare_file_path_buf_in(dir, sizeof(dir), (enum FileLayer)layer, NULL, fgroup, pattern);
+        if (dir[0] == '\0')
+            continue;
+        size_t len = strlen(path);
+        snprintf(path + len, path_size - len, "%s;", dir);
+    }
+}
+
 int setLuaPath( lua_State* L)
 {
     #define PATH_LENGTH 4096
-    char fx_data_path[PATH_LENGTH];
-    prepare_file_path_buf(fx_data_path, sizeof(fx_data_path), FGrp_FxData, "lua/?.lua");
-    char campaignpath[PATH_LENGTH];
-    prepare_file_path_buf(campaignpath, sizeof(campaignpath), FGrp_CmpgConfig, "lua/?.lua");
-    char levelpath[PATH_LENGTH];
-    prepare_file_path_buf(levelpath, sizeof(levelpath), FGrp_CmpgLvls, "?.lua");
-
+    char search_path[3 * 2 * FULLPATH_SIZE] = "";
+    add_lua_search_path(search_path, sizeof(search_path), FGrp_CmpgLvls, "?.lua");
+    add_lua_search_path(search_path, sizeof(search_path), FGrp_CmpgConfig, "lua/?.lua");
+    add_lua_search_path(search_path, sizeof(search_path), FGrp_FxData, "lua/?.lua");
 
     lua_getglobal(L, "package");
     lua_getfield(L, -1, "path"); // get field "path" from table at top of stack (-1)
     const char *cur_path = lua_tostring(L, -1); // grab path string from top of stack
-    char new_path[PATH_LENGTH];
-    snprintf(new_path, sizeof(new_path), "%s;%s;%s;%s", levelpath,campaignpath,fx_data_path,cur_path);
+    char new_path[sizeof(search_path) + PATH_LENGTH];
+    snprintf(new_path, sizeof(new_path), "%s%s", search_path, cur_path);
     lua_pop(L, 1); // get rid of the string on the stack we just pushed on line 5
     lua_pushstring(L, new_path); // push the new one
     lua_setfield(L, -2, "path"); // set the field "path" in table at -2 with value at top of stack

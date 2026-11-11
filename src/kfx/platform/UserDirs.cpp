@@ -43,6 +43,7 @@ using namespace userdirs;
 namespace {
 
 bool g_ready = false;
+bool g_user_layer = false;
 Resolution g_res;
 std::string g_game_origin;
 std::string g_settings_file;
@@ -336,6 +337,7 @@ extern "C" void userdirs_init(int argc, char *argv[])
     else
         g_settings_file = Join(g_res.dir[KindConfig], "settings.toml");
 
+    g_user_layer = !SameDir(g_res.dir[KindData], g_res.dir[KindGame]);
     snprintf(keeper_runtime_directory, sizeof(keeper_runtime_directory), "%s", g_res.dir[KindGame].c_str());
     if (g_res.dir[KindGame].size() >= sizeof(keeper_runtime_directory))
         g_errors.push_back("the game folder path is too long");
@@ -423,6 +425,11 @@ extern "C" const char *userdirs_get(enum UserDirKind kind)
 extern "C" TbBool userdirs_is_portable(void)
 {
     return !g_ready || (g_res.mode == Mode::Portable);
+}
+
+extern "C" TbBool userdirs_has_user_layer(void)
+{
+    return g_ready && g_user_layer;
 }
 
 extern "C" char *userdirs_path(char *dst, size_t dst_size, enum UserDirKind kind, const char *fname)

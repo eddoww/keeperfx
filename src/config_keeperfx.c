@@ -1286,14 +1286,15 @@ short load_configuration(void)
         fname = start_params.config_file; // Absolute path
     } else {
         sname = start_params.config_file;
-        fname = prepare_file_path_buf(game_fname, sizeof(game_fname), FGrp_Main, sname);
+        fname = prepare_file_path_buf_in(game_fname, sizeof(game_fname), FLayer_Game, NULL, FGrp_Main, sname);
     }
   }
   else
   {
     sname = keeper_config_file;
-    // The game's own file; the user's changes are a separate file read below.
-    fname = prepare_file_path_buf(game_fname, sizeof(game_fname), FGrp_Main, sname);
+    // The game's own file, never one in the user's data folder: that one would replace it, while the user's
+    // changes are a separate file read below.
+    fname = prepare_file_path_buf_in(game_fname, sizeof(game_fname), FLayer_Game, NULL, FGrp_Main, sname);
   }
 
   const char *config_textname = "Base config";

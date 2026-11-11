@@ -20,10 +20,6 @@ User files are kept in the per-user folders, because the game folder is read onl
   cache  folder: /home/me/.cache/keeperfx ($HOME/.cache)
 ```
 
-**Status:** the game keeps the files it writes in these folders and copies the player's files out of an install that
-stops being portable. It reads maps, campaigns, mods and the other game files from the game folder only, and map
-scripts open files relative to the working folder, as before.
-
 ## The folders
 
 | Folder | What is in it |
@@ -115,6 +111,25 @@ every install start the game), else the folder of the executable when that holds
 folder in a macOS app bundle), else the working folder. A package that puts the executable elsewhere than the game
 data starts it with `-gamedir` or `KEEPERFX_GAME_DIR`, for instance from a wrapper script.
 
+## Your folder layered over the game folder
+
+When your data folder is not the game folder, the game looks for every game file there first, then in the game
+folder, the same way a mod's files are found before the game's. Lists of files, such as the campaigns, map packs,
+`.lif` and `.lof` level lists, sprite zips and music, hold the files of both folders, yours winning when a name is
+in both. So you can drop a campaign, a map pack or a mod (and `mods/load_order.cfg`) into your data folder, and a
+read only install can take the original Dungeon Keeper files in your data folder's `data/` and `sound/`.
+
+The files the game writes (saves, screenshots, replays) are in your data folder only.
+
+`keeperfx.cfg` is read from the game folder, then the one in your config folder, which only needs the options you
+change. `-config <file>` reads that file instead of both.
+
+Multiplayer compares the game files that players loaded by their names inside the game or data folder, so a file
+you added counts as the game's file it replaces: everyone must have the same.
+
+Map scripts find their modules (`require`) in both folders, yours first; the files they open with `io.open` and
+the like are still relative to the working folder, as before.
+
 ## Moving from a portable install
 
 When an install that was portable starts keeping your files elsewhere (it was made read only, or you asked with
@@ -145,7 +160,8 @@ campaigns and mods you put in the game folder stay there and are still found.
   game folder and edit `keeperfx.cfg`, `mods/load_order.cfg`, `save/` and `replays/` there; none of that changes.
 - The Windows and Linux release archives and the Steam Deck bundle are portable installs; they need nothing new.
 - A Linux package installs the game data read only (for instance in `/usr/share/keeperfx`) and starts the game
-  with `-gamedir` or `KEEPERFX_GAME_DIR`. In a Flatpak the XDG variables point into `~/.var/app/<id>`.
+  with `-gamedir` or `KEEPERFX_GAME_DIR`. The player puts the original Dungeon Keeper files into
+  `~/.local/share/keeperfx/data` and `sound`. In a Flatpak the XDG variables point into `~/.var/app/<id>`.
 
 ## What the game reads and writes
 
@@ -161,8 +177,9 @@ Every place the game creates or changes a file, and every file of the player it 
 | `scrshots/scr*.png|bmp` screenshots | data | `scrcapt.c` (`FGrp_SShots`) | data |
 | `scrshots/game*.flc` recorded movies | data | `bflib_fmvids.cpp` (`FGrp_SShots`) | data |
 | `native_types.lua` (`!luatypedump`) | data | `lua_base.c` | data |
+| maps, campaigns, map packs, mods, original game files the player adds | user content | `config.c` file groups | data, then game |
 | `keeperfx.cfg` | config | `config_keeperfx.c` | game, then config |
-| `mods/load_order.cfg`, `campgn_order.txt`, `mappck_order.txt` | config | `config_mods.c`, `game_loop.c` | game |
+| `mods/load_order.cfg`, `campgn_order.txt`, `mappck_order.txt` | config | `config_mods.c`, `game_loop.c` | data, then game |
 | `save/settings.toml` options and keys | config | `config_settings.c` | config (written beside and renamed over) |
 | `renderer_prefs.ini` | config | `RendererSettings.c` | config |
 | `keeperfx.log` (or `-log`) | state | `logging.c`, `main.cpp` | state |
@@ -170,7 +187,7 @@ Every place the game creates or changes a file, and every file of the player it 
 | `keeperd*.pck`, `keeperd*.spck` debug dumps | state | `packets_misc.c` | state |
 | `data/tables.dat`, `alpha.col`, `colours.col`, `redpal.col`, `whitepal.col`, `mapfadeg.dat` | cache | `vidmode.c`, `engine_redraw.c` | game copy, else cache |
 | speech extracted from `mapNNNNN.zip` | cache | `gui_soundmsgs.cpp` (was the shared temporary folder) | cache |
-| everything else (`data`, `fxdata`, `ldata`, `sound`, `music`, `levels`, `campgns`, `creatrs`, `lang`, `keeperfx.map`) | game | file groups, `bflib_filelst.c` | game (read only) |
+| everything else (`data`, `fxdata`, `ldata`, `sound`, `music`, `levels`, `campgns`, `creatrs`, `lang`, `keeperfx.map`) | game | file groups, `bflib_filelst.c` | data, then game (read only) |
 
 ## Tests
 
