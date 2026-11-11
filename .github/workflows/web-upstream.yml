@@ -141,10 +141,18 @@ jobs:
     - name: Install tools
       run: |
         set -eux
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build python3 p7zip-full libpng-dev
-        # Chromium for the smoke test (web/smoke-test.mjs), with its system libraries.
-        npx --yes playwright@1 install --with-deps chromium
+        install() {
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build python3 p7zip-full libpng-dev
+          # Chromium for the smoke test (web/smoke-test.mjs), with its system libraries.
+          npx --yes playwright@1 install --with-deps chromium
+        }
+        # The runner's package mirror is sometimes unreachable: try another one before giving up.
+        install || {
+          sudo sed -i -E 's#https?://[a-z.]*(archive|security)\.ubuntu\.com/ubuntu#http://azure.archive.ubuntu.com/ubuntu#g' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+          install
+        }
 
     - uses: mymindstorm/setup-emsdk@v16
       with:
