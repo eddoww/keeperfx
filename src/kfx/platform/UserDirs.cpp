@@ -9,6 +9,7 @@
 #include "pre_inc.h"
 #include "kfx/platform/UserDirs.h"
 #include "kfx/platform/UserDirsFs.h"
+#include "kfx/platform/UserDirsMigrate.h"
 #include "kfx/platform/UserDirsPolicy.h"
 
 #include <cstdio>
@@ -44,6 +45,8 @@ namespace {
 bool g_ready = false;
 Resolution g_res;
 std::string g_game_origin;
+std::string g_settings_file;
+std::string g_migration_notice;
 /** Problems found before the log existed; written by userdirs_log_summary(). */
 std::vector<std::string> g_errors;
 
@@ -184,6 +187,28 @@ bool HasGameConfig(const std::string &dir)
     return LbFileExists(fname.c_str());
 }
 
+/** Where versions before the per-user folders kept renderer_prefs.ini: SDL_GetPrefPath("keeperfx", "keeperfx"),
+ *  worked out here because calling SDL_GetPrefPath() creates the folder. */
+std::string LegacyRendererPrefs()
+{
+#if defined(_WIN32)
+    std::vector<std::string> ignored;
+    const std::string roaming = KnownFolder(FOLDERID_RoamingAppData, "Roaming AppData", ignored);
+    return roaming.empty() ? std::string() : Join(Join(Join(roaming, "keeperfx"), "keeperfx"), "renderer_prefs.ini");
+#elif defined(__APPLE__)
+    return std::string(); // there was no macOS build before
+#else
+    std::string base = GetEnvString("XDG_DATA_HOME");
+    if (!IsAbsolute(base, Convention::Xdg)) {
+        const std::string home = HomeDir();
+        if (home.empty())
+            return std::string();
+        base = Join(home, ".local/share");
+    }
+    return Join(base, "keeperfx/keeperfx/renderer_prefs.ini");
+#endif
+}
+
 const char *ModeText(Mode mode)
 {
     switch (mode) {
@@ -306,6 +331,11 @@ extern "C" void userdirs_init(int argc, char *argv[])
     for (const std::string &e : g_errors)
         fprintf(stderr, "KeeperFX user folders: %s\n", e.c_str());
 
+    if (SettingsInSaveFolder(g_res))
+        g_settings_file = Join(g_res.dir[KindData], "save/settings.toml");
+    else
+        g_settings_file = Join(g_res.dir[KindConfig], "settings.toml");
+
     snprintf(keeper_runtime_directory, sizeof(keeper_runtime_directory), "%s", g_res.dir[KindGame].c_str());
     if (g_res.dir[KindGame].size() >= sizeof(keeper_runtime_directory))
         g_errors.push_back("the game folder path is too long");
@@ -326,6 +356,61 @@ extern "C" void userdirs_log_summary(void)
         WARNMSG("User folders: %s", w.c_str());
     for (const std::string &e : g_errors)
         ERRORMSG("User folders: %s", e.c_str());
+}
+
+extern "C" void userdirs_migrate(void)
+{
+    if (!g_ready)
+        return;
+    const std::string prefs = Join(g_res.dir[KindConfig], "renderer_prefs.ini");
+    const std::string legacy_prefs = LegacyRendererPrefs();
+    if (!legacy_prefs.empty() && LbFileExists(legacy_prefs.c_str()) && !LbFileExists(prefs.c_str())) {
+        std::string message;
+        CopyOnce(legacy_prefs, prefs, message);
+        JUSTMSG("Renderer settings: %s", message.c_str());
+    }
+
+    if ((g_res.mode == Mode::Portable) || SameDir(g_res.dir[KindGame], g_res.dir[KindData]))
+        return;
+    MigrationPaths paths;
+    paths.game_dir = g_res.dir[KindGame];
+    paths.data_dir = g_res.dir[KindData];
+    paths.config_dir = g_res.dir[KindConfig];
+    paths.settings_in_save_folder = SettingsInSaveFolder(g_res);
+    MigrationResult result = MigrateInstall(paths);
+    if (!result.ran)
+        return;
+    JUSTMSG("The game folder %s is not used for your files (%s). Copying your saves, settings, replays and "
+            "screenshots from it into the user folders, once:", AbsolutePath(g_res.dir[KindGame]).c_str(), g_res.reason.c_str());
+    for (const std::string &line : result.lines)
+        JUSTMSG("  %s", line.c_str());
+    if (result.complete) {
+        JUSTMSG("Copied %d files, kept %d that were already there, left %d of other users. The game folder was left as it was.",
+                result.copied, result.kept, result.left);
+    } else {
+        ERRORMSG("Copied %d files, kept %d, left %d of other users, %d could not be copied. Nothing in the game folder "
+                 "was changed or deleted; the next start tries again.", result.copied, result.kept, result.left, result.failed);
+    }
+    JUSTMSG("Your files are now in %s (settings in %s).", AbsolutePath(g_res.dir[KindData]).c_str(),
+            AbsolutePath(g_res.dir[KindConfig]).c_str());
+
+    std::string notice = "Your saves and settings are now kept in\n" + AbsolutePath(g_res.dir[KindData]) + "\n";
+    if (!SettingsInSaveFolder(g_res))
+        notice += "and " + AbsolutePath(g_res.dir[KindConfig]) + "\n";
+    notice += "because " + g_res.reason + ".\n";
+    if (result.copied + result.kept > 0)
+        notice += "The " + std::to_string(result.copied + result.kept) + " files of the game folder were copied there; the game folder was not changed.\n";
+    if (result.left > 0)
+        notice += std::to_string(result.left) + " files of other users were left in the game folder.\n";
+    if (!result.complete)
+        notice += std::to_string(result.failed) + " files could not be copied; the game tries again at the next start.\n";
+    notice += "The log, " + std::string(log_file_name) + ", lists them.";
+    g_migration_notice = notice;
+}
+
+extern "C" const char *userdirs_migration_notice(void)
+{
+    return g_migration_notice.empty() ? NULL : g_migration_notice.c_str();
 }
 
 extern "C" const char *userdirs_get(enum UserDirKind kind)
@@ -353,3 +438,9 @@ extern "C" char *userdirs_path(char *dst, size_t dst_size, enum UserDirKind kind
     return dst;
 }
 
+extern "C" const char *userdirs_settings_file(void)
+{
+    if (!g_ready)
+        return "save/settings.toml";
+    return g_settings_file.c_str();
+}

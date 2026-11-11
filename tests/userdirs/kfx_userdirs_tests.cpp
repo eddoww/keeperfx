@@ -1,10 +1,12 @@
 /******************************************************************************/
 /** @file kfx_userdirs_tests.cpp
- *     Standalone tests for the user folder rules and the file helpers. No game
- *     code; the file tests work in a temporary folder.
+ *     Standalone tests for the user folder rules, the file helpers and the
+ *     migration of a portable install. No game code; the migration tests work
+ *     in a temporary folder.
  */
 /******************************************************************************/
 #include "kfx/platform/UserDirsFs.h"
+#include "kfx/platform/UserDirsMigrate.h"
 #include "kfx/platform/UserDirsPolicy.h"
 
 #include <cstdio>
@@ -305,7 +307,7 @@ static void write_file(const std::string &path, const std::string &content)
     out << content;
 }
 
-[[maybe_unused]] static std::string read_file(const std::string &path)
+static std::string read_file(const std::string &path)
 {
     std::ifstream in(ToPath(path), std::ios::binary);
     if (!in)
@@ -336,6 +338,106 @@ static void test_make_dirs()
 #endif
     expect("same dir: itself through ..", SameDir(T("a/b"), T("a/b/c/..")));
     expect("same dir: different", !SameDir(T("a/b"), T("a")));
+}
+
+static void make_install(const std::string &game)
+{
+    write_file(Join(game, "keeperfx.cfg"), "INSTALL_PATH=./\n");
+    write_file(Join(game, "save/fx1g0000.sav"), "slot zero");
+    write_file(Join(game, "save/fx1g0003.sav"), "slot three");
+    write_file(Join(game, "save/settings.toml"), "[video]\n");
+    write_file(Join(game, "save/backup/old.zip"), "backup");
+    write_file(Join(game, "replays/campaign/20260101T000000_c1.fxpkt"), "replay");
+    write_file(Join(game, "scrshots/scr00000.png"), "png");
+    write_file(Join(game, "scrshots/\xc3\xa9t\xc3\xa9.png"), "unicode name");
+    write_file(Join(game, "data/main.pal"), "game data, not the player's");
+}
+
+static void test_migration()
+{
+    const std::string game = T("install");
+    make_install(game);
+    MigrationPaths p;
+    p.game_dir = game;
+    p.data_dir = T("user/data");
+    p.config_dir = T("user/config");
+    p.settings_in_save_folder = false;
+
+    // Keep one file the player already has in the per-user folder.
+    write_file(T("user/data/save/fx1g0003.sav"), "newer slot three");
+    fs::file_time_type src_time = fs::last_write_time(ToPath(Join(game, "save/fx1g0000.sav")));
+
+    MigrationResult r = MigrateInstall(p);
+    expect("migrate: ran", r.ran);
+    expect("migrate: complete", r.complete);
+    expect("migrate: counts", (r.copied == 6) && (r.kept == 1) && (r.failed == 0));
+    expect_eq("migrate: save copied", read_file(T("user/data/save/fx1g0000.sav")), "slot zero");
+    expect_eq("migrate: existing save kept", read_file(T("user/data/save/fx1g0003.sav")), "newer slot three");
+    expect_eq("migrate: settings to the config folder", read_file(T("user/config/settings.toml")), "[video]\n");
+    expect("migrate: no settings left in save/", !fs::exists(ToPath(T("user/data/save/settings.toml"))));
+    expect_eq("migrate: sub folder", read_file(T("user/data/save/backup/old.zip")), "backup");
+    expect_eq("migrate: replay", read_file(T("user/data/replays/campaign/20260101T000000_c1.fxpkt")), "replay");
+    expect_eq("migrate: unicode name", read_file(T("user/data/scrshots/\xc3\xa9t\xc3\xa9.png")), "unicode name");
+    expect("migrate: game data not copied", !fs::exists(ToPath(T("user/data/data/main.pal"))));
+    expect("migrate: date kept", fs::last_write_time(ToPath(T("user/data/save/fx1g0000.sav"))) == src_time);
+    expect("migrate: no temporary file left", !fs::exists(ToPath(T("user/data/save/fx1g0000.sav.migrating"))));
+    expect_eq("migrate: source untouched", read_file(Join(game, "save/fx1g0003.sav")), "slot three");
+    expect_eq("migrate: source still there", read_file(Join(game, "save/settings.toml")), "[video]\n");
+    expect("migrate: install recorded", read_file(T("user/data/migrated_installs.txt")).find(AbsolutePath(game)) == 0);
+    bool said_differs = false;
+    for (const std::string &l : r.lines)
+        said_differs |= (l.find("differs") != std::string::npos);
+    expect("migrate: the log says a kept file differs", said_differs);
+
+    // Once only.
+    write_file(Join(game, "save/fx1g0004.sav"), "made later");
+    r = MigrateInstall(p);
+    expect("migrate: once per install", !r.ran);
+    expect("migrate: later file not copied", !fs::exists(ToPath(T("user/data/save/fx1g0004.sav"))));
+
+    // Nothing to migrate: nothing recorded.
+    const std::string fresh = T("fresh");
+    write_file(Join(fresh, "keeperfx.cfg"), "");
+    MigrationPaths pf = p;
+    pf.game_dir = fresh;
+    pf.data_dir = T("fresh_user");
+    r = MigrateInstall(pf);
+    expect("migrate: nothing to do", !r.ran && !fs::exists(ToPath(T("fresh_user/migrated_installs.txt"))));
+
+    // One shared folder (-userdir, macOS): settings.toml stays in save/.
+    MigrationPaths ps = p;
+    ps.data_dir = ps.config_dir = T("shared");
+    ps.settings_in_save_folder = true;
+    r = MigrateInstall(ps);
+    expect_eq("migrate shared: settings in save/", read_file(T("shared/save/settings.toml")), "[video]\n");
+}
+
+static void test_migration_failure()
+{
+#ifndef _WIN32
+    if (geteuid() == 0)
+        return;
+    const std::string game = T("install2");
+    make_install(game);
+    MigrationPaths p;
+    p.game_dir = game;
+    p.data_dir = T("user2/data");
+    p.config_dir = T("user2/config");
+    std::string error;
+    MakeDirs(T("user2/data/save"), error);
+    chmod(T("user2/data/save").c_str(), 0500); // can't write saves
+    MigrationResult r = MigrateInstall(p);
+    expect("migrate failure: incomplete", r.ran && !r.complete && (r.failed > 0));
+    expect("migrate failure: other files still copied", read_file(T("user2/data/replays/campaign/20260101T000000_c1.fxpkt")) == "replay");
+    expect("migrate failure: not recorded", !fs::exists(ToPath(T("user2/data/migrated_installs.txt"))));
+    expect_eq("migrate failure: source untouched", read_file(Join(game, "save/fx1g0000.sav")), "slot zero");
+    chmod(T("user2/data/save").c_str(), 0700);
+    r = MigrateInstall(p);
+    expect("migrate failure: next start finishes", r.ran && r.complete && (r.failed == 0) && (r.copied > 0));
+    expect_eq("migrate failure: save copied now", read_file(T("user2/data/save/fx1g0000.sav")), "slot zero");
+    r = MigrateInstall(p);
+    expect("migrate failure: then done", !r.ran);
+#endif
 }
 
 static void test_narrow_paths()
@@ -369,9 +471,51 @@ static void test_portable_rule_on_disk()
     struct stat st;
     if (!ec && (stat(sys_tmp.c_str(), &st) == 0) && (st.st_uid != geteuid()))
         expect("portable: a writable folder of another owner", IsWritableDir(FromPath(sys_tmp)));
+    // Files: the user's own, or one of root's on a file system with owners.
+    write_file(T("mine.txt"), "x");
+    expect("file is users: own file", FileIsUsers(T("mine.txt")));
+    if ((geteuid() != 0) && (stat("/etc/passwd", &st) == 0) && (st.st_uid != geteuid()))
+        expect("file is users: root's file", !FileIsUsers("/etc/passwd"));
+    expect("file is users: missing file", !FileIsUsers(T("nope.txt")));
+#else
+    write_file(T("mine.txt"), "x");
+    expect("file is users: own file", FileIsUsers(T("mine.txt")));
 #endif
 }
 
+static void test_migration_other_users()
+{
+    const std::string game = T("install3");
+    make_install(game);
+    MigrationPaths p;
+    p.game_dir = game;
+    p.data_dir = T("user3/data");
+    p.config_dir = T("user3/config");
+    // Only the replays are this user's: the saves and settings are those of whoever played in the install before.
+    p.file_is_users = [](const std::string &path) { return path.find("replays") != std::string::npos; };
+    MigrationResult r = MigrateInstall(p);
+    expect("migrate others: complete", r.ran && r.complete);
+    expect("migrate others: counts", (r.copied == 1) && (r.left == 6) && (r.failed == 0));
+    expect_eq("migrate others: own replay copied", read_file(T("user3/data/replays/campaign/20260101T000000_c1.fxpkt")), "replay");
+    expect("migrate others: saves left", !fs::exists(ToPath(T("user3/data/save/fx1g0000.sav"))));
+    expect("migrate others: settings left", !fs::exists(ToPath(T("user3/config/settings.toml"))));
+    bool said = false;
+    for (const std::string &l : r.lines)
+        said |= (l.find("belongs to another user") != std::string::npos);
+    expect("migrate others: the log says why", said);
+    r = MigrateInstall(p);
+    expect("migrate others: once", !r.ran);
+
+    // The default test is the file's owner: the test's own files are copied.
+    const std::string game4 = T("install4");
+    make_install(game4);
+    MigrationPaths p4;
+    p4.game_dir = game4;
+    p4.data_dir = T("user4/data");
+    p4.config_dir = T("user4/config");
+    r = MigrateInstall(p4);
+    expect("migrate own: all copied", r.ran && r.complete && (r.copied == 7) && (r.left == 0));
+}
 
 int main()
 {
@@ -400,8 +544,11 @@ int main()
         return 1;
     }
     test_make_dirs();
+    test_migration();
+    test_migration_failure();
     test_narrow_paths();
     test_portable_rule_on_disk();
+    test_migration_other_users();
     fs::remove_all(ToPath(tmp_root), ec);
 
     printf("%d checks, %d failed\n", checks, fails);

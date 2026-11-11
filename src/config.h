@@ -276,6 +276,14 @@ char *get_mod_file_path(const char *mod_dir, short fgroup, const char *fname);
 char *get_game_file_path_fmt(short fgroup, const char *fmt_str, ...);
 char *get_mod_file_path_fmt(const char *mod_dir, short fgroup, const char *fmt_str, ...);
 unsigned char *load_data_file_to_buffer(int32_t *ldsize, short fgroup, const char *fmt_str, ...);
+/** Path of a file the game makes from other files, in the cache folder: <cache>/<group's folder>/fname. */
+char *prepare_cache_file_path(char *dst, int dst_size, short fgroup, const char *fname);
+/** Loads a file of len bytes the game can make itself: the game's copy (the original game shipped some of them,
+ *  and older versions saved them in the game folder), or else the one in the cache folder. A file of another size
+ *  is not used. Returns true when it was loaded. */
+TbBool load_cached_file(short fgroup, const char *fname, void *buffer, unsigned long len);
+/** Saves a file the game made into the cache folder, replacing the one there. */
+void save_cached_file(short fgroup, const char *fname, const void *buffer, unsigned long len);
 /******************************************************************************/
 TbBool load_config(const struct ConfigFileData* file_data, unsigned short flags);
 /******************************************************************************/

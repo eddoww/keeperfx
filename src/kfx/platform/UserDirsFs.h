@@ -28,6 +28,10 @@ bool MakeDirs(const std::string &dir, std::string &error);
  *  exFAT mounts, network shares and container volumes the owner the OS reports is often not the user who plays. */
 bool IsWritableDir(const std::string &dir);
 
+/** True when the file is the current user's to take along: the user owns it, or it is on a file system that keeps
+ *  no owners (FAT, exFAT, NTFS and network shares on Unix, FAT and exFAT on Windows) and the user can read it. */
+bool FileIsUsers(const std::string &path);
+
 /** True when a and b name the same existing folder. */
 bool SameDir(const std::string &a, const std::string &b);
 

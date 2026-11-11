@@ -20,8 +20,9 @@ User files are kept in the per-user folders, because the game folder is read onl
   cache  folder: /home/me/.cache/keeperfx ($HOME/.cache)
 ```
 
-**Status:** the game chooses these folders at every start, logs them, and writes its log in the state folder. It
-still keeps its other files, and yours, in the game folder.
+**Status:** the game keeps the files it writes in these folders and copies the player's files out of an install that
+stops being portable. It reads maps, campaigns, mods and the other game files from the game folder only, and map
+scripts open files relative to the working folder, as before.
 
 ## The folders
 
@@ -58,7 +59,12 @@ still keeps its other files, and yours, in the game folder.
   aren't preference lists. (There is no macOS build yet; the rules are in place and tested.)
 
 SDL3's `SDL_GetPrefPath()` gives one folder per application: it can't keep settings, logs and caches apart on
-Linux, and it creates the folder whenever it is asked. KeeperFX therefore works the folders out itself.
+Linux, and it creates the folder whenever it is asked. KeeperFX therefore works the folders out itself; earlier
+versions kept `renderer_prefs.ini` in `SDL_GetPrefPath("keeperfx", "keeperfx")`, and the game copies that file over
+once (see below).
+
+When the data and config folders are the same folder (portable installs, `-userdir`, macOS), `settings.toml` is
+`save/settings.toml`, as in every portable install; otherwise it is `settings.toml` in the config folder.
 
 ## Portable or not
 
@@ -109,19 +115,70 @@ every install start the game), else the folder of the executable when that holds
 folder in a macOS app bundle), else the working folder. A package that puts the executable elsewhere than the game
 data starts it with `-gamedir` or `KEEPERFX_GAME_DIR`, for instance from a wrapper script.
 
+## Moving from a portable install
+
+When an install that was portable starts keeping your files elsewhere (it was made read only, or you asked with
+`-noportable` or `-userdir`), the game copies your files over at that start:
+
+- `save/` (with `settings.toml` going to the config folder), `replays/` and `scrshots/` of the game folder, but
+  only the files that are yours: those you own, or, on a file system that keeps no owners (FAT, exFAT, NTFS and
+  network shares on Linux, FAT and exFAT on Windows), those you can read. The files of whoever else played in the
+  install (root, an administrator, another user) stay theirs, settings included;
+- `renderer_prefs.ini` from where earlier versions kept it (`SDL_GetPrefPath`), in every mode, when the config
+  folder has none.
+
+It only copies: nothing in the game folder is changed or deleted, a file already in your folders is kept (the log
+says when it differs from the game folder's), and every copy is compared with its original before it gets its
+name. When a copy fails (a full disk, say) the log says so and the next start tries again; once all went well the
+install is recorded in `migrated_installs.txt` in the data folder and isn't copied again. Saves made later in the
+game folder by an older version are not copied after that.
+
+The log lists every file copied, kept or left, and says where your files are now. The player is told too, once: a
+message in the main menu says where the saves and settings are kept, why, and how many files were copied or left.
+
+`keeperfx.cfg` is not copied: the game still reads the game folder's, so edits made there still count. Maps,
+campaigns and mods you put in the game folder stay there and are still found.
+
 ## Launchers, packages, the Steam Deck
 
 - The launchers work with portable installs, which is what they install and update. They start the game in the
-  game folder and edit `keeperfx.cfg`, `mods/load_order.cfg`, `save/` and `replays/` there.
+  game folder and edit `keeperfx.cfg`, `mods/load_order.cfg`, `save/` and `replays/` there; none of that changes.
 - The Windows and Linux release archives and the Steam Deck bundle are portable installs; they need nothing new.
 - A Linux package installs the game data read only (for instance in `/usr/share/keeperfx`) and starts the game
   with `-gamedir` or `KEEPERFX_GAME_DIR`. In a Flatpak the XDG variables point into `~/.var/app/<id>`.
 
+## What the game reads and writes
+
+Every place the game creates or changes a file, and every file of the player it reads:
+
+| File | Kind | Code | Where |
+|---|---|---|---|
+| `save/fx1g*.sav` saved games | data | `SaveManager.cpp`, `SaveCatalogue.cpp` (`FGrp_Save`) | data |
+| `save/fx1contn.sav`, `fx1lastf.sav`, campaign progress `*.sav` | data | `SaveContinue.cpp` (`FGrp_Save`) | data |
+| `save/scr_*.dat` high scores | data | `highscores.c` (`FGrp_Save`) | data |
+| `replays/<kind>/*.fxpkt` automatic replays | data | `replay.c` (`FGrp_Replays`) | data |
+| `-packetsave`/`-packetload` file | data | `replay.c` | as given, relative to the working folder |
+| `scrshots/scr*.png|bmp` screenshots | data | `scrcapt.c` (`FGrp_SShots`) | data |
+| `scrshots/game*.flc` recorded movies | data | `bflib_fmvids.cpp` (`FGrp_SShots`) | data |
+| `native_types.lua` (`!luatypedump`) | data | `lua_base.c` | data |
+| `keeperfx.cfg` | config | `config_keeperfx.c` | game, then config |
+| `mods/load_order.cfg`, `campgn_order.txt`, `mappck_order.txt` | config | `config_mods.c`, `game_loop.c` | game |
+| `save/settings.toml` options and keys | config | `config_settings.c` | config (written beside and renamed over) |
+| `renderer_prefs.ini` | config | `RendererSettings.c` | config |
+| `keeperfx.log` (or `-log`) | state | `logging.c`, `main.cpp` | state |
+| `keeperfx_crash_*.dmp` (Windows) | state | `bflib_crash.c` | state |
+| `keeperd*.pck`, `keeperd*.spck` debug dumps | state | `packets_misc.c` | state |
+| `data/tables.dat`, `alpha.col`, `colours.col`, `redpal.col`, `whitepal.col`, `mapfadeg.dat` | cache | `vidmode.c`, `engine_redraw.c` | game copy, else cache |
+| speech extracted from `mapNNNNN.zip` | cache | `gui_soundmsgs.cpp` (was the shared temporary folder) | cache |
+| everything else (`data`, `fxdata`, `ldata`, `sound`, `music`, `levels`, `campgns`, `creatrs`, `lang`, `keeperfx.map`) | game | file groups, `bflib_filelst.c` | game (read only) |
+
 ## Tests
 
-`tests/userdirs` holds the unit tests of the rules: every XDG case (set, unset, empty,
+`tests/userdirs` holds the unit tests of the rules and of the migration: every XDG case (set, unset, empty,
 relative), no home, portable detection and its overrides, a writable folder of another owner, `-userdir`, the
-per-folder overrides, macOS and Windows paths and their fallbacks, and the game folder choice. On Windows they also
+per-folder overrides, macOS and Windows paths and their fallbacks, the game folder choice, and the migration in a
+temporary folder (copy, keep, once only, failure and retry, files of other users left, nothing changed in the
+install). On Windows they also
 check a folder named in a script the ANSI code page lacks. Run them with:
 
 ```bash
