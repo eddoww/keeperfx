@@ -64,6 +64,7 @@
 #include <cstdint>
 
 #include "kfx/profiling/KfxProfiling.h"
+#include "zz_mapwho_check.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -475,7 +476,9 @@ void update(void)
     KFX_ZONE_COLOR("update", KFX_COLOR_SIMULATION);
     SYNCDBG(4,"Starting for turn %ld",(long)get_gameturn());
 
+    if (mwc_per_thing_active()) mwc_check("before packets", NULL);
     process_packets();
+    if (mwc_per_thing_active()) mwc_check("after packets", NULL);
     update_local_cameras();
     api_update_server();
 
@@ -501,19 +504,31 @@ void update(void)
         clear_active_dungeons_stats();
         update_creature_pool_state();
         update_things();
+        if (mwc_per_thing_active()) mwc_check("after update_things", NULL);
         process_rooms();
+        if (mwc_per_thing_active()) mwc_check("after process_rooms", NULL);
         process_dungeons();
+        if (mwc_per_thing_active()) mwc_check("after process_dungeons", NULL);
         update_research();
+        if (mwc_per_thing_active()) mwc_check("after update_research", NULL);
         update_manufacturing();
+        if (mwc_per_thing_active()) mwc_check("after update_manufacturing", NULL);
         event_process_events();
+        if (mwc_per_thing_active()) mwc_check("after event_process_events", NULL);
         update_all_events();
+        if (mwc_per_thing_active()) mwc_check("after update_all_events", NULL);
         process_level_script();
+        if (mwc_per_thing_active()) mwc_check("after process_level_script", NULL);
         process_fx_lines();
+        if (mwc_per_thing_active()) mwc_check("after process_fx_lines", NULL);
         lua_on_game_tick();
+        if (mwc_per_thing_active()) mwc_check("after lua_on_game_tick", NULL);
         if ((game.view_mode_flags & GNFldD_ComputerPlayerProcessing) != 0)
             process_computer_players2();
         process_players();
+        if (mwc_per_thing_active()) mwc_check("after process_players", NULL);
         process_action_points();
+        if (mwc_per_thing_active()) mwc_check("after process_action_points", NULL);
         if ((get_user_view_type(get_my_user()) == PVT_CreatureContrl) || (get_user_view_type(get_my_user()) == PVT_CreaturePasngr))
         {
             struct Thing *thing = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
@@ -522,12 +537,15 @@ void update(void)
         update_footsteps_nearest_camera(get_local_active_camera());
         PaletteFadePlayer(get_displayed_player());
         process_armageddon();
+        if (mwc_per_thing_active()) mwc_check("after process_armageddon", NULL);
         update_global_lighting();
 #if (BFDEBUG_LEVEL > 9)
         lights_stats_debug_dump();
         things_stats_debug_dump();
         creature_stats_debug_dump();
 #endif
+        mwc_selftest_turn();
+        mwc_check("turn end", NULL);
         game.play_gameturn++;
         if (replay.turns_packetoff == game.play_gameturn)
             exit_keeper = 1;

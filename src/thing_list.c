@@ -56,6 +56,7 @@
 #include "bflib_planar.h"
 #include "kfx/profiling/KfxProfilingC.h"
 #include "kfx/ai/TargetSearchProbe.h"
+#include "zz_mapwho_check.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -1074,6 +1075,10 @@ void update_things_in_list(struct StructureList *list)
           } else {
               update_thing(thing);
           }
+      }
+      if (mwc_per_thing_active()) {
+          mwc_watch_log("after", thing);
+          mwc_check("thing", thing);
       }
       // Per-thing code ends
       k++;
