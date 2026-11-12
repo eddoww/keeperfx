@@ -59,7 +59,7 @@ extern "C" {
 
 #define NET_PROTOCOL_VERSION 1
 #define NET_PROTOCOL_OLDEST 1
-#define NET_SIM_VERSION 3
+#define NET_SIM_VERSION 4
 
 #define NET_COMPAT_MAGIC 0x4358464BU /* "KFXC" */
 
