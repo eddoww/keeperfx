@@ -67,6 +67,7 @@
 #include "timer.h"
 
 #include "kfx/save/SaveManager.h"
+#include "zz_mapwho_check.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -587,6 +588,7 @@ static void gameplay_loop_logic()
         }
     }
 #endif // FUNCTESTING
+    if (mwc_fast_forward() >= 0) local_state.fast_forward = mwc_fast_forward();
     do_draw = display_should_be_updated_this_turn() || (!LbIsActive());
     poll_inputs();
     const TbBool rewind_held = is_game_key_pressed(Gkey_DumpToOldPos, false, true) && !a_menu_window_is_active()
