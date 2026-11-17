@@ -52,6 +52,16 @@
 #include "post_inc.h"
 
 static int32_t lobby_chat_text_width;
+static const short player_colour_sprites[MAX_NET_USERS] = {
+    GFS_bullfrog_red_med,
+    GFS_bullfrog_blue_med,
+    GFS_bullfrog_green_med,
+    GFS_bullfrog_yellow_med,
+    GFS_bullfrog_purple_med,
+    GFS_bullfrog_black_med,
+    GFS_bullfrog_orange_med,
+    GFS_bullfrog_white_med,
+};
 
 /** "different game rules", or the plain version message with language files that predate it. */
 const char *net_different_rules_text(void)
@@ -268,7 +278,7 @@ void frontnet_draw_net_session_players(struct GuiButton *gbtn)
         text = net_player[netplyr_idx].name;
         if (netplyr_idx >= net_number_of_enum_players)
             break;
-        spr = get_frontend_sprite(GFS_bullfrog_red_med+netplyr_idx);
+        spr = get_frontend_sprite(player_colour_sprites[netplyr_idx]);
         i = height - spr->SHeight * fs_units_per_px / 16;
         LbSpriteDrawResized(gbtn->scr_pos_x, gbtn->scr_pos_y + shift_y + abs(i)/2, fs_units_per_px, spr);
         LbTextSetWindow(gbtn->scr_pos_x, shift_y + gbtn->scr_pos_y, gbtn->width - spr->SWidth * fs_units_per_px / 16, height);
@@ -339,21 +349,15 @@ static void build_frontend_dimmed_remap(unsigned char *remap, int red_sixteenths
 
 void frontnet_draw_player_icon(NetUserId user, int pos_x, int pos_y, int units_per_px)
 {
-    static unsigned char shadow_remap[PALETTE_COLORS];
-    static TbBool shadow_remap_initialized;
-    if (!shadow_remap_initialized) {
-        build_frontend_dimmed_remap(shadow_remap, 3, 3, 3);
-        shadow_remap_initialized = true;
-    }
-    if (net_player_colour[user] < 0) {
-        LbSpriteDrawResizedRemap(pos_x, pos_y, units_per_px, get_frontend_sprite(GFS_bullfrog_blue_med), shadow_remap);
-        return;
-    }
-    if (net_player_colour[user] == NET_PLAYER_COLOUR_RANDOM) {
+    int8_t colour = net_player_colour[user];
+    if (colour == NET_PLAYER_COLOUR_RANDOM) {
         LbSpriteDrawResized(pos_x, pos_y, units_per_px, get_frontend_sprite(GFS_random_colour));
         return;
     }
-    LbSpriteDrawResized(pos_x, pos_y, units_per_px, get_frontend_sprite(GFS_bullfrog_red_med + net_player_colour[user]));
+    if (colour < 0) {
+        return;
+    }
+    LbSpriteDrawResized(pos_x, pos_y, units_per_px, get_frontend_sprite(player_colour_sprites[colour]));
 }
 
 void frontnet_messages_up(struct GuiButton *gbtn)

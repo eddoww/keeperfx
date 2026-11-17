@@ -24,6 +24,7 @@
 #include "player_instances.h"
 #include "player_utils.h"
 #include "replay.h"
+#include "local_hand.h"
 #include "roomspace_input.h"
 #include "sprites.h"
 #include "keeperfx.hpp"
@@ -679,6 +680,7 @@ void network_spectator_finish_conversion(void)
     turn_off_all_menus();
     LbStopTextInput();
     reset_dig_prediction();
+    reset_local_hand();
     reset_local_spectator();
     start_spectating(camera_player_number);
 }

@@ -38,6 +38,7 @@
 #include "net_game.h"
 #include "packets.h"
 #include "replay.h"
+#include "local_hand.h"
 #include "roomspace_input.h"
 #include "lua_triggers.h"
 #include "keeperfx.hpp"
@@ -390,6 +391,7 @@ void initialize_packet_history(void)
     input_lag_reset();
     reset_dig_prediction();
     net_resync_forget_delta_state();
+    reset_local_hand();
 }
 
 static TbBool user_has_required_turn_packets(NetUserId user)
