@@ -219,6 +219,9 @@ jobs:
       if: failure()
       env:
         GH_TOKEN: ${{ github.token }}
+        # The build steps add an "upstream" remote (dkfans/keeperfx), and gh
+        # prefers it over origin, so name this repository explicitly.
+        GH_REPO: ${{ github.repository }}
         CHANNEL: ${{ matrix.channel }}
       run: |
         status=$(python3 -c 'import json; print(json.load(open("work/result.json"))["status"])' 2>/dev/null || echo unknown)
