@@ -86,6 +86,7 @@
 
 #include "keeperfx.hpp"
 #include "kfx/ai/TargetSearchProbe.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -719,7 +720,7 @@ TbBool creature_can_be_set_unconscious(const struct Thing *creatng, const struct
         {
             return false;
         }
-        if (!player_creature_tends_to(killertng->owner, CrTend_Imprison))
+        if (!creature_tends_to_imprison(killertng))
         {
             return false;
         }
@@ -3223,6 +3224,8 @@ void make_creature_unconscious(struct Thing *creatng)
     clear_creature_instance(creatng);
     set_creature_size_stuff(creatng);
     struct CreatureControl* cctrl = creature_control_get_from_thing(creatng);
+    // Set again by creature_note_knocked_out_by() if a creature took it down for the prison
+    cctrl->knocked_out_for_plyr = 0;
     if (game.conf.rules[creatng->owner].gameplay.classic_bugs_flags & ClscBug_ResurrectRemoved)
     {
         // If the classic bug is enabled, fainted units are also added to resurrect creature.

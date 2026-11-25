@@ -7734,3 +7734,81 @@ msgstr "Pliki różnią się między %s a hostem"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Mapy jednoosobowe (kooperacja)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "Styl walki - Automatyczny: Ta istota walczy tak, jak woli jej gatunek. LPM wręcz. PPM z dystansu."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "Styl walki - Wręcz: Ta istota podchodzi, by walczyć wręcz, a ataków z dystansu używa tylko na wrogach, do których nie może dotrzeć. LPM z dystansu. PPM automatyczny."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "Styl walki - Z dystansu: Ta istota trzyma się na dystans i walczy atakami z dystansu, kiedy tylko może. LPM automatyczny. PPM wręcz."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "Zmień imię: Nadaj tej istocie własne imię. LPM, aby wpisać nowe imię, Enter, aby je zachować, Esc, aby anulować."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "Ucieczka czy walka - Twoja skłonność: Ta istota ucieka lub walczy dalej zgodnie ze skłonnością twoich istot. LPM uciekaj. PPM walcz do śmierci."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "Ucieczka czy walka - Ucieczka: Ta istota ucieka, gdy jest ciężko ranna, bez względu na twoją skłonność. LPM walcz do śmierci. PPM twoja skłonność."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "Ucieczka czy walka - Do śmierci: Ta istota walczy dalej, nawet ciężko ranna, bez względu na twoją skłonność. LPM twoja skłonność. PPM uciekaj."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "Jeńcy - Twoja skłonność: Ta istota bierze jeńców lub zabija zgodnie z twoją skłonnością do więzienia. LPM bierz jeńców. PPM zabijaj."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "Jeńcy - Bierz jeńców: Ta istota ogłusza pokonanych wrogów, by twoje chochliki zaniosły ich do więzienia. LPM zabijaj. PPM twoja skłonność."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "Jeńcy - Zabijaj: Ta istota zabija pokonanych wrogów. LPM twoja skłonność. PPM bierz jeńców."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- Używane swobodnie. LPM/PPM, aby ograniczyć to dla tej istoty."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- Ostrożnie: nie używane, gdy trafiłoby twoje istoty. LPM/PPM, aby zmienić."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- Wyłączone: ta istota nie używa tego sama. LPM/PPM, aby zmienić."

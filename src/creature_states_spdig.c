@@ -56,6 +56,7 @@
 #include "keeperfx.hpp"
 #include "player_instances.h"
 #include "packets.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 #include "creature_states_lair.h"
 
@@ -120,7 +121,8 @@ long check_out_unclaimed_unconscious_bodies(struct Thing *spdigtng, long range)
         i = thing->next_of_class;
         // Per-thing code
         if (!thing_is_dragged_or_pulled(thing) && (thing->owner != spdigtng->owner)
-          && thing_revealed(thing, spdigtng->owner) && creature_is_being_unconscious(thing))
+          && thing_revealed(thing, spdigtng->owner) && creature_is_being_unconscious(thing)
+          && player_wants_creature_as_prisoner(spdigtng->owner, thing))
         {
             if ((range < 0) || get_chessboard_distance(&thing->mappos, &spdigtng->mappos) < range)
             {
@@ -1577,15 +1579,15 @@ short creature_pick_up_unconscious_body(struct Thing *thing)
     SYNCDBG(9,"Starting");
     TRACE_THING(thing);
     // Check if the player has means to do such kind of action
-     if (!player_has_room_of_role(thing->owner, RoRoF_Prison) || !player_creature_tends_to(thing->owner, CrTend_Imprison))
-     {
-         SYNCDBG(19,"Player %d has no %s or has imprison tendency off",(int)thing->owner,room_role_code_name(RoRoF_Prison));
-         set_start_state(thing);
-         return 0;
-     }
      struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
      struct Thing* picktng = thing_get(cctrl->pickup_creature_id);
      TRACE_THING(picktng);
+     if (!player_has_room_of_role(thing->owner, RoRoF_Prison) || !player_wants_creature_as_prisoner(thing->owner, picktng))
+     {
+         SYNCDBG(19,"Player %d has no %s or doesn't take this prisoner",(int)thing->owner,room_role_code_name(RoRoF_Prison));
+         set_start_state(thing);
+         return 0;
+     }
      if (!thing_exists(picktng) || (picktng->active_state != CrSt_CreatureUnconscious) || thing_is_dragged_or_pulled(picktng) || (get_chessboard_distance(&thing->mappos, &picktng->mappos) >= 512))
      {
          SYNCDBG(8, "The %s index %d to be picked up isn't in correct place or state", thing_model_name(picktng), (int)picktng->index);

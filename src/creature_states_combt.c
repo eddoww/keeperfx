@@ -49,6 +49,7 @@
 #include "game_legacy.h"
 #include "engine_redraw.h"
 #include "kfx/profiling/KfxProfilingC.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -269,7 +270,7 @@ TbBool creature_is_actually_scared(const struct Thing *creatng, const struct Thi
     // Creatures are scared if their health drops lower than
     // fear_wounded percent of base health
     long fear;
-    if (player_creature_tends_to(creatng->owner,CrTend_Flee)) {
+    if (creature_tends_to_flee(creatng)) {
         // In flee mode, use full fear value
         fear = crconf->fear_wounded * 10;
     } else {
@@ -1215,8 +1216,7 @@ TbBool set_creature_combat_state(struct Thing *fighter, struct Thing *enemy, CrA
         }
         return false;
     }
-    struct CreatureModelConfig* crconf = creature_stats_get_from_thing(fighter);
-    if ((crconf->attack_preference == AttckT_Ranged) && creature_has_ranged_weapon(fighter))
+    if ((creature_attack_preference(fighter) == AttckT_Ranged) && creature_has_ranged_weapon(fighter))
     {
         if (add_ranged_attacker(fighter, enemy))
         {
@@ -1507,12 +1507,10 @@ TbBool creature_has_creature_in_combat(const struct Thing *thing, const struct T
 long get_combat_score(const struct Thing *thing, const struct Thing *enmtng, CrAttackType attack_type, long distance)
 {
     struct CreatureControl* enmctrl = creature_control_get_from_thing(enmtng);
-    struct CreatureModelConfig* crconf = creature_stats_get_from_thing(thing);
-
     long score_extra;
     long score_base;
 
-    if (crconf->attack_preference == AttckT_Ranged)
+    if (creature_attack_preference(thing) == AttckT_Ranged)
     {
         if ((attack_type == AttckT_Ranged) || creature_has_ranged_weapon(thing))
         {
@@ -1777,8 +1775,7 @@ TbBool combat_type_is_choice_of_creature(const struct Thing *thing, CrAttackType
     if (cctrl->combat.attack_type != AttckT_Ranged) {
         return true;
     }
-    struct CreatureModelConfig* crconf = creature_stats_get_from_thing(thing);
-    if (crconf->attack_preference != AttckT_Ranged)
+    if (creature_attack_preference(thing) != AttckT_Ranged)
         return false;
     return creature_has_ranged_weapon(thing);
 }
@@ -1882,6 +1879,8 @@ CrInstance get_self_spell_casting(const struct Thing *thing)
     for (int i = 0; i < game.conf.crtr_conf.instances_count; i++)
     {
         struct InstanceInfo* inst_inf = creature_instance_info_get(i);
+        if (!creature_instance_allowed_for_ai(thing, i))
+            continue;
         if (inst_inf->validate_source_func != 0)
         {
             ok = creature_instances_validate_func_list[inst_inf->validate_source_func]((struct Thing *)thing,
@@ -1979,7 +1978,7 @@ CrInstance get_postal_instance_to_use(const struct Thing *thing, unsigned long d
         inst_inf = creature_instance_info_get(postal_inststance[j]);
 
         // Check if the instance is available
-        if (creature_instance_is_available(thing, postal_inststance[j]))
+        if (creature_instance_is_available(thing, postal_inststance[j]) && creature_instance_allowed_for_ai(thing, postal_inststance[j]))
         {
             // If this instance has higher priority than current highest, reset the list
             if (inst_inf->postal_priority > highest_prio)
@@ -2034,6 +2033,9 @@ void reset_postal_instance_cache()
  */
 CrInstance get_best_combat_weapon_instance_to_use(const struct Thing *thing, long dist, int atktype)
 {
+    // The thing being fought, for instances the keeper wants used carefully
+    const struct CreatureControl* figctrl = creature_control_get_from_thing(thing);
+    const struct Thing* target = thing_get(figctrl->combat.battle_enemy_idx);
     CrInstance inst_id = CrInst_NULL;
     struct InstanceInfo* inst_inf;
     for (short i = 0; i < game.conf.crtr_conf.instances_count; i++)
@@ -2042,18 +2044,18 @@ CrInstance get_best_combat_weapon_instance_to_use(const struct Thing *thing, lon
         if (inst_inf->range_min < 0) //instance is not a combat weapon
             continue;
 
-        if (creature_instance_is_available(thing, i))
+        if (creature_instance_is_available(thing, i) && creature_instance_allowed_for_ai(thing, i))
         {
             if ( ( ((inst_inf->instance_property_flags & (InstPF_RangedAttack | InstPF_RangedDebuff | InstPF_MeleeAttack)) && (atktype & InstPF_RangedAttack)) ||
                    ((inst_inf->instance_property_flags & (InstPF_MeleeAttack | InstPF_RangedDebuff))  && (atktype & InstPF_MeleeAttack)) ) &&
                  (!(inst_inf->instance_property_flags & InstPF_Dangerous)   || !(atktype & InstPF_Dangerous)) &&
                  ((inst_inf->instance_property_flags & InstPF_Destructive)  >=  (atktype & InstPF_Destructive)) )
             {
-                if (creature_instance_has_reset(thing, i))
+                // An attack held back to spare the keeper's creatures counts as one being reloaded
+                if (creature_instance_has_reset(thing, i) && (inst_inf->range_min <= dist) && (inst_inf->range_max >= dist)
+                    && creature_instance_safe_for_ai(thing, i, target))
                 {
-                    if ((inst_inf->range_min <= dist) && (inst_inf->range_max >= dist)) {
-                        return i;
-                    }
+                    return i;
                 }
                 if (inst_id == CrInst_NULL) {
                     inst_id = -i;
@@ -2066,6 +2068,9 @@ CrInstance get_best_combat_weapon_instance_to_use(const struct Thing *thing, lon
 
 CrInstance get_best_combat_weapon_instance_to_use_versus_trap(const struct Thing* thing, long dist, int atktype)
 {
+    // The thing being fought, for instances the keeper wants used carefully
+    const struct CreatureControl* figctrl = creature_control_get_from_thing(thing);
+    const struct Thing* target = thing_get(figctrl->combat.battle_enemy_idx);
     CrInstance inst_id = CrInst_NULL;
     struct InstanceInfo* inst_inf;
     for (short i = 0; i < game.conf.crtr_conf.instances_count; i++)
@@ -2074,7 +2079,7 @@ CrInstance get_best_combat_weapon_instance_to_use_versus_trap(const struct Thing
         if (inst_inf->range_min < 0) //instance is not a combat weapon
             continue;
 
-        if (creature_instance_is_available(thing, i))
+        if (creature_instance_is_available(thing, i) && creature_instance_allowed_for_ai(thing, i))
         {
             if ((((inst_inf->instance_property_flags & (InstPF_RangedAttack | InstPF_RangedDebuff | InstPF_MeleeAttack)) && (atktype & InstPF_RangedAttack)) ||
                 ((inst_inf->instance_property_flags & (InstPF_MeleeAttack | InstPF_RangedDebuff)) && (atktype & InstPF_MeleeAttack))) &&
@@ -2082,11 +2087,11 @@ CrInstance get_best_combat_weapon_instance_to_use_versus_trap(const struct Thing
                 ((inst_inf->instance_property_flags & InstPF_Destructive) >= (atktype & InstPF_Destructive)) &&
                 (inst_inf->instance_property_flags & InstPF_Disarming) )
             {
-                if (creature_instance_has_reset(thing, i))
+                // An attack held back to spare the keeper's creatures counts as one being reloaded
+                if (creature_instance_has_reset(thing, i) && (inst_inf->range_min <= dist) && (inst_inf->range_max >= dist)
+                    && creature_instance_safe_for_ai(thing, i, target))
                 {
-                    if ((inst_inf->range_min <= dist) && (inst_inf->range_max >= dist)) {
-                        return i;
-                    }
+                    return i;
                 }
                 if (inst_id == CrInst_NULL) {
                     inst_id = -i;
@@ -2394,8 +2399,8 @@ long melee_combat_move(struct Thing *thing, struct Thing *enmtng, long enmdist, 
             set_creature_instance(thing, inst_id, thing->index, 0);
             return false;
         }
-        // Secondly, check if any ranged weapon is available.
-        if ((cctrl->combat_flags & (CmbtF_DoorFight|CmbtF_ObjctFight)) == 0)
+        // Secondly, check if any ranged weapon is available; not for creatures told to fight in melee.
+        if (((cctrl->combat_flags & (CmbtF_DoorFight|CmbtF_ObjctFight)) == 0) && (cctrl->combat_style != CrCmbtStl_Melee))
         {
             if (combat_has_line_of_sight(thing, enmtng, enmdist))
             {
@@ -2411,6 +2416,18 @@ long melee_combat_move(struct Thing *thing, struct Thing *enmtng, long enmdist, 
     // Move to enemy
     if (creature_move_to(thing, &enmtng->mappos, cctrl->max_speed, 0, 0) == -1)
     {
+        // A creature told to fight in melee shoots only at an enemy it cannot get to
+        if ((cctrl->combat_style == CrCmbtStl_Melee) && ((cctrl->combat_flags & (CmbtF_DoorFight|CmbtF_ObjctFight)) == 0)
+            && creature_has_ranged_weapon(thing) && thing_in_field_of_view(thing, enmtng)
+            && combat_has_line_of_sight(thing, enmtng, enmdist))
+        {
+            inst_id = get_best_ranged_offensive_weapon(thing, enmdist);
+            if (inst_id > CrInst_NULL)
+            {
+                set_creature_instance(thing, inst_id, enmtng->index, 0);
+                return false;
+            }
+        }
         // If cannot move to enemy, and not waiting for ranged weapon cooldown, then retreat from him
         if (!creature_has_ranged_weapon(thing))
         {
@@ -2568,8 +2585,7 @@ long creature_has_spare_slot_for_combat(struct Thing *fighter, struct Thing *ene
         return false;
     }
     // Melee combat was requested; but we may still check for ranged attacker, if creature prefers it
-    struct CreatureModelConfig* figstat = creature_stats_get_from_thing(fighter);
-    if (figstat->attack_preference == AttckT_Ranged)
+    if (creature_attack_preference(fighter) == AttckT_Ranged)
     {
         if (creature_has_ranged_weapon(fighter))
         {

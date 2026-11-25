@@ -150,6 +150,7 @@
   #include "ftests/ftest.h"
 #endif
 
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef _MSC_VER
@@ -1100,6 +1101,7 @@ void clear_game(void)
     clear_slabsets();
     game.skip_initial_input_turns = 0;
     initialize_packet_history();
+    clear_creature_settings_requests();
 }
 
 void clear_game_for_save(void)

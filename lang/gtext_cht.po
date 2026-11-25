@@ -7244,3 +7244,81 @@ msgstr "%s 與房主的檔案不同"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "單人地圖（合作）..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "戰鬥風格 - 自動：該生物按其種族偏好的方式戰鬥。左鍵 近戰。右鍵 遠程。"
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "戰鬥風格 - 近戰：該生物會貼身肉搏，只對無法接近的敵人使用遠程攻擊。左鍵 遠程。右鍵 自動。"
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "戰鬥風格 - 遠程：該生物會保持距離，盡可能使用遠程攻擊。左鍵 自動。右鍵 近戰。"
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "重新命名：為該生物取一個你自己的名字。左鍵 輸入新名字，Enter 確認，Esc 取消。"
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "逃跑或戰鬥 - 你的傾向：該生物按你生物的傾向逃跑或繼續戰鬥。左鍵 逃跑。右鍵 戰鬥至死。"
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "逃跑或戰鬥 - 逃跑：無論你的傾向如何，該生物重傷時都會逃跑。左鍵 戰鬥至死。右鍵 你的傾向。"
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "逃跑或戰鬥 - 戰鬥至死：無論你的傾向如何，該生物重傷時也會繼續戰鬥。左鍵 你的傾向。右鍵 逃跑。"
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "俘虜 - 你的傾向：該生物按你的囚禁傾向抓俘虜或殺敵。左鍵 抓俘虜。右鍵 殺死。"
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "俘虜 - 抓俘虜：該生物會擊暈被打敗的敵人，讓小鬼把他們送進監獄。左鍵 殺死。右鍵 你的傾向。"
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "俘虜 - 殺死：該生物會殺死被打敗的敵人。左鍵 你的傾向。右鍵 抓俘虜。"
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- 自由使用。左鍵/右鍵 為該生物限制它。"
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- 謹慎：會波及你自己的生物時不使用。左鍵/右鍵 更改。"
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- 關閉：該生物不會自行使用。左鍵/右鍵 更改。"

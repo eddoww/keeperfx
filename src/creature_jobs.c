@@ -50,6 +50,7 @@
 #include "creature_states_wrshp.h"
 #include "creature_states_lair.h"
 #include "creature_states_pray.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 /******************************************************************************/
@@ -576,7 +577,7 @@ TbBool creature_can_freeze_prisoners_for_player(const struct Thing *creatng, Pla
 {
     // To freeze prisoners, our prison can't be empty
     struct Room* room = find_room_of_role_for_thing_with_used_capacity(creatng, creatng->owner, get_room_role_for_job(Job_FREEZE_PRISONERS), NavRtF_Default, 1);
-    return creature_instance_is_available(creatng, CrInst_FREEZE) && !room_is_invalid(room);
+    return creature_instance_is_available(creatng, CrInst_FREEZE) && creature_instance_allowed_for_ai(creatng, CrInst_FREEZE) && !room_is_invalid(room);
 }
 
 TbBool creature_can_join_fight_for_player(const struct Thing *creatng, PlayerNumber plyr_idx, CreatureJob new_job)

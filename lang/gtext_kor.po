@@ -7634,3 +7634,81 @@ msgstr "%s와(과) 호스트의 파일이 다릅니다"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "1인용 맵 (협동)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "전투 방식 - 자동: 이 크리처는 종족이 선호하는 방식으로 싸웁니다. 왼쪽 클릭 근접. 오른쪽 클릭 원거리."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "전투 방식 - 근접: 이 크리처는 다가가서 백병전을 벌이며, 닿을 수 없는 적에게만 원거리 공격을 사용합니다. 왼쪽 클릭 원거리. 오른쪽 클릭 자동."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "전투 방식 - 원거리: 이 크리처는 거리를 유지하며 가능할 때마다 원거리 공격으로 싸웁니다. 왼쪽 클릭 자동. 오른쪽 클릭 근접."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "이름 변경: 이 크리처에게 원하는 이름을 붙입니다. 왼쪽 클릭로 새 이름 입력, Enter로 확정, Esc로 취소."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "도망 또는 전투 - 당신의 성향: 이 크리처는 크리처 성향에 따라 도망치거나 계속 싸웁니다. 왼쪽 클릭 도망. 오른쪽 클릭 죽을 때까지 전투."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "도망 또는 전투 - 도망: 성향과 상관없이 크게 다치면 도망칩니다. 왼쪽 클릭 죽을 때까지 전투. 오른쪽 클릭 당신의 성향."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "도망 또는 전투 - 죽을 때까지: 성향과 상관없이 크게 다쳐도 계속 싸웁니다. 왼쪽 클릭 당신의 성향. 오른쪽 클릭 도망."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "포로 - 당신의 성향: 투옥 성향에 따라 포로를 잡거나 죽입니다. 왼쪽 클릭 포로 잡기. 오른쪽 클릭 죽이기."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "포로 - 포로 잡기: 쓰러뜨린 적을 기절시켜 임프가 감옥으로 옮기게 합니다. 왼쪽 클릭 죽이기. 오른쪽 클릭 당신의 성향."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "포로 - 죽이기: 쓰러뜨린 적을 죽입니다. 왼쪽 클릭 당신의 성향. 오른쪽 클릭 포로 잡기."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- 자유롭게 사용. 왼쪽 클릭/오른쪽 클릭로 이 크리처의 사용을 제한."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- 신중: 아군 크리처가 휘말리면 사용하지 않습니다. 왼쪽 클릭/오른쪽 클릭로 변경."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- 끔: 이 크리처는 스스로 사용하지 않습니다. 왼쪽 클릭/오른쪽 클릭로 변경."

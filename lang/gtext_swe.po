@@ -7645,3 +7645,81 @@ msgstr "Filerna skiljer sig mellan %s och värden"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Enspelarbanor (samarbete)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "Stridsstil - Automatisk: Varelsen slåss så som dess sort föredrar. Vänsterklick närstrid. Högerklick avstånd."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "Stridsstil - Närstrid: Varelsen går in i närstrid och använder bara avståndsattacker mot fiender den inte kan nå. Vänsterklick avstånd. Högerklick automatisk."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "Stridsstil - Avstånd: Varelsen håller avstånd och slåss med avståndsattacker när den kan. Vänsterklick automatisk. Högerklick närstrid."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "Byt namn: Ge varelsen ett eget namn. Vänsterklick för att skriva ett nytt namn, Enter för att behålla det, Esc för att avbryta."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "Fly eller slåss - Din tendens: Varelsen flyr eller slåss vidare som dina varelsers tendens säger. Vänsterklick fly. Högerklick slåss till döden."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "Fly eller slåss - Fly: Varelsen flyr när den är svårt skadad, vad din tendens än säger. Vänsterklick slåss till döden. Högerklick din tendens."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "Fly eller slåss - Till döden: Varelsen slåss vidare även svårt skadad, vad din tendens än säger. Vänsterklick din tendens. Högerklick fly."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "Fångar - Din tendens: Varelsen tar fångar eller dödar som din tendens Fängsla säger. Vänsterklick ta fångar. Högerklick döda."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "Fångar - Ta fångar: Varelsen slår medvetslösa fiender den besegrar, så att dina imper bär dem till ditt fängelse. Vänsterklick döda. Högerklick din tendens."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "Fångar - Döda: Varelsen dödar fiender den besegrar. Vänsterklick din tendens. Högerklick ta fångar."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- Används fritt. Vänsterklick/Högerklick för att begränsa det för varelsen."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- Försiktigt: används inte om dina egna varelser skulle träffas. Vänsterklick/Högerklick för att ändra."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- Av: varelsen använder det inte på egen hand. Vänsterklick/Högerklick för att ändra."

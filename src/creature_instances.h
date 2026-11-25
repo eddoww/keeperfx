@@ -155,6 +155,8 @@ TbBool creature_instance_is_available(const struct Thing *thing, CrInstance inum
 
 TbBool creature_choose_first_available_instance(struct Thing *thing);
 TbBool creature_increase_available_instances(struct Thing *thing);
+TbBool instance_is_ranged_weapon(CrInstance inum);
+TbBool instance_is_melee_attack(CrInstance inum);
 TbBool creature_has_ranged_weapon(const struct Thing *thing);
 TbBool creature_has_disarming_weapon(const struct Thing* creatng);
 TbBool creature_has_ranged_object_weapon(const struct Thing *creatng);

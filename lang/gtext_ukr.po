@@ -7698,3 +7698,81 @@ msgstr "Файли у %s та хоста відрізняються"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Одиночні мапи (кооператив)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "Стиль бою - Автоматичний: Істота б'ється так, як воліє її вид. ЛКМ ближній бій. ПКМ дальній бій."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "Стиль бою - Ближній бій: Істота сходиться з ворогом урукопаш і використовує дальні атаки лише проти недосяжних ворогів. ЛКМ дальній бій. ПКМ автоматичний."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "Стиль бою - Дальній бій: Істота тримається на відстані й за можливості використовує дальні атаки. ЛКМ автоматичний. ПКМ ближній бій."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "Перейменувати: Дайте істоті власне ім'я. ЛКМ - ввести нове ім'я, Enter - зберегти, Esc - скасувати."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "Тікати чи битися - Ваша схильність: Істота тікає або б'ється далі згідно зі схильністю ваших істот. ЛКМ тікати. ПКМ битися до смерті."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "Тікати чи битися - Тікати: Істота тікає, коли тяжко поранена, хоч би що казала ваша схильність. ЛКМ битися до смерті. ПКМ ваша схильність."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "Тікати чи битися - До смерті: Істота б'ється далі навіть тяжко поранена, хоч би що казала ваша схильність. ЛКМ ваша схильність. ПКМ тікати."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "Полонені - Ваша схильність: Істота бере полонених або вбиває згідно з вашою схильністю. ЛКМ брати полонених. ПКМ вбивати."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "Полонені - Брати полонених: Істота оглушує переможених ворогів, щоб біси віднесли їх до в'язниці. ЛКМ вбивати. ПКМ ваша схильність."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "Полонені - Вбивати: Істота вбиває переможених ворогів. ЛКМ ваша схильність. ПКМ брати полонених."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- Використовується вільно. ЛКМ/ПКМ - обмежити для цієї істоти."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- Обережно: не використовується, якщо зачепить ваших істот. ЛКМ/ПКМ - змінити."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- Вимкнено: істота не використовує це сама. ЛКМ/ПКМ - змінити."

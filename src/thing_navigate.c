@@ -39,6 +39,7 @@
 #include "game_legacy.h"
 #include "player_data.h"
 #include "local_camera.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -618,6 +619,7 @@ TbBool creature_move_to_using_teleport(struct Thing *thing, struct Coord3d *pos,
     struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
     if (creature_instance_is_available(thing, CrInst_TELEPORT)
      && creature_instance_has_reset(thing, CrInst_TELEPORT)
+     && creature_instance_allowed_for_ai(thing, CrInst_TELEPORT)
      && (cctrl->instance_id == CrInst_NULL))
     {
         // Creature can only be teleported to a revealed location

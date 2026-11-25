@@ -33,6 +33,7 @@
 #include "thing_objects.h"
 #include "player_instances.h"
 #include "game_legacy.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 /******************************************************************************/
@@ -241,8 +242,7 @@ long get_combat_state_for_combat(struct Thing *fightng, struct Thing *enmtng, Cr
         }
         return CmbtSt_Waiting;
     }
-    struct CreatureModelConfig* crconf = creature_stats_get_from_thing(fightng);
-    if (crconf->attack_preference == AttckT_Ranged)
+    if (creature_attack_preference(fightng) == AttckT_Ranged)
     {
         if (creature_has_ranged_weapon(fightng) && can_add_ranged_combat_attacker(enmtng)) {
             return CmbtSt_Ranged;

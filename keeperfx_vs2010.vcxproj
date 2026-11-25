@@ -110,6 +110,7 @@
     <ClCompile Include="src\creature_instances.c" />
     <ClCompile Include="src\creature_jobs.c" />
     <ClCompile Include="src\creature_senses.c" />
+    <ClCompile Include="src\creature_settings.c" />
     <ClCompile Include="src\creature_states.c" />
     <ClCompile Include="src\creature_states_barck.c" />
     <ClCompile Include="src\creature_states_combt.c" />
@@ -481,6 +482,7 @@
     <ClInclude Include="src\creature_instances.h" />
     <ClInclude Include="src\creature_jobs.h" />
     <ClInclude Include="src\creature_senses.h" />
+    <ClInclude Include="src\creature_settings.h" />
     <ClInclude Include="src\creature_states.h" />
     <ClInclude Include="src\creature_states_barck.h" />
     <ClInclude Include="src\creature_states_combt.h" />

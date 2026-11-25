@@ -7877,3 +7877,81 @@ msgstr "Los archivos de %s y el anfitrión difieren"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Mapas de un jugador (cooperativo)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "Estilo de combate - Automático: Esta criatura lucha como prefiere su especie. Clic izquierdo cuerpo a cuerpo. Clic derecho a distancia."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "Estilo de combate - Cuerpo a cuerpo: Esta criatura se acerca para luchar cuerpo a cuerpo y solo usa ataques a distancia contra enemigos que no puede alcanzar. Clic izquierdo a distancia. Clic derecho automático."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "Estilo de combate - A distancia: Esta criatura mantiene la distancia y lucha con ataques a distancia siempre que puede. Clic izquierdo automático. Clic derecho cuerpo a cuerpo."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "Renombrar: Dale a esta criatura un nombre propio. Clic izquierdo para escribir un nombre nuevo, Intro para guardarlo, Esc para cancelar."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "Huir o luchar - Tu tendencia: Esta criatura huye o sigue luchando según la tendencia de tus criaturas. Clic izquierdo huir. Clic derecho luchar hasta la muerte."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "Huir o luchar - Huir: Esta criatura huye cuando está malherida, diga lo que diga tu tendencia. Clic izquierdo luchar hasta la muerte. Clic derecho tu tendencia."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "Huir o luchar - Hasta la muerte: Esta criatura sigue luchando aunque esté malherida, diga lo que diga tu tendencia. Clic izquierdo tu tendencia. Clic derecho huir."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "Prisioneros - Tu tendencia: Esta criatura toma prisioneros o mata según tu tendencia Encarcelar. Clic izquierdo tomar prisioneros. Clic derecho matar."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "Prisioneros - Tomar prisioneros: Esta criatura deja inconscientes a los enemigos que vence, para que tus diablillos los lleven a tu prisión. Clic izquierdo matar. Clic derecho tu tendencia."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "Prisioneros - Matar: Esta criatura mata a los enemigos que vence. Clic izquierdo tu tendencia. Clic derecho tomar prisioneros."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- Se usa libremente. Clic izquierdo/Clic derecho para limitarlo en esta criatura."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- Con cuidado: no se usa si alcanzaría a tus propias criaturas. Clic izquierdo/Clic derecho para cambiar."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- Desactivado: esta criatura no lo usa por su cuenta. Clic izquierdo/Clic derecho para cambiar."

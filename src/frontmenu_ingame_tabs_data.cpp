@@ -38,6 +38,7 @@
 #include "frontmenu_ingame_opts.h"
 #include "sprites.h"
 #include "player_instances.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -91,6 +92,16 @@ void gui_area_smiley_anger_button(struct GuiButton *gbtn);
 void gui_area_experience_button(struct GuiButton *gbtn);
 void gui_area_instance_button(struct GuiButton *gbtn);
 void maintain_instance(struct GuiButton *gbtn);
+void gui_creature_rename_done(struct GuiButton *gbtn);
+void maintain_creature_rename(struct GuiButton *gbtn);
+void gui_creature_order_next(struct GuiButton *gbtn);
+void gui_creature_order_prev(struct GuiButton *gbtn);
+void maintain_creature_tendency_order(struct GuiButton *gbtn);
+void gui_area_creature_tendency_order(struct GuiButton *gbtn);
+void gui_creature_instance_order_next(struct GuiButton *gbtn);
+void gui_creature_instance_order_prev(struct GuiButton *gbtn);
+void maintain_creature_combat_style(struct GuiButton *gbtn);
+void gui_area_creature_combat_style(struct GuiButton *gbtn);
 void maintain_activity_up(struct GuiButton *gbtn);
 void maintain_activity_down(struct GuiButton *gbtn);
 void maintain_activity_pic(struct GuiButton *gbtn);
@@ -377,12 +388,16 @@ struct GuiButtonInit creature_query_buttons1[] = {
   {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  80, 200,  80, 200, 56, 24, gui_area_smiley_anger_button, GPS_rpanel_bar_rounded_empty, GUIStr_CreatureAngerDesc,0,       {0},               0, NULL },
   {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  80, 230,  80, 230, 56, 24, gui_area_experience_button, GPS_rpanel_bar_rounded_full, GUIStr_ExperienceDesc,   0,       {0},               0, NULL },
   {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_query_next_creature_of_owner,    gui_query_next_creature_of_owner_and_model,         NULL,               0,   4, 266,   4, 266,126, 14, NULL,                              0, GUIStr_NameAndHealthDesc,0,       {0},               0, NULL },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 290,   4, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {0},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 290,  72, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {1},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 318,   4, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {2},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 318,  72, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {3},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 346,   4, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {4},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 1, NULL,                                NULL,                                               NULL,               0,  72, 346,  72, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {5},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,   4, 290,   4, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {0},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,  72, 290,  72, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {1},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,   4, 318,   4, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {2},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,  72, 318,  72, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {3},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,   4, 346,   4, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {4},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 1, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,  72, 346,  72, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {5},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,   8, 374,   8, 374, 30, 20, gui_area_creature_combat_style,    0, GUIStr_CreatureCombatStyleAutoDesc, 0, {0},        0, maintain_creature_combat_style },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,  98, 374,  98, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureFleeOrderKeeperDesc, 0, {CrOrd_Flee},     0, maintain_creature_tendency_order },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0, 118, 374, 118, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureImprisonOrderKeeperDesc, 0, {CrOrd_Imprison}, 0, maintain_creature_tendency_order },
+  {LbBtnT_EditBox,      BID_DEFAULT, 0, 0, gui_creature_rename_done,            NULL,                                               NULL,               0,   4, 188,   4, 188, 72, 72, NULL,                              0, GUIStr_CreatureRenameDesc, 0,       {0},               0, maintain_creature_rename },
   {              -1,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   0,   0,   0,   0,  0,  0, NULL,                              0,   0,                     0,       {0},               0, NULL },
 };
 
@@ -391,12 +406,16 @@ struct GuiButtonInit creature_query_buttons2[] = {
   {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  80, 200,  80, 200, 56, 24, gui_area_smiley_anger_button, GPS_rpanel_bar_rounded_empty, GUIStr_CreatureAngerDesc,0,       {0},               0, NULL },
   {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  80, 230,  80, 230, 56, 24, gui_area_experience_button, GPS_rpanel_bar_rounded_full, GUIStr_ExperienceDesc,   0,       {0},               0, NULL },
   {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_query_next_creature_of_owner,    gui_query_next_creature_of_owner_and_model,         NULL,               0,   4, 266,   4, 266,126, 14, NULL,                              0, GUIStr_NameAndHealthDesc,0,       {0},               0, NULL },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 290,   4, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {4},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 290,  72, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {5},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 318,   4, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {6},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 318,  72, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {7},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 346,   4, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {8},               0, maintain_instance },
-  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 1, NULL,                                NULL,                                               NULL,               0,  72, 346,  72, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {9},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,   4, 290,   4, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {4},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,  72, 290,  72, 290, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {5},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,   4, 318,   4, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {6},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,  72, 318,  72, 318, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {7},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,   4, 346,   4, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {8},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 1, gui_creature_instance_order_next,    gui_creature_instance_order_prev,                   NULL,               0,  72, 346,  72, 346, 60, 24, gui_area_instance_button,          0, GUIStr_Empty,            0,       {9},               0, maintain_instance },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,   8, 374,   8, 374, 30, 20, gui_area_creature_combat_style,    0, GUIStr_CreatureCombatStyleAutoDesc, 0, {0},        0, maintain_creature_combat_style },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,  98, 374,  98, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureFleeOrderKeeperDesc, 0, {CrOrd_Flee},     0, maintain_creature_tendency_order },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0, 118, 374, 118, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureImprisonOrderKeeperDesc, 0, {CrOrd_Imprison}, 0, maintain_creature_tendency_order },
+  {LbBtnT_EditBox,      BID_DEFAULT, 0, 0, gui_creature_rename_done,            NULL,                                               NULL,               0,   4, 188,   4, 188, 72, 72, NULL,                              0, GUIStr_CreatureRenameDesc, 0,       {0},               0, maintain_creature_rename },
   {              -1,    BID_DEFAULT, 0, 0, NULL,                                NULL,                                               NULL,               0,   0,   0,   0,   0,  0,  0, NULL,                              0,   0,                     0,       {0},               0, NULL },
 };
 
@@ -413,6 +432,9 @@ struct GuiButtonInit creature_query_buttons3[] = {
   {LbBtnT_NormalBtn,    BID_QUERY_INFO, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 316,  72, 316, 60, 24, gui_area_stat_button, GPS_symbols_creatr_stat_gold_std, GUIStr_CreatureGoldHeldDesc,   0,       {CrLStat_GoldHeld}, 0, NULL },
   {LbBtnT_NormalBtn,    BID_QUERY_INFO, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 346,   4, 346, 60, 24, gui_area_stat_button, GPS_symbols_creatr_stat_age_std, GUIStr_CreatureTimeInDungeonDesc,0,      {CrLStat_AgeTime}, 0, NULL },
   {LbBtnT_NormalBtn,    BID_QUERY_INFO, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 346,  72, 346, 60, 24, gui_area_stat_button, GPS_symbols_creatr_stat_kills_std, GUIStr_CreatureKillsDesc,      0,          {CrLStat_Kills}, 0, NULL },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,   8, 374,   8, 374, 30, 20, gui_area_creature_combat_style,    0, GUIStr_CreatureCombatStyleAutoDesc, 0, {0},        0, maintain_creature_combat_style },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,  98, 374,  98, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureFleeOrderKeeperDesc, 0, {CrOrd_Flee},     0, maintain_creature_tendency_order },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0, 118, 374, 118, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureImprisonOrderKeeperDesc, 0, {CrOrd_Imprison}, 0, maintain_creature_tendency_order },
   {              -1,    BID_DEFAULT,    0, 0, NULL,                                NULL,                                               NULL,               0,   0,   0,   0,   0,  0,  0, NULL,                              0,   0,                           0,                      {0}, 0, NULL },
 };
 
@@ -429,6 +451,9 @@ struct GuiButtonInit creature_query_buttons4[] = {
   {LbBtnT_NormalBtn,    BID_QUERY_INFO, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 316,  72, 316, 60, 24, gui_area_stat_button, GPS_symbols_creatr_stat_scavngcst_std, GUIStr_CreatureScavngCostDesc,  0,   {CrLStat_ScavengeCost}, 0, NULL },
   {LbBtnT_NormalBtn,    BID_QUERY_INFO, 0, 0, NULL,                                NULL,                                               NULL,               0,   4, 346,   4, 346, 60, 24, gui_area_stat_button, GPS_trapdoor_trap_boulder_std_s, GUIStr_CreatureWeightDesc,      0,         {CrLStat_Weight}, 0, NULL },
   {LbBtnT_NormalBtn,    BID_QUERY_INFO, 0, 0, NULL,                                NULL,                                               NULL,               0,  72, 346,  72, 346, 60, 24, gui_area_stat_button, GPS_symbols_creatr_stat_blood_std, GUIStr_CreatureBloodTypeDesc,   0,      {CrLStat_BloodType}, 0, NULL },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,   8, 374,   8, 374, 30, 20, gui_area_creature_combat_style,    0, GUIStr_CreatureCombatStyleAutoDesc, 0, {0},        0, maintain_creature_combat_style },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0,  98, 374,  98, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureFleeOrderKeeperDesc, 0, {CrOrd_Flee},     0, maintain_creature_tendency_order },
+  {LbBtnT_NormalBtn,    BID_DEFAULT, 0, 0, gui_creature_order_next,             gui_creature_order_prev,                            NULL,               0, 118, 374, 118, 374, 19, 20, gui_area_creature_tendency_order,  0, GUIStr_CreatureImprisonOrderKeeperDesc, 0, {CrOrd_Imprison}, 0, maintain_creature_tendency_order },
   {              -1,    BID_DEFAULT,    0, 0, NULL,                                NULL,                                               NULL,               0,   0,   0,   0,   0,  0,  0, NULL,                              0,   0,                            0,                      {0}, 0, NULL },
 };
 

@@ -110,6 +110,7 @@
 #include "cursor_tag.h"
 
 #include "keeperfx.hpp"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -426,6 +427,7 @@ TbBool packet_action_has_camera_position(enum TbPacketAction action)
     case PckA_ApplyRoomspaceDigTag:
     case PckA_SetTimestamp:
     case PckA_ZoomFromMap:
+    case PckA_CreatureSetName:
         return false;
     default:
         return true;
@@ -1141,6 +1143,10 @@ TbBool process_user_global_packet_action(NetUserId user)
         query_creature(user, pckt->actn_par1, (pckt->actn_par2 & 0x01) != 0, (pckt->actn_par2 & 0x02) != 0);
         return false;
     }
+    case PckA_CreatureSetOrder:
+    case PckA_CreatureSetName:
+        process_creature_settings_packet(user, pckt);
+        return false;
     default:
       return process_user_global_cheats_packet_action(user, pckt);
   }
@@ -1555,6 +1561,7 @@ enum PacketExchangeResult exchange_packets(void)
     update_dig_tag_input();
     if (!replay.load_enable && !spectator) {
         set_pending_timestamp_packet_action(get_local_packet());
+        set_pending_creature_settings_packet_action(get_local_packet());
         camera_packet_set_state(get_local_packet());
         set_packet_possession_target(get_local_packet());
         observer_set_packet_cursor(get_local_packet());

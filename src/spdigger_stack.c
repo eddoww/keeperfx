@@ -52,6 +52,7 @@
 #include "gui_soundmsgs.h"
 #include "front_simple.h"
 #include "game_legacy.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -1807,10 +1808,6 @@ int add_unclaimed_unconscious_bodies_to_imp_stack(struct Dungeon *dungeon, int m
         SYNCDBG(8,"Dungeon %d has no %s",(int)dungeon->owner,room_role_code_name(RoRoF_Prison));
         return 0;
     }
-    if (!player_creature_tends_to(dungeon->owner, CrTend_Imprison)) {
-        SYNCDBG(8,"Player %d creatures do not tend to imprison",(int)dungeon->owner);
-        return 0;
-    }
     room = find_room_of_role_with_spare_capacity(dungeon->owner, RoRoF_Prison, 1);
     const struct StructureList *slist;
     slist = get_list_for_thing_class(TCls_Creature);
@@ -1830,7 +1827,8 @@ int add_unclaimed_unconscious_bodies_to_imp_stack(struct Dungeon *dungeon, int m
         if ( (dungeon->digger_stack_length >= DIGGER_TASK_MAX_COUNT) || (remain_num <= 0) ) {
             break;
         }
-        if (players_are_enemies(dungeon->owner,thing->owner) && creature_is_being_unconscious(thing) && !thing_is_dragged_or_pulled(thing))
+        if (players_are_enemies(dungeon->owner,thing->owner) && creature_is_being_unconscious(thing) && !thing_is_dragged_or_pulled(thing)
+            && player_wants_creature_as_prisoner(dungeon->owner, thing))
         {
             if (thing_revealed(thing, dungeon->owner))
             {
@@ -3029,15 +3027,15 @@ long check_out_worker_pickup_unconscious(struct Thing *thing, struct DiggerStack
     if (!player_has_room_of_role(thing->owner, RoRoF_Prison)) {
         return 0;
     }
-    if (!player_creature_tends_to(thing->owner, CrTend_Imprison)) {
-        return 0;
-    }
     struct Thing *sectng;
     sectng = check_place_to_pickup_unconscious_body(thing, stl_x, stl_y);
     if (thing_is_invalid(sectng))
     {
         dstack->task_type = DigTsk_None;
         return -1;
+    }
+    if (!player_wants_creature_as_prisoner(thing->owner, sectng)) {
+        return 0;
     }
     if (imp_will_soon_be_working_at_excluding(thing, stl_x, stl_y))
     {

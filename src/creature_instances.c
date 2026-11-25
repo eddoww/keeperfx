@@ -54,6 +54,7 @@
 #include "gui_msgs.h"
 
 #include "keeperfx.hpp"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -336,7 +337,7 @@ TbBool creature_has_ranged_weapon(const struct Thing *creatng)
     {
         if (cctrl->instance_available[inum] > 0)
         {
-            if (instance_is_ranged_weapon(inum))
+            if (instance_is_ranged_weapon(inum) && creature_instance_allowed_for_ai(creatng, inum))
                 return true;
         }
     }
@@ -357,7 +358,7 @@ TbBool creature_has_disarming_weapon(const struct Thing* creatng)
     {
         if (cctrl->instance_available[inum] > 0)
         {
-            if (instance_is_disarming_weapon(inum))
+            if (instance_is_disarming_weapon(inum) && creature_instance_allowed_for_ai(creatng, inum))
                 return true;
         }
     }
@@ -378,7 +379,7 @@ TbBool creature_has_ranged_object_weapon(const struct Thing *creatng)
     {
         if (cctrl->instance_available[inum])
         {
-            if (instance_is_ranged_weapon_vs_objects(inum))
+            if (instance_is_ranged_weapon_vs_objects(inum) && creature_instance_allowed_for_ai(creatng, inum))
                 return true;
         }
     }
@@ -393,7 +394,7 @@ TbBool creature_has_weapon_for_postal(const struct Thing *creatng)
     {
         if (cctrl->instance_available[inum])
         {
-            if (instance_is_used_for_going_postal(inum))
+            if (instance_is_used_for_going_postal(inum) && creature_instance_allowed_for_ai(creatng, inum))
                 return true;
         }
     }
@@ -414,7 +415,7 @@ TbBool creature_has_melee_attack(const struct Thing *creatng)
     {
         if (cctrl->instance_available[inum] > 0)
         {
-            if (instance_is_melee_attack(inum))
+            if (instance_is_melee_attack(inum) && creature_instance_allowed_for_ai(creatng, inum))
                 return true;
         }
     }
@@ -596,6 +597,10 @@ CrInstance process_creature_ranged_buff_spell_casting(struct Thing* creatng)
     {
         const struct InstanceInfo* inst_inf = creature_instance_info_get(i);
         if(creature_instance_info_invalid(inst_inf) || (inst_inf->instance_property_flags & InstPF_RangedBuff) == 0)
+        {
+            continue;
+        }
+        if (!creature_instance_allowed_for_ai(creatng, i))
         {
             continue;
         }
@@ -1579,8 +1584,7 @@ TbBool validate_target_benefits_from_wind
     {
         return true;
     }
-    struct CreatureModelConfig* stats = creature_stats_get_from_thing(target);
-    if (stats->attack_preference == AttckT_Ranged && cctrl->opponents_melee_count >= 2)
+    if (creature_attack_preference(target) == AttckT_Ranged && cctrl->opponents_melee_count >= 2)
     {
         // Surrounded by 2+ enemies. This could be definitely smarter but not now.
         return true;

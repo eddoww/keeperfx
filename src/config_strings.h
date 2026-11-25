@@ -521,6 +521,19 @@ enum GUIStrings {
     GUIStr_NetConnectionUnstable,
     GUIStr_NetFilesDiffer,
     GUIStr_NetLevelPacks,
+    GUIStr_CreatureCombatStyleAutoDesc,
+    GUIStr_CreatureCombatStyleMeleeDesc,
+    GUIStr_CreatureCombatStyleRangedDesc,
+    GUIStr_CreatureRenameDesc,
+    GUIStr_CreatureFleeOrderKeeperDesc,
+    GUIStr_CreatureFleeOrderFleeDesc,
+    GUIStr_CreatureFleeOrderFightDesc,
+    GUIStr_CreatureImprisonOrderKeeperDesc,
+    GUIStr_CreatureImprisonOrderImprisonDesc,
+    GUIStr_CreatureImprisonOrderKillDesc,
+    GUIStr_CreatureInstanceOrderAllowedDesc,
+    GUIStr_CreatureInstanceOrderCarefulDesc,
+    GUIStr_CreatureInstanceOrderOffDesc,
     GuiStrEnd
 };
 

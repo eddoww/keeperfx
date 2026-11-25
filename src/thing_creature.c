@@ -106,6 +106,7 @@
 
 #include "keeperfx.hpp"
 #include "kfx/profiling/KfxProfilingC.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -565,8 +566,7 @@ void set_creature_combat_object_state(struct Thing *creatng, struct Thing *obthi
     cctrl->combat.battle_enemy_crtn = obthing->creation_turn;
     cctrl->fighting_at_same_position = 0;
     cctrl->combat_flags |= CmbtF_ObjctFight;
-    const struct CreatureModelConfig* crconf = creature_stats_get_from_thing(creatng);
-    if ((crconf->attack_preference == AttckT_Ranged) && creature_has_ranged_object_weapon(creatng))
+    if ((creature_attack_preference(creatng) == AttckT_Ranged) && creature_has_ranged_object_weapon(creatng))
     {
         if (combattype == CrSt_CreatureObjectSnipe)
         {
@@ -619,8 +619,7 @@ void set_creature_combat_door_state(struct Thing *creatng, struct Thing *obthing
     cctrl->combat.battle_enemy_crtn = obthing->creation_turn;
     cctrl->fighting_at_same_position = 0;
     cctrl->combat_flags |= CmbtF_DoorFight;
-    const struct CreatureModelConfig* crconf = creature_stats_get_from_thing(creatng);
-    if ((crconf->attack_preference == AttckT_Ranged)
+    if ((creature_attack_preference(creatng) == AttckT_Ranged)
       && creature_has_ranged_object_weapon(creatng)) {
         cctrl->combat.state_id = ObjCmbtSt_Ranged;
     } else {
@@ -3532,6 +3531,7 @@ struct Thing *kill_creature(struct Thing *creatng, struct Thing *killertng, Play
         return cause_creature_death(creatng, flags);
     }
     make_creature_unconscious(creatng);
+    creature_note_knocked_out_by(creatng, killertng);
     creatng->health = 1;
     return INVALID_THING;
 }
@@ -4897,6 +4897,8 @@ void change_creature_owner(struct Thing *creatng, PlayerNumber nowner)
         cctrl->paydays_advanced = 0;
         cctrl->idle.start_gameturn = get_gameturn();
     }
+    // Orders from the previous keeper don't carry over
+    creature_reset_orders(creatng);
 }
 
 /**
@@ -6408,6 +6410,10 @@ void transfer_creature_data_and_gold(struct Thing *oldtng, struct Thing *newtng)
     struct CreatureModelConfig* ncrconf = creature_stats_get_from_thing(newtng);
 
     strcpy(newcctrl->creature_name, oldcctrl->creature_name);
+    // Orders carry over, except those about instances the new kind may not have
+    newcctrl->combat_style = creature_has_combat_style_choice(newtng) ? oldcctrl->combat_style : CrCmbtStl_Default;
+    newcctrl->flee_order = oldcctrl->flee_order;
+    newcctrl->imprison_order = oldcctrl->imprison_order;
     HitPoints health_permil = get_creature_health_permil(oldtng);
     HitPoints new_health = (HitPoints)(((int64_t)newcctrl->max_health * health_permil) / 1000);
     if (new_health < 1)

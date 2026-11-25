@@ -46,6 +46,7 @@
 #include "game_legacy.h"
 #include "local_camera.h"
 #include "keeperfx.hpp"
+#include "frontmenu_ingame_tabs.h"
 #include "post_inc.h"
 #include <math.h>
 
@@ -396,6 +397,12 @@ void setup_gui_tooltip(struct GuiButton* gbtn)
             struct CreatureModelConfig* crconf = creature_stats_get(k);
             set_gui_tooltip_box_fmt(0, "%-6s: %s", get_string(crconf->namestr_idx), text);
         }
+    }
+    else
+    if ((gbtn->click_event == gui_creature_instance_order_next) && (creature_instance_button_order_tooltip(gbtn) != NULL))
+    {
+        // Abilities of the keeper's own creature also tell how it may use them
+        set_gui_tooltip_box_fmt(0, "%s %s", text, creature_instance_button_order_tooltip(gbtn));
     }
     else
     {

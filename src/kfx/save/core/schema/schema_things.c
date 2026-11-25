@@ -163,6 +163,13 @@ SAVE_STRUCT(CreatureControl, struct CreatureControl,
     SAVE_FIELD(struct CreatureControl, joining_age, SV_U8),
     SAVE_FIELD(struct CreatureControl, blood_type, SV_U8),
     SAVE_STRING(struct CreatureControl, creature_name),  /* plain-char */
+    SAVE_FIELD(struct CreatureControl, combat_style, SV_U8),
+    SAVE_FIELD(struct CreatureControl, flee_order, SV_U8),
+    SAVE_FIELD(struct CreatureControl, imprison_order, SV_U8),
+    SAVE_ARRAY(struct CreatureControl, instance_orders, SV_U8),
+    SAVE_FIELD(struct CreatureControl, knocked_out_for_plyr, SV_U8),
+    SAVE_STRING(struct CreatureControl, incoming_name),  /* plain-char */
+    SAVE_FIELD(struct CreatureControl, incoming_name_user, SV_U8),
     SAVE_SUB(struct CreatureControl, flee_pos, Coord3d),
     SAVE_FIELD(struct CreatureControl, flee_start_turn, SV_I32),
     SAVE_SUB_ARRAY(struct CreatureControl, followers_pos, MemberPos),

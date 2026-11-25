@@ -2123,7 +2123,7 @@ const char *creature_own_name(const struct Thing *creatng)
         struct CreatureModelConfig* crconf = creature_stats_get_from_thing(creatng);
         return get_string(crconf->namestr_idx);
     }
-    if (cctrl->creature_name[0] > 0)
+    if (cctrl->creature_name[0] != '\0')
     {
         return cctrl->creature_name;
     }

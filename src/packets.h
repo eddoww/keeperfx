@@ -204,6 +204,8 @@ enum TbPacketAction {
         PckA_CheatApplySpell,
         PckA_CheatKillCreature,
         PckA_SetTimestamp,
+        PckA_CreatureSetOrder,
+        PckA_CreatureSetName,
 };
 
 /** Packet flags for non-action player operation. **/

@@ -77,6 +77,8 @@
 #include "vidfade.h"
 #include "config_keeperfx.h"
 #include "kjm_input.h"
+#include "creature_settings.h"
+#include "bflib_datetm.h"
 #include "custom_sprites.h"
 #include "sprites.h"
 #include "post_inc.h"
@@ -1481,6 +1483,350 @@ void draw_centred_string64k(const char *text, short x, short y, short base_w, sh
     RendererSetDrawFlags(flg_mem);
 }
 
+/******************************************************************************/
+// Per creature settings: the portrait renames the creature, the button at the bottom
+// of the creature query pages sets its combat style.
+
+/** Buffer of the name being typed, and the creature it is for. */
+static char creature_rename_buffer[CREATURE_NAME_MAX];
+static ThingIndex creature_rename_thing_idx;
+static GameTurn creature_rename_creation_turn;
+
+static struct Thing *get_queried_creature_with_settings(void)
+{
+    struct Thing *thing = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
+    if (!thing_is_creature(thing) || (thing->ccontrol_idx <= 0))
+        return NULL;
+    if (observer_is_active() || !creature_settings_can_change(thing, my_player_number))
+        return NULL;
+    return thing;
+}
+
+static TbBool creature_rename_is_active(void)
+{
+    return (input_button != NULL) && (input_button->content.str == creature_rename_buffer);
+}
+
+/**
+ * Gives the name as it is being typed for the creature, with a blinking cursor,
+ * or NULL if this creature is not being renamed.
+ */
+static const char *creature_rename_text_being_edited(const struct Thing *thing, char *buf, size_t buf_size, int max_width)
+{
+    if (!creature_rename_is_active() || (thing->index != creature_rename_thing_idx))
+        return NULL;
+    // Keep the name within the name bar, as it is drawn there
+    int units_per_px = (22 * units_per_pixel_ui) / LbTextLineHeight();
+    while ((creature_rename_buffer[0] != '\0') && (LbTextStringWidthM(creature_rename_buffer, units_per_px) > max_width))
+    {
+        // Undo the character just typed, before the cursor
+        TbCharCount len = LbLocTextStringLength(creature_rename_buffer);
+        TbCharCount pos = (input_field_pos > 0) ? input_field_pos - 1 : len - 1;
+        if (pos >= len)
+            pos = len - 1;
+        LbLocTextStringDelete(creature_rename_buffer, pos, 1);
+        if (input_field_pos > pos)
+            input_field_pos = pos;
+    }
+    snprintf(buf, buf_size, "%s", creature_rename_buffer);
+    if ((LbTimerClock() / 250 & 1) == 0)
+        LbLocTextStringInsert(buf, "_", input_field_pos, buf_size);
+    else
+        LbLocTextStringInsert(buf, " ", input_field_pos, buf_size);
+    return buf;
+}
+
+/** Callback of the portrait button: Enter was pressed after typing a new name. */
+void gui_creature_rename_done(struct GuiButton *gbtn)
+{
+    struct Thing *thing = thing_get(creature_rename_thing_idx);
+    if (thing_is_creature(thing) && (thing->creation_turn == creature_rename_creation_turn))
+        request_creature_name(thing, creature_rename_buffer);
+}
+
+/** Maintain callback of the portrait button, which starts typing a new name for the creature. */
+void maintain_creature_rename(struct GuiButton *gbtn)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if (creature_rename_is_active())
+    {
+        // Another creature is queried, or this one is gone
+        if ((thing == NULL) || (thing->index != creature_rename_thing_idx)
+            || (thing->creation_turn != creature_rename_creation_turn))
+        {
+            kill_button_area_input();
+        }
+        return;
+    }
+    if ((thing == NULL) || !creature_can_be_renamed(thing, my_player_number))
+    {
+        gbtn->btype_value |= LbBFeF_NoTooltip;
+        gbtn->flags &= ~LbBtnF_Enabled;
+        gbtn->content.str = NULL;
+        return;
+    }
+    gbtn->btype_value &= LbBFeF_IntValueMask;
+    gbtn->flags |= LbBtnF_Enabled;
+    // Clicking starts the edit box with the current name in it
+    gbtn->content.str = creature_rename_buffer;
+    gbtn->maxval = sizeof(creature_rename_buffer) - 1;
+    snprintf(creature_rename_buffer, sizeof(creature_rename_buffer), "%s", creature_displayed_name(thing));
+    creature_rename_thing_idx = thing->index;
+    creature_rename_creation_turn = thing->creation_turn;
+}
+
+/**
+ * Gives an attack instance of the creature to stand for a combat style: one it can use now
+ * if there is one, or else the first one its kind learns.
+ */
+static CrInstance get_creature_instance_for_combat_style(const struct Thing *thing, CrAttackType attack_type)
+{
+    const struct CreatureModelConfig *crconf = creature_stats_get_from_thing(thing);
+    CrInstance first_learned = CrInst_NULL;
+    for (int i = 0; i < LEARNED_INSTANCES_COUNT; i++)
+    {
+        CrInstance inst_id = crconf->learned_instance_id[i];
+        if (inst_id <= CrInst_NULL)
+            continue;
+        TbBool matches = (attack_type == AttckT_Ranged) ? instance_is_ranged_weapon(inst_id) : instance_is_melee_attack(inst_id);
+        if (!matches)
+            continue;
+        if (creature_instance_is_available(thing, inst_id))
+            return inst_id;
+        if (first_learned == CrInst_NULL)
+            first_learned = inst_id;
+    }
+    return first_learned;
+}
+
+/** Click callbacks of the order buttons; the button content is the CrOrd_* kind. */
+static void gui_creature_order_change(struct GuiButton *gbtn, int direction)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if (thing == NULL)
+        return;
+    unsigned char kind = gbtn->content.lval;
+    unsigned char value = creature_order_next_value(thing, kind, direction);
+    if (value != creature_displayed_order(thing, kind))
+        request_creature_order(thing, kind, value);
+}
+
+void gui_creature_order_next(struct GuiButton *gbtn)
+{
+    gui_creature_order_change(gbtn, 1);
+}
+
+void gui_creature_order_prev(struct GuiButton *gbtn)
+{
+    gui_creature_order_change(gbtn, -1);
+}
+
+static void disable_creature_order_button(struct GuiButton *gbtn)
+{
+    gbtn->btype_value |= LbBFeF_NoTooltip;
+    gbtn->flags &= ~LbBtnF_Enabled;
+    gbtn->sprite_idx = 0;
+}
+
+void maintain_creature_combat_style(struct GuiButton *gbtn)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if ((thing == NULL) || !creature_has_combat_style_choice(thing))
+    {
+        disable_creature_order_button(gbtn);
+        return;
+    }
+    gbtn->btype_value &= LbBFeF_IntValueMask;
+    gbtn->flags |= LbBtnF_Enabled;
+    unsigned char style = creature_displayed_order(thing, CrOrd_CombatStyle);
+    CrAttackType attack_type;
+    switch (style)
+    {
+    case CrCmbtStl_Melee:
+        gbtn->tooltip_stridx = GUIStr_CreatureCombatStyleMeleeDesc;
+        attack_type = AttckT_Melee;
+        break;
+    case CrCmbtStl_Ranged:
+        gbtn->tooltip_stridx = GUIStr_CreatureCombatStyleRangedDesc;
+        attack_type = AttckT_Ranged;
+        break;
+    default:
+        gbtn->tooltip_stridx = GUIStr_CreatureCombatStyleAutoDesc;
+        attack_type = creature_stats_get_from_thing(thing)->attack_preference;
+        if (attack_type != AttckT_Ranged)
+            attack_type = AttckT_Melee;
+        break;
+    }
+    struct InstanceInfo *inst_inf = creature_instance_info_get(get_creature_instance_for_combat_style(thing, attack_type));
+    gbtn->sprite_idx = inst_inf->symbol_spridx;
+    // The disabled variant of the symbol follows the standard one; it marks the automatic style
+    if ((style == CrCmbtStl_Default) && (gbtn->sprite_idx > 0))
+        gbtn->sprite_idx++;
+}
+
+void gui_area_creature_combat_style(struct GuiButton *gbtn)
+{
+    if (((gbtn->flags & LbBtnF_Enabled) == 0) || (gbtn->sprite_idx <= 0))
+        return;
+    struct Thing *thing = get_queried_creature_with_settings();
+    if (thing == NULL)
+        return;
+    int frame_spr = (creature_displayed_order(thing, CrOrd_CombatStyle) == CrCmbtStl_Default) ? GPS_rpanel_frame_portrt_empty : GPS_rpanel_frame_portrt_light;
+    if ((gbtn->flags & LbBtnF_MouseOver) != 0)
+        frame_spr = GPS_rpanel_frame_portrt_active;
+    const struct TbSprite* frame = get_panel_sprite(frame_spr);
+    int frame_units_per_px = gbtn->height * 16 / frame->SHeight;
+    int frame_w = frame->SWidth * frame_units_per_px / 16;
+    int frame_x = gbtn->scr_pos_x + (gbtn->width - frame_w) / 2;
+    draw_gui_panel_sprite_left(frame_x, gbtn->scr_pos_y, frame_units_per_px, frame_spr);
+    const struct TbSprite* spr = get_panel_sprite(gbtn->sprite_idx);
+    if ((spr == NULL) || (spr->SHeight == 0))
+        return;
+    // The attack symbol at the size it has on the instance buttons, centred in the frame
+    int icon_units_per_px = simple_gui_panel_sprite_height_units_per_px(gbtn, GPS_rpanel_bar_with_pic_full_blue_down, 120);
+    int icon_w = spr->SWidth * icon_units_per_px / 16;
+    int icon_h = spr->SHeight * icon_units_per_px / 16;
+    int icon_x = frame_x + (frame_w - icon_w) / 2;
+    int icon_y = gbtn->scr_pos_y + (gbtn->height - icon_h) / 2;
+    draw_gui_panel_sprite_left(icon_x, icon_y, icon_units_per_px, gbtn->sprite_idx);
+}
+
+/**
+ * Maintain callback of the Flee and Imprison order buttons. They use the keeper's tendency
+ * buttons: unlit while the creature follows the keeper's tendency, lit for its own order.
+ */
+void maintain_creature_tendency_order(struct GuiButton *gbtn)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if (thing == NULL)
+    {
+        disable_creature_order_button(gbtn);
+        return;
+    }
+    gbtn->btype_value &= LbBFeF_IntValueMask;
+    gbtn->flags |= LbBtnF_Enabled;
+    unsigned char value = creature_displayed_order(thing, gbtn->content.lval);
+    if (gbtn->content.lval == CrOrd_Flee)
+    {
+        switch (value)
+        {
+        case CrFlee_Flee:
+            gbtn->sprite_idx = GPS_rpanel_tendency_fleee_act;
+            gbtn->tooltip_stridx = GUIStr_CreatureFleeOrderFleeDesc;
+            break;
+        case CrFlee_Fight:
+            gbtn->sprite_idx = GPS_rpanel_tendency_attacke_act;
+            gbtn->tooltip_stridx = GUIStr_CreatureFleeOrderFightDesc;
+            break;
+        default:
+            gbtn->sprite_idx = player_creature_tends_to(thing->owner, CrTend_Flee) ? GPS_rpanel_tendency_fleee_std : GPS_rpanel_tendency_attacke_std;
+            gbtn->tooltip_stridx = GUIStr_CreatureFleeOrderKeeperDesc;
+            break;
+        }
+    } else
+    {
+        switch (value)
+        {
+        case CrImpr_Imprison:
+            gbtn->sprite_idx = GPS_rpanel_tendency_prisne_act;
+            gbtn->tooltip_stridx = GUIStr_CreatureImprisonOrderImprisonDesc;
+            break;
+        case CrImpr_Kill:
+            gbtn->sprite_idx = GPS_rpanel_tendency_prisnd_act;
+            gbtn->tooltip_stridx = GUIStr_CreatureImprisonOrderKillDesc;
+            break;
+        default:
+            gbtn->sprite_idx = player_creature_tends_to(thing->owner, CrTend_Imprison) ? GPS_rpanel_tendency_prisne_std : GPS_rpanel_tendency_prisnd_std;
+            gbtn->tooltip_stridx = GUIStr_CreatureImprisonOrderKeeperDesc;
+            break;
+        }
+    }
+}
+
+void gui_area_creature_tendency_order(struct GuiButton *gbtn)
+{
+    if (((gbtn->flags & LbBtnF_Enabled) == 0) || (gbtn->sprite_idx <= 0))
+        return;
+    const struct TbSprite* spr = get_panel_sprite(gbtn->sprite_idx);
+    if ((spr == NULL) || (spr->SWidth == 0) || (spr->SHeight == 0))
+        return;
+    // Fit the tendency button into the slot, keeping its shape
+    int units_per_px = min(gbtn->width * 16 / spr->SWidth, gbtn->height * 16 / spr->SHeight);
+    int spr_w = spr->SWidth * units_per_px / 16;
+    int spr_h = spr->SHeight * units_per_px / 16;
+    int spr_idx = gbtn->sprite_idx;
+    draw_gui_panel_sprite_left(gbtn->scr_pos_x + (gbtn->width - spr_w) / 2, gbtn->scr_pos_y + (gbtn->height - spr_h) / 2,
+        units_per_px, spr_idx);
+}
+
+/** Gives the order kind for the instance shown on an instance button, or -1 if it has none. */
+static int creature_instance_button_order_kind(struct GuiButton *gbtn, struct Thing *thing)
+{
+    CrInstance inst_id = creature_instance_get_available_id_for_pos(thing, gbtn->content.lval);
+    int slot = creature_learned_instance_slot(thing, inst_id);
+    if (slot < 0)
+        return -1;
+    return CrOrd_InstanceFirst + slot;
+}
+
+/** Click callbacks of the instance buttons on the creature query pages. */
+void gui_creature_instance_order_next(struct GuiButton *gbtn)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if ((thing == NULL) || ((thing->alloc_flags & TAlF_IsControlled) != 0))
+        return;
+    int kind = creature_instance_button_order_kind(gbtn, thing);
+    if (kind < 0)
+        return;
+    unsigned char value = creature_order_next_value(thing, kind, 1);
+    if (value != creature_displayed_order(thing, kind))
+        request_creature_order(thing, kind, value);
+}
+
+void gui_creature_instance_order_prev(struct GuiButton *gbtn)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if ((thing == NULL) || ((thing->alloc_flags & TAlF_IsControlled) != 0))
+        return;
+    int kind = creature_instance_button_order_kind(gbtn, thing);
+    if (kind < 0)
+        return;
+    unsigned char value = creature_order_next_value(thing, kind, -1);
+    if (value != creature_displayed_order(thing, kind))
+        request_creature_order(thing, kind, value);
+}
+
+/** Gives the order shown on an instance button: CrInstOrd_Allowed for any creature but the keeper's own. */
+static unsigned char creature_instance_button_order(struct GuiButton *gbtn)
+{
+    // Orders are for the creature on its own; when possessed, every ability is the keeper's to use
+    struct Thing *thing = get_queried_creature_with_settings();
+    if ((thing == NULL) || ((thing->alloc_flags & TAlF_IsControlled) != 0))
+        return CrInstOrd_Allowed;
+    int kind = creature_instance_button_order_kind(gbtn, thing);
+    if (kind < 0)
+        return CrInstOrd_Allowed;
+    return creature_displayed_order(thing, kind);
+}
+
+/** Gives the text added to an instance button's tooltip about the creature's order for it, or NULL. */
+const char *creature_instance_button_order_tooltip(struct GuiButton *gbtn)
+{
+    struct Thing *thing = get_queried_creature_with_settings();
+    if ((thing == NULL) || ((thing->alloc_flags & TAlF_IsControlled) != 0) || (creature_instance_button_order_kind(gbtn, thing) < 0))
+        return NULL;
+    switch (creature_instance_button_order(gbtn))
+    {
+    case CrInstOrd_Careful:
+        return get_string(GUIStr_CreatureInstanceOrderCarefulDesc);
+    case CrInstOrd_Off:
+        return get_string(GUIStr_CreatureInstanceOrderOffDesc);
+    default:
+        return get_string(GUIStr_CreatureInstanceOrderAllowedDesc);
+    }
+}
+/******************************************************************************/
+
 void draw_name_box(long x, long y, int width, struct Thing *thing)
 {
     int ps_units_per_px;
@@ -1514,8 +1860,11 @@ void draw_name_box(long x, long y, int width, struct Thing *thing)
             }
             LbDrawBox(x + ((128-bar_fill)*width + 70)/140, y + (4*width + 70)/140, (bar_fill*width + 70)/140, (14*width + 70)/140, colours[0][0][0]);
         }
-        // Draw creature name
-        const char* text = creature_own_name(thing);
+        // Draw creature name, or the new name while the keeper types it
+        char edit_text[CREATURE_NAME_MAX + 2];
+        const char* text = creature_rename_text_being_edited(thing, edit_text, sizeof(edit_text), 112*width/140);
+        if (text == NULL)
+            text = creature_displayed_name(thing);
         draw_centred_string64k(text, x + 63*width/140, y + 2*width/140, 120, 120*width/140);
     }
 }
@@ -1903,6 +2252,11 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     const GameTurn turn = get_local_creature_turn(ctrltng);
     const TbBool has_reset = creature_instance_has_reset_at(ctrltng, cctrl, curbtn_inst_id, turn);
     int spr_idx;
+    // The keeper's order for the creature: a red bar if it is restricted, see gui_creature_instance_order_next()
+    const unsigned char order = creature_instance_button_order(gbtn);
+    if (order != CrInstOrd_Allowed) {
+      spr_idx = GPS_rpanel_bar_with_pic_full_red_up;
+    } else
     if (cctrl->active_instance_id == curbtn_inst_id) {
       spr_idx = GPS_rpanel_bar_with_pic_full_blue_up;
     } else {
@@ -1938,7 +2292,7 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     spr_idx = gbtn->sprite_idx;
     // Show disabled icon if instance is on cooldown or creature is frozen.
     TbBool disabled;
-    if (!has_reset)
+    if (!has_reset || (order == CrInstOrd_Off))
     {
         disabled = true;
     }

@@ -368,6 +368,16 @@ struct CreatureControl {
     unsigned char joining_age;
     unsigned char blood_type;
     char creature_name[CREATURE_NAME_MAX];
+    /** Orders from the keeper for this creature, see creature_settings.h. */
+    unsigned char combat_style; /**< CrCmbtStl_* value. */
+    unsigned char flee_order; /**< CrFlee_* value. */
+    unsigned char imprison_order; /**< CrImpr_* value. */
+    unsigned char instance_orders[LEARNED_INSTANCES_COUNT]; /**< CrInstOrd_* value for each learned instance slot. */
+    /** Player whose creature knocked this one out on a "take prisoners" order, plus one; zero for none. */
+    unsigned char knocked_out_for_plyr;
+    /** New name being received in chunks, and the user sending it; copied to creature_name when complete. */
+    char incoming_name[CREATURE_NAME_MAX];
+    unsigned char incoming_name_user;
     struct Coord3d flee_pos;
     int32_t flee_start_turn;
     struct MemberPos followers_pos[GROUP_MEMBERS_COUNT];

@@ -63,6 +63,8 @@ extern struct GuiMenu trap_menu;
 extern struct GuiMenu creature_menu;
 extern struct GuiMenu event_menu;
 extern struct GuiMenu query_menu;
+const char *creature_instance_button_order_tooltip(struct GuiButton *gbtn);
+void gui_creature_instance_order_next(struct GuiButton *gbtn);
 extern struct GuiMenu creature_query_menu1;
 extern struct GuiMenu creature_query_menu2;
 extern struct GuiMenu creature_query_menu3;

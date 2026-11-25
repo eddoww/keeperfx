@@ -6983,3 +6983,81 @@ msgstr "Файлы у %s и хоста различаются"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Одиночные карты (кооператив)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "Стиль боя - Автоматический: Существо сражается так, как предпочитает его вид. ЛКМ ближний бой. ПКМ дальний бой."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "Стиль боя - Ближний бой: Существо сходится с врагом врукопашную и использует дальние атаки только против недосягаемых врагов. ЛКМ дальний бой. ПКМ автоматический."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "Стиль боя - Дальний бой: Существо держится на расстоянии и по возможности использует дальние атаки. ЛКМ автоматический. ПКМ ближний бой."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "Переименовать: Дайте существу своё имя. ЛКМ - ввести новое имя, Enter - сохранить, Esc - отменить."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "Бежать или сражаться - Ваша склонность: Существо бежит или сражается дальше согласно склонности ваших существ. ЛКМ бежать. ПКМ сражаться до смерти."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "Бежать или сражаться - Бежать: Существо убегает, когда тяжело ранено, что бы ни говорила ваша склонность. ЛКМ сражаться до смерти. ПКМ ваша склонность."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "Бежать или сражаться - До смерти: Существо сражается дальше, даже тяжело раненное, что бы ни говорила ваша склонность. ЛКМ ваша склонность. ПКМ бежать."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "Пленные - Ваша склонность: Существо берёт пленных или убивает согласно вашей склонности. ЛКМ брать пленных. ПКМ убивать."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "Пленные - Брать пленных: Существо оглушает побеждённых врагов, чтобы бесы отнесли их в тюрьму. ЛКМ убивать. ПКМ ваша склонность."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "Пленные - Убивать: Существо убивает побеждённых врагов. ЛКМ ваша склонность. ПКМ брать пленных."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- Используется свободно. ЛКМ/ПКМ - ограничить для этого существа."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- Осторожно: не используется, если заденет ваших существ. ЛКМ/ПКМ - изменить."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- Выключено: существо не использует это само. ЛКМ/ПКМ - изменить."

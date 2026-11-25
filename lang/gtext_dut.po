@@ -7563,3 +7563,81 @@ msgstr "Bestanden verschillen tussen %s en host"
 msgctxt "Network game interface"
 msgid "Single-Player Maps (co-op)..."
 msgstr "Singleplayer-levels (co-op)..."
+
+#: guitext:1172
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Automatic: This creature fights the way its kind prefers. LMB melee. RMB ranged."
+msgstr "Vechtstijl - Automatisch: Dit wezen vecht zoals zijn soort het liefst doet. Linkermuisknop van dichtbij. Rechtermuisknop op afstand."
+
+#: guitext:1173
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Melee: This creature closes in to fight hand to hand, and only uses ranged attacks on enemies it cannot reach. LMB ranged. RMB automatic."
+msgstr "Vechtstijl - Van dichtbij: Dit wezen gaat het man-tegen-mangevecht aan en gebruikt aanvallen op afstand alleen tegen vijanden die het niet kan bereiken. Linkermuisknop op afstand. Rechtermuisknop automatisch."
+
+#: guitext:1174
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Combat Style - Ranged: This creature keeps its distance and fights with ranged attacks whenever it can. LMB automatic. RMB melee."
+msgstr "Vechtstijl - Op afstand: Dit wezen houdt afstand en vecht met aanvallen op afstand wanneer het kan. Linkermuisknop automatisch. Rechtermuisknop van dichtbij."
+
+#: guitext:1175
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Rename: Give this creature a name of your own. LMB to type a new name, Enter to keep it, Esc to cancel."
+msgstr "Hernoemen: Geef dit wezen een eigen naam. Linkermuisknop om een nieuwe naam te typen, Enter om hem te houden, Esc om te annuleren."
+
+#: guitext:1176
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Your tendency: This creature flees or fights on as your creatures' tendency says. LMB flee. RMB fight to the death."
+msgstr "Vluchten of vechten - Jouw neiging: Dit wezen vlucht of vecht door zoals de neiging van je wezens zegt. Linkermuisknop vluchten. Rechtermuisknop vechten tot de dood."
+
+#: guitext:1177
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Flee: This creature runs away when it is badly hurt, whatever your tendency says. LMB fight to the death. RMB your tendency."
+msgstr "Vluchten of vechten - Vluchten: Dit wezen vlucht als het zwaargewond is, wat je neiging ook zegt. Linkermuisknop vechten tot de dood. Rechtermuisknop jouw neiging."
+
+#: guitext:1178
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Flee or Fight - Fight to the death: This creature fights on when it is badly hurt, whatever your tendency says. LMB your tendency. RMB flee."
+msgstr "Vluchten of vechten - Tot de dood: Dit wezen vecht door als het zwaargewond is, wat je neiging ook zegt. Linkermuisknop jouw neiging. Rechtermuisknop vluchten."
+
+#: guitext:1179
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Your tendency: This creature takes prisoners or kills as your Imprison tendency says. LMB take prisoners. RMB kill."
+msgstr "Gevangenen - Jouw neiging: Dit wezen neemt gevangenen of doodt zoals je neiging Gevangennemen zegt. Linkermuisknop gevangenen nemen. Rechtermuisknop doden."
+
+#: guitext:1180
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Take prisoners: This creature knocks out the enemies it defeats, so your Imps carry them to your Prison. LMB kill. RMB your tendency."
+msgstr "Gevangenen - Gevangenen nemen: Dit wezen slaat verslagen vijanden bewusteloos, zodat je duiveltjes ze naar je gevangenis dragen. Linkermuisknop doden. Rechtermuisknop jouw neiging."
+
+#: guitext:1181
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Prisoners - Kill: This creature kills the enemies it defeats. LMB your tendency. RMB take prisoners."
+msgstr "Gevangenen - Doden: Dit wezen doodt de vijanden die het verslaat. Linkermuisknop jouw neiging. Rechtermuisknop gevangenen nemen."
+
+#: guitext:1182
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Used freely. LMB/RMB to restrict it for this creature."
+msgstr "- Vrij gebruikt. Linkermuisknop/Rechtermuisknop om het voor dit wezen te beperken."
+
+#: guitext:1183
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Careful: not used when your own creatures would be caught in it. LMB/RMB to change."
+msgstr "- Voorzichtig: niet gebruikt als je eigen wezens geraakt zouden worden. Linkermuisknop/Rechtermuisknop om te wijzigen."
+
+#: guitext:1184
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "- Off: this creature does not use it on its own. LMB/RMB to change."
+msgstr "- Uit: dit wezen gebruikt het niet uit zichzelf. Linkermuisknop/Rechtermuisknop om te wijzigen."

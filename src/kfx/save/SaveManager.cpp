@@ -51,6 +51,7 @@
 #include "map_data.h"
 #include "thing_creature.h"
 #include "kfx/platform/IPlatform.h"
+#include "creature_settings.h"
 #include "post_inc.h"
 
 #include <cstdlib>
@@ -328,6 +329,7 @@ enum SaveLoadOutcome SaveManager::Load(int slot_num, enum SaveCheckResult *why)
     take_game_timestamp();
     reinit_packets_after_load();
     initialize_packet_history();
+    clear_creature_settings_requests();
     clear_packets();
     process_pause_packet(0, 0);
     clear_flag(game.operation_flags, GOF_Paused);
